@@ -30,7 +30,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from editable.common import (
-    load_env, get_llm_client, get_baidu_access_token,
+    load_env, get_genai_client, get_baidu_access_token,
     get_image_size, TextRegion, SlideArtifacts,
 )
 from editable.extractors import ocr_extract_text_positions, crop_elements
@@ -213,12 +213,12 @@ def cmd_slide(args):
     print(f"{'─' * 56}")
 
     access_token = get_baidu_access_token()
-    llm_client = None
+    genai_client = None
     if not args.skip_styles or not args.skip_inpaint:
-        llm_client = get_llm_client()
+        genai_client = get_genai_client()
 
     data = process_slide(
-        image_path, access_token, llm_client,
+        image_path, access_token, genai_client,
         skip_inpaint=args.skip_inpaint,
         skip_styles=args.skip_styles,
         skip_crop=args.skip_crop,
@@ -263,16 +263,16 @@ def cmd_deck(args):
     print(f"{'─' * 56}")
 
     access_token = get_baidu_access_token()
-    llm_client = None
+    genai_client = None
     if not args.skip_styles or not args.skip_inpaint:
-        llm_client = get_llm_client()
+        genai_client = get_genai_client()
 
     start_time = time.time()
     results: list[tuple[int, SlideArtifacts | None, str]] = []
 
     process_kwargs = dict(
         access_token=access_token,
-        llm_client=llm_client,
+        llm_client=genai_client,
         skip_inpaint=args.skip_inpaint,
         skip_styles=args.skip_styles,
         skip_crop=args.skip_crop,

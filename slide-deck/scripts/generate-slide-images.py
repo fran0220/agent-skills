@@ -8,27 +8,30 @@ Usage:
   python3 generate-slide-images.py <outline_path> --slides 6,9,10 --parallel 3
 
 Requires:
-  - LLM_PROXY_URL and LLM_PROXY_KEY environment variables (or .env file in project root)
-  - Python 3.9+ with requests
+  - GOOGLE_API_KEY environment variable (or .env file)
+  - Optional: GOOGLE_API_BASE for proxy
+  - Python 3.9+ with google-genai, Pillow
 """
 from __future__ import annotations
 
 import argparse
-import base64
-import json
 import os
 import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
 from pathlib import Path
+
+from google import genai
+from google.genai import types
+from PIL import Image
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 IMAGE_MODEL = "gemini-3.1-flash-image-preview"
-MAX_TOKENS = 2000
-TIMEOUT = 180  # seconds per request
+GENAI_TIMEOUT = 180  # seconds per request
 MAX_RETRIES = 1
 
 # Base prompt (inline, matching skill's references/base-prompt.md)
@@ -94,6 +97,20 @@ def load_env(outline_path: str) -> None:
     _apply_env_file(Path(__file__).resolve().parent.parent / ".env")
 
 
+def make_client() -> genai.Client:
+    """Create Google GenAI client."""
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        print("Error: GOOGLE_API_KEY must be set", file=sys.stderr)
+        sys.exit(1)
+    api_base = os.environ.get("GOOGLE_API_BASE", None)
+    timeout_ms = int(GENAI_TIMEOUT * 1000)
+    http_opts = types.HttpOptions(timeout=timeout_ms)
+    if api_base:
+        http_opts = types.HttpOptions(timeout=timeout_ms, base_url=api_base)
+    return genai.Client(api_key=api_key, http_options=http_opts)
+
+
 # ---------------------------------------------------------------------------
 # Outline parsing
 # ---------------------------------------------------------------------------
@@ -121,56 +138,45 @@ def list_all_slide_nums(text: str) -> list[int]:
 # ---------------------------------------------------------------------------
 # Image generation
 # ---------------------------------------------------------------------------
-def generate_image(prompt: str, output_path: Path) -> bool:
+def generate_image(client: genai.Client, prompt: str, output_path: Path) -> bool:
     """Call Gemini image model and save result as PNG."""
-    import requests
-
-    url = os.environ["LLM_PROXY_URL"]
-    key = os.environ["LLM_PROXY_KEY"]
-
-    resp = requests.post(
-        f"{url}/v1/chat/completions",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={
-            "model": IMAGE_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": MAX_TOKENS,
-        },
-        timeout=TIMEOUT,
+    resp = client.models.generate_content(
+        model=IMAGE_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_modalities=['TEXT', 'IMAGE'],
+            image_config=types.ImageConfig(
+                aspect_ratio='16:9',
+            ),
+        ),
     )
-    resp.raise_for_status()
-    data = resp.json()
 
-    # Extract image — format: choices[0].message.images[0].image_url.url (base64)
-    images = (
-        data.get("choices", [{}])[0]
-        .get("message", {})
-        .get("images", [])
-    )
-    if not images:
-        # Fallback: check content for inline base64
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        b64_match = re.search(r"data:image/png;base64,([A-Za-z0-9+/=]+)", content)
-        if not b64_match:
-            b64_match = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", content)
-        if b64_match:
-            img_bytes = base64.b64decode(b64_match.group(1))
-            output_path.write_bytes(img_bytes)
-            return True
+    # Extract the last image from response parts
+    last_image = None
+    if resp.parts:
+        for part in resp.parts:
+            if part.text is not None:
+                continue
+            try:
+                image = part.as_image()
+                if isinstance(image, Image.Image):
+                    last_image = image
+                elif hasattr(image, 'image_bytes') and image.image_bytes:
+                    last_image = Image.open(BytesIO(image.image_bytes))
+                elif hasattr(image, '_pil_image') and image._pil_image:
+                    last_image = image._pil_image
+            except Exception:
+                continue
+
+    if last_image is None:
         return False
 
-    img_url = images[0]
-    if isinstance(img_url, dict):
-        img_data = img_url.get("image_url", {}).get("url", "") or img_url.get("url", "")
-    else:
-        img_data = str(img_url)
-
-    if img_data.startswith("data:"):
-        img_data = img_data.split(",", 1)[1]
-
-    img_bytes = base64.b64decode(img_data)
-    output_path.write_bytes(img_bytes)
+    last_image.save(str(output_path), format="PNG")
     return True
+
+
+# Global client instance (set in main, shared across threads)
+_client: genai.Client | None = None
 
 
 def process_slide(
@@ -193,7 +199,7 @@ def process_slide(
 
     for attempt in range(1 + MAX_RETRIES):
         try:
-            ok = generate_image(prompt, output_path)
+            ok = generate_image(_client, prompt, output_path)
             if ok:
                 size_kb = output_path.stat().st_size / 1024
                 return slide_num, filename, True, f"{size_kb:.0f} KB"
@@ -211,6 +217,8 @@ def process_slide(
 # Main
 # ---------------------------------------------------------------------------
 def main() -> None:
+    global _client
+
     parser = argparse.ArgumentParser(description="Generate slide images from outline")
     parser.add_argument("outline", help="Path to outline.md")
     parser.add_argument("--slides", help="Comma-separated slide numbers (e.g. 6,9,10)")
@@ -225,9 +233,7 @@ def main() -> None:
 
     load_env(str(outline_path))
 
-    if "LLM_PROXY_URL" not in os.environ or "LLM_PROXY_KEY" not in os.environ:
-        print("Error: LLM_PROXY_URL and LLM_PROXY_KEY must be set")
-        sys.exit(1)
+    _client = make_client()
 
     outline_text = outline_path.read_text()
     style_block = extract_style_instructions(outline_text)

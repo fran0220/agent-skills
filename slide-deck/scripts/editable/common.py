@@ -5,11 +5,14 @@ import base64
 import os
 import sys
 from dataclasses import dataclass, field
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
 import requests
-import openai
+from PIL import Image
+from google import genai
+from google.genai import types
 from pptx.enum.text import PP_ALIGN
 
 
@@ -19,6 +22,8 @@ from pptx.enum.text import PP_ALIGN
 
 VISION_MODEL = "gemini-3.1-pro-preview"
 IMAGE_MODEL = "gemini-3.1-flash-image-preview"
+
+GENAI_TIMEOUT = 300  # seconds
 
 SLIDE_WIDTH_INCHES = 13.333  # 16:9
 SLIDE_HEIGHT_INCHES = 7.5
@@ -125,14 +130,18 @@ def load_env(start_path: str) -> None:
     _apply_env_file(skill_env)
 
 
-def get_llm_client():
-    """Create OpenAI-compatible client for Gemini via LLM proxy."""
-    url = os.environ.get("LLM_PROXY_URL", "http://67.230.182.59:8317")
-    key = os.environ.get("LLM_PROXY_KEY", "")
-    if not key:
-        print("错误：未设置 LLM_PROXY_KEY", file=sys.stderr)
+def get_genai_client() -> genai.Client:
+    """Create Google GenAI client with optional base URL override."""
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        print("错误：未设置 GOOGLE_API_KEY", file=sys.stderr)
         sys.exit(1)
-    return openai.OpenAI(base_url=f"{url}/v1", api_key=key)
+    api_base = os.environ.get("GOOGLE_API_BASE", None)
+    timeout_ms = int(GENAI_TIMEOUT * 1000)
+    http_opts = types.HttpOptions(timeout=timeout_ms)
+    if api_base:
+        http_opts = types.HttpOptions(timeout=timeout_ms, base_url=api_base)
+    return genai.Client(api_key=api_key, http_options=http_opts)
 
 
 def get_baidu_access_token() -> str:
@@ -165,11 +174,36 @@ def image_to_base64(image_path: str) -> str:
         return base64.b64encode(f.read()).decode("utf-8")
 
 
+def load_pil_image(image_path: str) -> Image.Image:
+    """Load an image as PIL Image (RGB)."""
+    return Image.open(image_path).convert("RGB")
+
+
 def get_image_size(image_path: str) -> tuple:
     """Return (width, height) in pixels."""
-    from PIL import Image
     with Image.open(image_path) as img:
         return img.size
+
+
+def extract_response_image(response) -> Optional[Image.Image]:
+    """Extract the last image from a Gemini generate_content response."""
+    last_image = None
+    if not response.parts:
+        return None
+    for part in response.parts:
+        if part.text is not None:
+            continue
+        try:
+            image = part.as_image()
+            if isinstance(image, Image.Image):
+                last_image = image
+            elif hasattr(image, 'image_bytes') and image.image_bytes:
+                last_image = Image.open(BytesIO(image.image_bytes))
+            elif hasattr(image, '_pil_image') and image._pil_image:
+                last_image = image._pil_image
+        except Exception:
+            continue
+    return last_image
 
 
 def get_default_font_name(text: str) -> str:

@@ -9,7 +9,7 @@ from typing import Optional
 
 from .common import (
     TextRegion, TextStyle, ColoredSegment,
-    VISION_MODEL, image_to_base64, hex_to_rgb,
+    VISION_MODEL, load_pil_image, hex_to_rgb,
 )
 
 
@@ -55,20 +55,12 @@ def _extract_local_color(client, region: TextRegion) -> dict:
     )
 
     try:
-        b64 = image_to_base64(region.crop_path)
-        resp = client.chat.completions.create(
+        img = load_pil_image(region.crop_path)
+        resp = client.models.generate_content(
             model=VISION_MODEL,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-                    {"type": "text", "text": prompt},
-                ],
-            }],
-            max_tokens=2048,
-            temperature=0.1,
+            contents=[img, prompt],
         )
-        raw = resp.choices[0].message.content
+        raw = resp.text
         data = json.loads(_strip_code_block(raw))
         segments = data.get("colored_segments", [])
         color = segments[0]["color"] if segments else "#000000"
@@ -109,20 +101,12 @@ def _extract_global_layout(client, image_path: str, regions: list[TextRegion]) -
     )
 
     try:
-        b64 = image_to_base64(image_path)
-        resp = client.chat.completions.create(
+        img = load_pil_image(image_path)
+        resp = client.models.generate_content(
             model=VISION_MODEL,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-                    {"type": "text", "text": prompt},
-                ],
-            }],
-            max_tokens=4096,
-            temperature=0.1,
+            contents=[img, prompt],
         )
-        raw = resp.choices[0].message.content
+        raw = resp.text
         items = json.loads(_strip_code_block(raw))
 
         results = list(defaults)
@@ -212,20 +196,12 @@ def extract_styles_simple(client, image_path: str, regions: list[TextRegion]) ->
     )
 
     try:
-        b64 = image_to_base64(image_path)
-        resp = client.chat.completions.create(
+        img = load_pil_image(image_path)
+        resp = client.models.generate_content(
             model=VISION_MODEL,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-                    {"type": "text", "text": prompt},
-                ],
-            }],
-            max_tokens=4096,
-            temperature=0.1,
+            contents=[img, prompt],
         )
-        raw = resp.choices[0].message.content
+        raw = resp.text
         items = json.loads(_strip_code_block(raw))
 
         for item in items:

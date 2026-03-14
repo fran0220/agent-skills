@@ -1,15 +1,14 @@
 """Background text removal: simple fill for uniform backgrounds + Gemini inpainting for complex."""
 from __future__ import annotations
 
-import base64
 import io
-import re
 import sys
 from typing import Optional
 
 from PIL import Image, ImageDraw
+from google.genai import types
 
-from .common import TextRegion, IMAGE_MODEL, image_to_base64
+from .common import TextRegion, IMAGE_MODEL, extract_response_image
 
 MASK_EXPAND_PX = 12
 UNIFORM_FILL_EXTRA_PX = 4
@@ -90,48 +89,6 @@ def _is_uniform_background(img, x0, y0, x1, y1, threshold=40):
     return max_std < threshold, median_color
 
 
-def _extract_image_from_response(msg) -> Optional[str]:
-    """从 Gemini 图像生成响应中提取 base64 图片数据。"""
-    # 方式 1: msg.images
-    images = getattr(msg, 'images', None)
-    if images and len(images) > 0:
-        img_item = images[0]
-        if isinstance(img_item, dict):
-            url = img_item.get("image_url", {}).get("url") or img_item.get("url", "")
-        else:
-            url = getattr(getattr(img_item, 'image_url', None), 'url', '') or getattr(img_item, 'url', '')
-        if url.startswith("data:"):
-            return url.split(",", 1)[1]
-        elif url:
-            return url
-
-    # 方式 2: content 中的 base64
-    content = msg.content or ""
-    b64_match = re.search(r'data:image/[^;]+;base64,([A-Za-z0-9+/=\n]+)', content)
-    if b64_match:
-        return b64_match.group(1).replace("\n", "")
-
-    # 方式 3: model_extra
-    raw_dict = getattr(msg, 'model_extra', None) or {}
-    for key in ['images', 'image']:
-        if key in raw_dict:
-            val = raw_dict[key]
-            if isinstance(val, list) and val:
-                val = val[0]
-            if isinstance(val, dict):
-                url = val.get("image_url", {}).get("url") or val.get("url", "")
-            elif isinstance(val, str):
-                url = val
-            else:
-                continue
-            if url.startswith("data:"):
-                return url.split(",", 1)[1]
-            elif url:
-                return url
-
-    return None
-
-
 def remove_text_from_image(
     client,
     image_path: str,
@@ -191,61 +148,43 @@ def remove_text_from_image(
             mask_draw.rectangle([x0, y0, x1, y1], fill=255)
             marked_draw.rectangle([x0, y0, x1, y1], fill=(0, 0, 0))
 
-        # 发双图给 Gemini
-        buf_orig = io.BytesIO()
-        img.save(buf_orig, format="PNG")
-        original_b64 = base64.b64encode(buf_orig.getvalue()).decode()
-
-        buf_marked = io.BytesIO()
-        marked.save(buf_marked, format="PNG")
-        marked_b64 = base64.b64encode(buf_marked.getvalue()).decode()
-
-        resp = client.chat.completions.create(
-            model=IMAGE_MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": (
-                                "You are a professional image inpainting expert. "
-                                "I provide two images:\n"
-                                "1. The original presentation slide\n"
-                                "2. The same slide with black rectangles covering areas to be filled\n\n"
-                                "Redraw ONLY the black rectangle areas. Remove any text/numbers in those areas "
-                                "and fill them seamlessly with the surrounding background pattern and colors. "
-                                "Do NOT add any new text. Do NOT modify areas outside the black rectangles. "
-                                "Output the complete image."
-                            ),
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{original_b64}"},
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{marked_b64}"},
-                        },
-                    ],
-                }
-            ],
-            max_tokens=2000,
+        # 发双图给 Gemini: [original, marked, prompt]
+        inpaint_prompt = (
+            "You are a professional image inpainting expert. "
+            "I provide two images:\n"
+            "1. The original presentation slide\n"
+            "2. The same slide with black rectangles covering areas to be filled\n\n"
+            "Redraw ONLY the black rectangle areas. Remove any text/numbers in those areas "
+            "and fill them seamlessly with the surrounding background pattern and colors. "
+            "Do NOT add any new text. Do NOT modify areas outside the black rectangles. "
+            "Output the complete image."
         )
 
-        ai_b64 = _extract_image_from_response(resp.choices[0].message)
-        if ai_b64:
-            ai_data = base64.b64decode(ai_b64)
-            ai_img = Image.open(io.BytesIO(ai_data)).convert("RGB")
-            if ai_img.size != img.size:
-                ai_img = ai_img.resize(img.size, Image.LANCZOS)
+        try:
+            resp = client.models.generate_content(
+                model=IMAGE_MODEL,
+                contents=[img, marked, inpaint_prompt],
+                config=types.GenerateContentConfig(
+                    response_modalities=['TEXT', 'IMAGE'],
+                ),
+            )
 
-            # mask composite: 复杂区域用 AI 结果，其余用已处理的 result
-            result = Image.composite(ai_img, result, mask)
-            print(f"  AI inpainting 完成，合成 {len(complex_blocks)} 个复杂区域")
-        else:
-            print("  警告：Gemini 未返回图片，复杂区域用背景色近似填充", file=sys.stderr)
-            # 回退：对复杂区域也用边缘色填充
+            ai_img = extract_response_image(resp)
+            if ai_img:
+                ai_img = ai_img.convert("RGB")
+                if ai_img.size != img.size:
+                    ai_img = ai_img.resize(img.size, Image.LANCZOS)
+
+                # mask composite: 复杂区域用 AI 结果，其余用已处理的 result
+                result = Image.composite(ai_img, result, mask)
+                print(f"  AI inpainting 完成，合成 {len(complex_blocks)} 个复杂区域")
+            else:
+                print("  警告：Gemini 未返回图片，复杂区域用背景色近似填充", file=sys.stderr)
+                for _, x0, y0, x1, y1 in complex_blocks:
+                    bg_color = _sample_border_color(img, x0, y0, x1, y1)
+                    result_draw.rectangle([x0, y0, x1, y1], fill=bg_color)
+        except Exception as e:
+            print(f"  警告：Gemini inpainting 失败: {e}，用背景色近似填充", file=sys.stderr)
             for _, x0, y0, x1, y1 in complex_blocks:
                 bg_color = _sample_border_color(img, x0, y0, x1, y1)
                 result_draw.rectangle([x0, y0, x1, y1], fill=bg_color)

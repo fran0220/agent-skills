@@ -11,7 +11,7 @@ Transform content into professional slide deck images.
 
 All scripts are **Python 3.9+**, unified runtime — no Node.js / Bun / npx dependencies.
 
-**Core dependencies**: `python-pptx`, `Pillow`, `requests`, `openai`
+**Core dependencies**: `google-genai`, `python-pptx`, `Pillow`, `requests`
 
 **Optional (editable PPTX)**: Baidu OCR API + Gemini vision/image models
 
@@ -582,9 +582,9 @@ python3 ${SKILL_DIR}/scripts/make-editable-pptx.py deck <slide-deck-dir> --force
 python3 ${SKILL_DIR}/scripts/make-editable-pptx.py clean <slide-deck-dir>
 ```
 
-**Requirements**: `pip install openai python-pptx Pillow requests`
+**Requirements**: `pip install google-genai python-pptx Pillow requests`
 
-**Environment**: `LLM_PROXY_URL`, `LLM_PROXY_KEY`, `BAIDU_OCR_API_KEY`, `BAIDU_OCR_SECRET_KEY` (auto-loaded from `.env`)
+**Environment**: `GOOGLE_API_KEY`, `GOOGLE_API_BASE`(可选), `BAIDU_OCR_API_KEY`, `BAIDU_OCR_SECRET_KEY` (auto-loaded from `.env`)
 
 **Caching**: Intermediates (`*-ocr.json`, `*-styles.json`, `*-clean-bg.png`, `*-crops/`) are cached per-slide. Re-running only processes uncached slides. Use `--force` to reprocess or `clean` to remove all cached data.
 
@@ -602,7 +602,7 @@ python3 ${SKILL_DIR}/scripts/generate-slide-images.py <outline-path> --slides 6,
 python3 ${SKILL_DIR}/scripts/generate-slide-images.py <outline-path> --all --parallel 2
 ```
 
-**Environment**: `LLM_PROXY_URL`, `LLM_PROXY_KEY` (auto-loaded from `.env`)
+**Environment**: `GOOGLE_API_KEY`, `GOOGLE_API_BASE`(可选) (auto-loaded from `.env`)
 
 ### Step 8.7: Fix Existing PPTX
 

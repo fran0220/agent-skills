@@ -7,19 +7,21 @@ AI 驱动的演示文稿生成工具。输入内容 → 自动生成专业幻灯
 ### 1. 安装依赖
 
 ```bash
-pip install python-pptx Pillow requests openai
+pip install google-genai python-pptx Pillow requests
 ```
 
 ### 2. 配置环境变量
 
-在 `.agents/skills/slide-deck/` 目录下创建 `.env` 文件：
+在 `.agents/skills/slide-deck/` 目录下创建 `.env` 文件（参考 `.env.example`）：
 
 ```env
-# 必需 — LLM 代理（用于图片生成、样式提取）
-LLM_PROXY_URL=http://67.230.182.59:8317
-LLM_PROXY_KEY=your-key-here
+# Gemini API（必需）
+GOOGLE_API_KEY=your-google-api-key
 
-# 可选 — 百度 OCR（仅 editable PPTX 需要）
+# 可选 — Gemini API 代理地址（默认直连 Google 官方）
+# GOOGLE_API_BASE=https://aihubmix.com/gemini
+
+# 百度 OCR（可选 — 仅 editable PPTX 需要）
 BAIDU_OCR_API_KEY=your-baidu-api-key
 BAIDU_OCR_SECRET_KEY=your-baidu-secret-key
 ```
@@ -41,7 +43,7 @@ BAIDU_OCR_SECRET_KEY=your-baidu-secret-key
 
 | 脚本 | 用途 | 环境变量 |
 |------|------|----------|
-| `generate-slide-images.py` | 从 outline 生成幻灯片图片 | `LLM_PROXY_URL`, `LLM_PROXY_KEY` |
+| `generate-slide-images.py` | 从 outline 生成幻灯片图片 | `GOOGLE_API_KEY` |
 | `merge-to-pptx.py` | 合并图片为 PPTX（纯图片 + speaker notes） | 无 |
 | `merge-to-pdf.py` | 合并图片为 PDF | 无 |
 | `make-editable-pptx.py` | 图片转可编辑 PPTX（OCR + 去字 + 样式重建） | 全部四个 |
