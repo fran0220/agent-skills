@@ -6,7 +6,9 @@
 
 | Skill | 用途 | 依赖 |
 |-------|------|------|
-| [`slide-deck`](./slide-deck/) | AI 幻灯片生成（内容 → 图片 → PPTX/PDF） | Python 3.9+, python-pptx, Pillow, requests, openai |
+| [`slide-deck`](./slide-deck/) | AI 幻灯片生成（内容 → 图片 → PPTX/PDF） | Python 3.9+, google-genai, python-pptx, Pillow |
+| [`openclaw-best-practices`](./openclaw-best-practices/) | OpenClaw 网关部署、路由、模型、记忆、沙箱、技能体系最佳实践 | — |
+| [`pi-agent-sdk`](./pi-agent-sdk/) | Pi Agent SDK 开发指南（会话、工具、Provider、RPC、Web UI） | — |
 
 ## 使用
 
