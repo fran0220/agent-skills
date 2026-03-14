@@ -1,0 +1,28 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment
+.env
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Intermediate files (slide-deck)
+*-ocr.json
+*-styles.json
+*-clean-bg.png
+*-crops/
+*-mask.png
+*-marked.png
+
+# Generated slide output (in project workspace, not in this repo)
+# slide-deck/{topic-slug}/ outputs are project-local
