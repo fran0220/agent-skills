@@ -277,7 +277,7 @@ The agent manages context (which scene is being edited, what the current task is
 - Direct `.tscn`/`.tres` text parsing/generation in TypeScript (no external parser dependency)
 - `child_process.execSync` for Godot headless calls
 - Project-level `.godotforge.json` for CLI configuration (default service endpoints, export presets)
-- npm package distribution: `npm install -g godot-forge` or `npx godot-forge`
+- npm package distribution: `npm install -g @doufunao123/godot-forge` or `npx @doufunao123/godot-forge`
 
 **What would be a category mistake:**
 - Designing `godot-forge` as a REPL or interactive session — agents don't need interactive sessions; they issue discrete commands.

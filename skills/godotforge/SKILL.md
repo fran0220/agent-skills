@@ -1,6 +1,6 @@
 ---
 name: godotforge
-description: "AI-driven Godot 4.x game development via CLI. Use when user asks to create a game, build a Godot project, design game mechanics, generate scenes, test gameplay, or export builds. Requires: godot-forge CLI (npm install -g godot-forge) + Godot 4.4+ in PATH."
+description: "AI-driven Godot 4.x game development via CLI. Use when user asks to create a game, build a Godot project, design game mechanics, generate scenes, test gameplay, or export builds. Requires: godot-forge CLI (npm install -g @doufunao123/godot-forge) + Godot 4.4+ in PATH."
 ---
 
 # GodotForge — AI Game Development Playbook for Godot 4.x
@@ -9,7 +9,7 @@ Build complete Godot 4.x games through structured CLI commands. The CLI is your 
 
 ## Prerequisites
 
-1. **godot-forge CLI**: `npm install -g godot-forge`
+1. **godot-forge CLI**: `npm install -g @doufunao123/godot-forge`
 2. **Godot 4.4+** binary in PATH (as `godot`) — required only for L3 commands
 3. **Node.js 20+**
 4. Verify installation:

@@ -16,14 +16,14 @@ GodotForge 是一个 **Agent Skill**（知识层），让 AI Agent 学会通过 
 |------|---------|------|
 | **Godot** | 4.4+ | 必须在 PATH 中可用（命令 `godot`） |
 | **Node.js** | 18+ | 运行 godot-forge CLI |
-| **godot-forge CLI** | latest | `npm install -g godot-forge` |
+| **godot-forge CLI** | latest | `npm install -g @doufunao123/godot-forge` |
 
 ## 安装
 
 ### 1. 安装 CLI（能力层）
 
 ```bash
-npm install -g godot-forge
+npm install -g @doufunao123/godot-forge
 
 # 验证
 godot-forge --version
@@ -101,7 +101,7 @@ Agent 加载 Skill 时首先读取此文件，包含 CLI 命令速查、控制�
 
 ```bash
 # 1. 安装
-npm install -g godot-forge
+npm install -g @doufunao123/godot-forge
 
 # 2. 初始化项目
 godot-forge project init my-platformer --template platformer-2d

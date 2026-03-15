@@ -1,11 +1,23 @@
 {
-  "name": "godot-forge",
+  "name": "@doufunao123/godot-forge",
   "version": "0.1.0",
   "description": "Agent-Primary CLI for AI-driven Godot 4.x game development",
   "type": "module",
   "bin": {
     "godot-forge": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fran0220/agent-skills",
+    "directory": "cli/godot-forge"
+  },
+  "author": "doufunao123",
+  "homepage": "https://github.com/fran0220/agent-skills/tree/main/cli/godot-forge",
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
     "dev": "tsup src/index.ts --format esm --watch",
