@@ -1,6 +1,6 @@
 ---
 name: openclaw-best-practices
-description: "Comprehensive OpenClaw operations guide for secure setup, routing, models, memory, sandboxing, skills, heartbeat, and cron. Use when setting up, auditing, deploying, or extending OpenClaw gateways and agents."
+description: "Comprehensive OpenClaw operations guide for secure setup, routing, models, memory, sandboxing, skills, hooks, ACP agents, ContextEngine, and automation. Use when setting up, auditing, deploying, or extending OpenClaw gateways and agents."
 ---
 
 # OpenClaw Best Practices
@@ -8,28 +8,14 @@ description: "Comprehensive OpenClaw operations guide for secure setup, routing,
 OpenClaw is a self-hosted gateway for running AI agents across chat channels.
 This skill is an operations playbook for secure and reliable setup, auditing, and extension.
 
-## Verified Baseline (2026-02-23)
+## Verified Baseline (2026-03-15)
 
-Re-validated against official docs and live package metadata.
+Re-validated against official docs, npm metadata, and release notes.
 
-- npm package: `openclaw@2026.2.22-2` (`latest` and `beta`)
-- Node requirement: `>=22.12.0`
-- Core sources:
-  - `https://docs.openclaw.ai/cli`
-  - `https://docs.openclaw.ai/gateway/configuration`
-  - `https://docs.openclaw.ai/gateway/configuration-reference`
-  - `https://docs.openclaw.ai/concepts/model-failover`
-  - `https://docs.openclaw.ai/concepts/memory`
-  - `https://docs.openclaw.ai/concepts/multi-agent`
-  - `https://docs.openclaw.ai/channels/channel-routing`
-  - `https://docs.openclaw.ai/gateway/sandboxing`
-  - `https://docs.openclaw.ai/gateway/sandbox-vs-tool-policy-vs-elevated`
-  - `https://docs.openclaw.ai/tools/skills`
-  - `https://docs.openclaw.ai/tools/skills-config`
-  - `https://docs.openclaw.ai/gateway/heartbeat`
-  - `https://docs.openclaw.ai/automation/cron-jobs`
-  - `https://docs.openclaw.ai/help/environment`
-  - `https://github.com/openclaw/openclaw`
+- npm package: `openclaw@2026.3.13` (`latest`)
+- Node requirement: `>=22` (recommended **Node 24**)
+- Key releases since last baseline: 2026.3.1, 2026.3.7-beta.1, 2026.3.11, 2026.3.13
+- Core sources: see [Validated Baseline](reference/validated-baseline.md)
 
 Quick re-check commands:
 
@@ -38,6 +24,7 @@ npm view openclaw version dist-tags engines --json
 openclaw --version
 openclaw doctor
 openclaw security audit
+openclaw health --json
 ```
 
 ## Required Workflow
@@ -48,6 +35,7 @@ For setup, debugging, or architecture changes, run this sequence:
    - `openclaw --version`
    - `node --version`
    - `openclaw doctor`
+   - `openclaw health --json`
 2. Run security baseline before feature work:
    - `openclaw security audit`
    - `openclaw security audit --deep`
@@ -55,6 +43,7 @@ For setup, debugging, or architecture changes, run this sequence:
    - `openclaw gateway status --deep`
    - `openclaw models status`
    - `openclaw skills list --eligible`
+   - `openclaw hooks list --eligible`
    - `openclaw sandbox explain`
 4. Make minimal config changes.
 5. Re-run audit + status checks after changes.
@@ -62,11 +51,19 @@ For setup, debugging, or architecture changes, run this sequence:
 
 ## Architecture Mental Model
 
-`channels -> gateway -> routing -> agent runtime -> tools -> sessions/memory -> outbound delivery`
+```
+channels -> gateway -> routing -> agent runtime -> tools -> sessions/memory -> outbound delivery
+                                       |
+                                  ContextEngine (pluggable)
+                                       |
+                                  ACP agents (external: codex/claude/gemini)
+```
 
 - Gateway is control plane; agents are isolated by workspace, state, auth profiles, and sessions.
 - Routing is deterministic and binding-order sensitive.
 - Tool policy and sandboxing are separate control layers.
+- ContextEngine is pluggable — default is `legacy`, override via `plugins.slots.contextEngine`.
+- Hooks provide event-driven automation without modifying core code.
 - Security posture is mostly about access boundaries, not prompt wording.
 
 ## Security First
@@ -82,12 +79,16 @@ Start with least privilege and widen only as needed.
 3. Protect gateway surface:
    - loopback bind by default
    - token/password auth for non-loopback
+   - WebSocket origin validation for browser connections
+   - use Tailscale Serve (tailnet-only) or Funnel (public with password auth)
 4. Constrain execution:
    - enable sandbox (`non-main` or `all`)
    - keep `workspaceAccess` at `none` or `ro` by default
 5. Restrict high-risk tools for untrusted surfaces:
    - `exec`, `browser`, `web_search`, `web_fetch`, `gateway`, `cron`
 6. Prefer strong current models for tool-enabled agents.
+7. ACP sessions run on host, not in sandbox — block ACP spawn from sandboxed sessions.
+8. Enable tool loop detection for untrusted agents.
 
 Useful commands:
 
@@ -111,7 +112,25 @@ Important details:
 - Metadata routing: `auth.profiles` and `auth.order`
 - Secret/auth state: `~/.openclaw/agents/<agentId>/agent/auth-profiles.json`
 - Typical cooldown ladder: `1m -> 5m -> 25m -> 1h`
-- Billing disables use longer backoffs.
+- Billing/balance errors (Venice, Poe, etc.) now trigger configured fallbacks.
+- Gemini malformed responses treated as retryable timeouts.
+
+### Thinking Levels
+
+- Levels: `off | minimal | low | medium | high | xhigh | adaptive`
+- Claude 4.6 defaults to `adaptive` (provider-managed reasoning budget).
+- `xhigh` is GPT-5.2 + Codex models only.
+- Set via: `/think <level>`, config `agents.defaults.thinkingDefault`, or session override.
+- Fast mode: `/fast on|off` — reduces latency on routine queries.
+- Verbose: `/verbose on|full|off` — shows tool call details.
+- Reasoning: `/reasoning on|off|stream` — shows thinking blocks.
+
+### Ollama (Local Models)
+
+- First-class support via native API (`/api/chat`).
+- Auto-discovery: set `OLLAMA_API_KEY` without explicit provider config.
+- Cloud + Local mode via `openclaw onboard`.
+- Cloud models: `kimi-k2.5:cloud`, `minimax-m2.5:cloud`, `glm-5:cloud`.
 
 CLI:
 
@@ -138,6 +157,71 @@ Optional backends and features:
 - `memory.backend: "qmd"` for QMD sidecar
 - hybrid retrieval and rerank settings under `memorySearch.query.hybrid`
 - session indexing is opt-in (`memorySearch.experimental.sessionMemory`)
+
+### Multimodal Memory (New)
+
+- Opt-in image/audio indexing via `memorySearch.extraPaths`.
+- Uses `gemini-embedding-2-preview` with configurable output dimensions.
+- Automatic reindexing when dimensions change.
+- Use case: index screenshots, voice notes, design comps for semantic search.
+
+## ContextEngine (New)
+
+Pluggable context management replacing hardcoded assembly logic.
+
+- Default engine: `legacy` (built-in).
+- Override: install a plugin with `kind: "context-engine"`, set `plugins.slots.contextEngine`.
+- Lifecycle hooks: `bootstrap`, `ingest`, `assemble`, `compact`, `afterTurn`, `prepareSubagentSpawn`.
+- Inspect context: `/context list`, `/context detail`, `/status`.
+- Context includes: system prompt, conversation history, tool calls/results, attachments, compaction summaries.
+- Bootstrap file injection: `AGENTS.md`, `SOUL.md`, `TOOLS.md`, `IDENTITY.md`, `USER.md`, `HEARTBEAT.md`, `BOOTSTRAP.md`.
+- Truncation: `agents.defaults.bootstrapMaxChars` (default 20000), `agents.defaults.bootstrapTotalMaxChars` (default 150000).
+
+## Hooks System (New)
+
+Event-driven automation without modifying core code.
+
+Discovery precedence (highest to lowest):
+
+1. `<workspace>/hooks/`
+2. `~/.openclaw/hooks/`
+3. bundled hooks
+4. `hooks.internal.load.extraDirs`
+
+Bundled hooks:
+
+- `session-memory`: saves session context to `memory/` on `/new`
+- `bootstrap-extra-files`: injects additional workspace files during `agent:bootstrap`
+- `command-logger`: JSONL audit log to `~/.openclaw/logs/commands.log`
+- `boot-md`: runs `BOOT.md` on gateway startup
+
+Event types: `command:new`, `command:reset`, `command:stop`, `agent:bootstrap`, `gateway:startup`, `message:received`, `message:transcribed`, `message:preprocessed`, `message:sent`.
+
+```bash
+openclaw hooks list --eligible
+openclaw hooks enable session-memory
+openclaw hooks info <name>
+openclaw hooks check
+```
+
+## ACP Agents (New)
+
+External agent protocol for running Codex, Claude Code, Gemini CLI, etc. as child agents.
+
+- Enable: `acp.enabled: true` + install acpx plugin.
+- Built-in harnesses: `pi`, `claude`, `codex`, `opencode`, `gemini`, `kimi`.
+- Thread binding: spawn ACP sessions bound to Discord/Telegram threads.
+- Session resume: `resumeSessionId` to continue previous ACP conversations.
+- Permission modes: `approve-all`, `approve-reads`, `deny-all`.
+- ACP sessions run on host — cannot spawn from sandboxed sessions.
+
+```bash
+openclaw plugins install acpx
+/acp doctor
+/acp spawn codex --mode persistent --thread auto --cwd /repo
+/acp status
+/acp sessions
+```
 
 ## Multi-Agent Routing
 
@@ -180,6 +264,14 @@ Critical reminders:
 - `tools.elevated` is sender-gated and exec-only, not universal privilege.
 - Sandbox sessions do not inherit host process env by default.
 - Sandboxed skill binaries and env must exist inside sandbox runtime.
+- ACP sessions cannot be spawned from sandboxed sessions.
+
+### Tool Loop Detection (New)
+
+- Config: `tools.loopDetection` (disabled by default).
+- Detectors: `genericRepeat`, `knownPollNoProgress`, `pingPong`.
+- Thresholds: `warningThreshold < criticalThreshold < globalCircuitBreakerThreshold`.
+- Per-agent override via `agents.list[].tools.loopDetection`.
 
 Debug:
 
@@ -195,6 +287,7 @@ Heartbeat:
 - configured in `agents.defaults.heartbeat` or `agents.list[].heartbeat`
 - supports `activeHours`, `target`, `to`, `accountId`, `includeReasoning`
 - `HEARTBEAT_OK` is treated as suppressible ack token
+- `lightContext: true` skips heavy file injections for faster automation runs
 
 Cron:
 
@@ -202,6 +295,8 @@ Cron:
 - `sessionTarget: "main"` for system-event style runs
 - `sessionTarget: "isolated"` for dedicated cron session turns
 - delivery modes: `announce`, `webhook`, `none`
+- isolated cron delivery prevents leaking into ad hoc agent sends
+- `openclaw doctor --fix` migrates legacy cron storage
 
 Commands:
 
@@ -211,6 +306,18 @@ openclaw cron add --name "..." --cron "0 7 * * *" --session isolated --message "
 openclaw cron list
 openclaw cron runs --id <jobId>
 ```
+
+## Plugins System (New)
+
+Extends OpenClaw with installable plugins (e.g., acpx, diffs, community plugins).
+
+```bash
+openclaw plugins install <name>
+openclaw plugins list
+openclaw config set plugins.entries.<name>.enabled true
+```
+
+Plugins can provide: agent tools, context engines, ACP backends.
 
 ## Skills System
 
@@ -244,6 +351,21 @@ openclaw skills info <name>
 openclaw skills check
 ```
 
+## Health Checks (New)
+
+- HTTP endpoints: `/health`, `/healthz`, `/ready`, `/readyz` (auto-registered for Docker/K8s).
+- CLI: `openclaw health --json`, `openclaw status --all`, `openclaw status --deep`.
+- `openclaw config file` shows active config paths.
+
+## Gateway Networking (New)
+
+- Tailscale: `gateway.tailscale.mode` (`off` | `serve` | `funnel`).
+  - `serve`: tailnet-only HTTPS, uses Tailscale identity headers.
+  - `funnel`: public HTTPS, requires `gateway.auth.mode: "password"`.
+  - `gateway.tailscale.resetOnExit` undoes Serve/Funnel on shutdown.
+- `gateway.bind` must stay `loopback` when Serve/Funnel is enabled.
+- Gateway config errors now show up to 3 validation issues.
+
 ## Common Mistakes
 
 - Treating `tools.elevated` as generic policy instead of exec-only host path.
@@ -253,6 +375,11 @@ openclaw skills check
 - Forgetting to isolate DM scope for multi-user inboxes.
 - Editing cron job store files manually while gateway is running.
 - Using stale docs path `concepts/channel-routing` instead of `channels/channel-routing`.
+- Spawning ACP sessions from sandboxed sessions (they run on host).
+- Setting `permissionMode: "approve-reads"` for ACP without `nonInteractivePermissions: "deny"` (causes crashes on writes).
+- Using legacy `hooks.internal.handlers[]` config instead of discovery-based hooks.
+- Forgetting to restart gateway after changing hook or plugin config.
+- Enabling `gateway.tailscale.mode: "funnel"` without `gateway.auth.mode: "password"`.
 
 ## Reference Files
 

@@ -327,3 +327,274 @@ openclaw models status --probe
 openclaw sandbox explain
 openclaw skills check
 ```
+
+## 9) ContextEngine Plugin
+
+```json5
+{
+  plugins: {
+    entries: {
+      "my-context-engine": {
+        enabled: true,
+      },
+    },
+    slots: {
+      contextEngine: "my-context-engine",
+    },
+  },
+}
+```
+
+The default engine is `legacy`. When a plugin provides `kind: "context-engine"`, set `plugins.slots.contextEngine` to delegate context assembly, `/compact`, and subagent context lifecycle hooks.
+
+## 10) Hooks System
+
+```json5
+{
+  hooks: {
+    internal: {
+      enabled: true,
+      entries: {
+        "session-memory": { enabled: true },
+        "bootstrap-extra-files": {
+          enabled: true,
+          paths: ["packages/*/AGENTS.md", "packages/*/TOOLS.md"],
+        },
+        "command-logger": { enabled: true },
+        "boot-md": { enabled: true },
+      },
+      load: {
+        extraDirs: ["/path/to/more/hooks"],
+      },
+    },
+  },
+}
+```
+
+Bundled hooks: `session-memory` (saves context on `/new`), `bootstrap-extra-files` (inject monorepo files), `command-logger` (JSONL audit), `boot-md` (run BOOT.md on startup).
+
+```bash
+openclaw hooks list --eligible
+openclaw hooks enable session-memory
+openclaw hooks info session-memory
+openclaw hooks check
+```
+
+## 11) ACP Agents (External Agent Protocol)
+
+```json5
+{
+  acp: {
+    enabled: true,
+    dispatch: { enabled: true },
+    defaultAgent: "codex",
+    allowedAgents: ["codex", "claude", "pi", "gemini"],
+  },
+
+  plugins: {
+    entries: {
+      acpx: {
+        enabled: true,
+        config: {
+          permissionMode: "approve-all",
+          nonInteractivePermissions: "fail",
+        },
+      },
+    },
+  },
+
+  channels: {
+    discord: {
+      threadBindings: { spawnAcpSessions: true },
+    },
+    telegram: {
+      threadBindings: { spawnAcpSessions: true },
+    },
+  },
+}
+```
+
+Setup:
+
+```bash
+openclaw plugins install acpx
+openclaw config set plugins.entries.acpx.enabled true
+/acp doctor
+/acp spawn codex --mode persistent --thread auto --cwd /repo
+/acp status
+/acp sessions
+```
+
+## 12) Ollama (Local + Cloud)
+
+```json5
+{
+  // Simplest: just set env OLLAMA_API_KEY="ollama-local"
+  // For explicit config:
+  models: {
+    providers: {
+      ollama: {
+        baseUrl: "http://127.0.0.1:11434",
+        apiKey: "ollama-local",
+        api: "ollama",
+        models: [
+          {
+            id: "glm-4.7-flash",
+            name: "GLM-4.7 Flash",
+            contextWindow: 32768,
+          },
+        ],
+      },
+    },
+  },
+
+  agents: {
+    defaults: {
+      model: {
+        primary: "ollama/glm-4.7-flash",
+        fallbacks: ["anthropic/claude-sonnet-4-5"],
+      },
+    },
+  },
+}
+```
+
+Onboarding: `openclaw onboard` → select Ollama → choose Local or Cloud + Local.
+Auto-discovery: set `OLLAMA_API_KEY` without explicit `models.providers.ollama`.
+
+## 13) Thinking Levels and Fast Mode
+
+```json5
+{
+  agents: {
+    defaults: {
+      thinkingDefault: "adaptive",
+      models: {
+        "anthropic/claude-opus-4-6": { alias: "opus" },
+        "openai/gpt-5.2": {
+          alias: "gpt",
+          params: { fastMode: false },
+        },
+      },
+    },
+  },
+}
+```
+
+Slash commands: `/think high`, `/think adaptive`, `/fast on`, `/verbose full`, `/reasoning on`.
+Claude 4.6 models default to `adaptive` thinking. Levels: `off | minimal | low | medium | high | xhigh | adaptive`.
+
+## 14) Tool Loop Detection
+
+```json5
+{
+  tools: {
+    loopDetection: {
+      enabled: true,
+      historySize: 30,
+      warningThreshold: 10,
+      criticalThreshold: 20,
+      globalCircuitBreakerThreshold: 30,
+      detectors: {
+        genericRepeat: true,
+        knownPollNoProgress: true,
+        pingPong: true,
+      },
+    },
+  },
+}
+```
+
+Disabled by default. Enable per-agent with `agents.list[].tools.loopDetection`.
+
+## 15) Health Checks and Tailscale
+
+```json5
+{
+  gateway: {
+    bind: "loopback",
+    // Health endpoints: /health, /healthz, /ready, /readyz (auto-registered)
+
+    tailscale: {
+      mode: "serve",          // off | serve | funnel
+      resetOnExit: true,
+    },
+
+    auth: {
+      mode: "password",       // required for funnel mode
+      password: "${OPENCLAW_GATEWAY_PASSWORD}",
+    },
+  },
+}
+```
+
+```bash
+openclaw health --json
+openclaw health --json --timeout 5000
+openclaw status --all
+openclaw status --deep
+```
+
+## 16) Multimodal Memory Search
+
+```json5
+{
+  agents: {
+    defaults: {
+      memorySearch: {
+        provider: "gemini",
+        model: "gemini-embedding-2-preview",
+        extraPaths: ["~/screenshots", "~/voice-notes"],
+        fallback: "openai",
+        cache: { enabled: true, maxEntries: 50000 },
+      },
+    },
+  },
+}
+```
+
+Opt-in image/audio indexing. Automatic reindexing when dimensions change.
+
+## 17) Heartbeat Light Context
+
+```json5
+{
+  agents: {
+    defaults: {
+      heartbeat: {
+        every: "30m",
+        lightContext: true,     // skip heavy file injections
+        target: "last",
+        includeReasoning: true,
+      },
+    },
+  },
+
+  cron: {
+    enabled: true,
+    maxConcurrentRuns: 1,
+  },
+}
+```
+
+`lightContext` retains only `HEARTBEAT.md` essentials, trimming startup overhead.
+
+## 18) Validation Commands (Updated)
+
+```bash
+openclaw doctor
+openclaw doctor --fix
+openclaw security audit --deep
+openclaw gateway status --deep
+openclaw models status --probe
+openclaw sandbox explain
+openclaw skills check
+openclaw hooks list --eligible
+openclaw hooks check
+openclaw health --json
+openclaw config file
+/acp doctor
+/context list
+/context detail
+/status
+```
