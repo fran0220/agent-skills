@@ -18,8 +18,14 @@ Thumbs.db
 
 # CLI build artifacts
 *.egg-info/
-dist/
 build/
+
+# Node.js
+node_modules/
+cli/*/dist/
+
+# Python
+dist/
 
 # Intermediate files (slide-deck)
 *-ocr.json
