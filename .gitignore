@@ -16,6 +16,11 @@ Thumbs.db
 .vscode/
 *.swp
 
+# CLI build artifacts
+*.egg-info/
+dist/
+build/
+
 # Intermediate files (slide-deck)
 *-ocr.json
 *-styles.json
