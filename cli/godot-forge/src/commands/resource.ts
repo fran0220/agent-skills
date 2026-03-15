@@ -9,6 +9,7 @@ import {
   existsSync,
   readdirSync,
   statSync,
+  unlinkSync,
 } from "node:fs";
 import { join, resolve, relative, extname } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -653,6 +654,95 @@ export function createResourceCommand(): Command {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         output(error(commandName, "UPDATE_FAILED", msg), globals.human);
+        process.exit(1);
+      }
+    });
+
+  // ── resource delete ──────────────────────────────────────
+
+  cmd
+    .command("delete")
+    .description("Delete a resource file (requires --force)")
+    .argument("<path>", "Path to the resource file")
+    .action(async (filePath: string, _opts, command) => {
+      const globals = command.optsWithGlobals() as GlobalOptions;
+      const commandName = "resource.delete";
+      const projectDir = resolve(globals.project ?? ".");
+
+      try {
+        const fullPath = resolve(projectDir, filePath);
+        const resPath = `res://${relative(projectDir, fullPath)}`;
+
+        if (!existsSync(fullPath)) {
+          output(
+            error(commandName, "FILE_NOT_FOUND", `Resource file not found: ${fullPath}`, "Check the file path"),
+            globals.human
+          );
+          process.exit(1);
+        }
+
+        if (!globals.force) {
+          output(
+            error(
+              commandName,
+              "FORCE_REQUIRED",
+              "Deleting a resource requires --force. Pass --force to confirm deletion"
+            ),
+            globals.human
+          );
+          process.exit(1);
+        }
+
+        // Check how many .tscn/.tres files reference this resource
+        const allFiles = walkDir(projectDir, projectDir);
+        const sceneFiles = allFiles.filter((f) => f.endsWith(".tscn") || f.endsWith(".tres"));
+        let referencedBy = 0;
+
+        for (const sf of sceneFiles) {
+          const relPath = sf.replace("res://", "");
+          const sfFullPath = join(projectDir, relPath);
+          if (sfFullPath === fullPath) continue;
+
+          let content: string;
+          try {
+            content = readFileSync(sfFullPath, "utf-8");
+          } catch {
+            continue;
+          }
+
+          if (content.includes(resPath)) {
+            referencedBy++;
+          }
+        }
+
+        if (globals.dryRun) {
+          output(
+            success(commandName, {
+              action: "dry-run",
+              path: fullPath,
+              res_path: resPath,
+              deleted: false,
+              referenced_by: referencedBy,
+            }),
+            globals.human
+          );
+          return;
+        }
+
+        unlinkSync(fullPath);
+
+        output(
+          success(commandName, {
+            path: fullPath,
+            res_path: resPath,
+            deleted: true,
+            referenced_by: referencedBy,
+          }),
+          globals.human
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        output(error(commandName, "DELETE_FAILED", msg), globals.human);
         process.exit(1);
       }
     });

@@ -3,8 +3,8 @@
  */
 
 import { Command } from "commander";
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { join, resolve, relative } from "node:path";
 import { success, error, output, filterFields } from "../utils/output.js";
 import { readInput } from "../utils/input.js";
 import type { GlobalOptions, ProjectConfig } from "../types/index.js";
@@ -63,92 +63,149 @@ export/
 const FORGE_SYNC_PLUGIN_CFG = `[plugin]
 
 name="ForgeSync"
-description="Auto-scan filesystem for godot-forge CLI changes"
+description="TCP bridge for godot-forge CLI (port 23685)"
 author="godot-forge"
-version="0.1"
+version="0.2"
 script="forge_sync.gd"
 `;
 
 const FORGE_SYNC_GD = `@tool
 extends EditorPlugin
 
-const COMMAND_FILE = "res://.godot-forge/commands.json"
-var _timer: Timer
-var _last_mtime: int = 0
+const DEFAULT_PORT := 23685
+
+var _server: TCPServer
+var _peers: Array[StreamPeerTCP] = []
 
 func _enter_tree() -> void:
-\tDirAccess.make_dir_recursive_absolute("res://.godot-forge")
-\t_timer = Timer.new()
-\t_timer.wait_time = 0.5
-\t_timer.timeout.connect(_poll_commands)
-\tadd_child(_timer)
-\t_timer.start()
-\tprint("[ForgeSync] Bridge active")
+\t_server = TCPServer.new()
+\tvar port := DEFAULT_PORT
+\tif ProjectSettings.has_setting("forge_sync/port"):
+\t\tport = ProjectSettings.get_setting("forge_sync/port")
+\tvar err := _server.listen(port, "127.0.0.1")
+\tif err != OK:
+\t\tpush_warning("[ForgeSync] Failed to listen on port %d: %s" % [port, error_string(err)])
+\t\treturn
+\tprint("[ForgeSync] TCP bridge active on 127.0.0.1:%d" % port)
 
 func _exit_tree() -> void:
-\tif _timer:
-\t\t_timer.stop()
-\t\t_timer.queue_free()
+\tif _server:
+\t\t_server.stop()
+\t\t_server = null
+\tfor peer in _peers:
+\t\tpeer.disconnect_from_host()
+\t_peers.clear()
+\tprint("[ForgeSync] Bridge stopped")
 
-func _poll_commands() -> void:
-\tEditorInterface.get_resource_filesystem().scan()
-\tvar path = ProjectSettings.globalize_path(COMMAND_FILE)
-\tif not FileAccess.file_exists(path):
+func _process(_delta: float) -> void:
+\tif not _server or not _server.is_listening():
 \t\treturn
-\tvar mtime = FileAccess.get_modified_time(path)
-\tif mtime == _last_mtime:
-\t\treturn
-\t_last_mtime = mtime
-\tvar file = FileAccess.open(path, FileAccess.READ)
-\tif not file:
-\t\treturn
-\tvar text = file.get_as_text()
-\tfile.close()
-\tvar json = JSON.new()
-\tif json.parse(text) != OK:
-\t\treturn
-\tvar data = json.data
-\tif data is Dictionary:
-\t\t_execute(data)
-\telif data is Array:
-\t\tfor cmd in data:
-\t\t\tif cmd is Dictionary:
-\t\t\t\t_execute(cmd)
-\tDirAccess.remove_absolute(path)
+\t
+\t# Accept new connections
+\twhile _server.is_connection_available():
+\t\tvar peer := _server.take_connection()
+\t\tif peer:
+\t\t\tpeer.set_no_delay(true)
+\t\t\t_peers.append(peer)
+\t
+\t# Process existing connections
+\tvar i := 0
+\twhile i < _peers.size():
+\t\tvar peer := _peers[i]
+\t\tpeer.poll()
+\t\tvar status := peer.get_status()
+\t\t
+\t\tif status == StreamPeerTCP.STATUS_CONNECTED:
+\t\t\tif peer.get_available_bytes() > 0:
+\t\t\t\tvar data := peer.get_utf8_string(peer.get_available_bytes())
+\t\t\t\t_handle_data(peer, data)
+\t\t\t\t# Disconnect after handling (short-lived connection)
+\t\t\t\tpeer.disconnect_from_host()
+\t\t\t\t_peers.remove_at(i)
+\t\t\t\tcontinue
+\t\telif status == StreamPeerTCP.STATUS_NONE or status == StreamPeerTCP.STATUS_ERROR:
+\t\t\t_peers.remove_at(i)
+\t\t\tcontinue
+\t\t
+\t\ti += 1
 
-func _execute(cmd: Dictionary) -> void:
-\tvar action = cmd.get("action", "")
-\tprint("[ForgeSync] Executing: ", action)
+func _handle_data(peer: StreamPeerTCP, data: String) -> void:
+\tfor line in data.strip_edges().split("\\n"):
+\t\tif line.is_empty():
+\t\t\tcontinue
+\t\tvar json := JSON.new()
+\t\tif json.parse(line) != OK:
+\t\t\t_send_error(peer, "unknown", "Invalid JSON: " + json.get_error_message())
+\t\t\tcontinue
+\t\tvar msg: Dictionary = json.data
+\t\tif not msg is Dictionary:
+\t\t\t_send_error(peer, "unknown", "Expected JSON object")
+\t\t\tcontinue
+\t\t
+\t\tvar id: String = msg.get("id", "")
+\t\tvar action: String = msg.get("action", "")
+\t\tvar params: Dictionary = msg.get("params", {})
+\t\t
+\t\tif action.is_empty():
+\t\t\t_send_error(peer, id, "Missing 'action' field")
+\t\t\tcontinue
+\t\t
+\t\tvar result := _execute(action, params)
+\t\t_send_response(peer, id, result)
+
+func _send_response(peer: StreamPeerTCP, id: String, result: Dictionary) -> void:
+\tvar response := {"id": id, "ok": true, "data": result}
+\tvar text := JSON.stringify(response) + "\\n"
+\tpeer.put_utf8_string(text)
+
+func _send_error(peer: StreamPeerTCP, id: String, message: String) -> void:
+\tvar response := {"id": id, "ok": false, "error": message}
+\tvar text := JSON.stringify(response) + "\\n"
+\tpeer.put_utf8_string(text)
+
+func _execute(action: String, params: Dictionary) -> Dictionary:
+\tprint("[ForgeSync] Executing: %s" % action)
 \tmatch action:
 \t\t"open_scene":
-\t\t\tvar scene_path = cmd.get("path", "")
+\t\t\tvar scene_path: String = params.get("path", "")
 \t\t\tif scene_path and ResourceLoader.exists(scene_path):
 \t\t\t\tEditorInterface.open_scene_from_path(scene_path)
+\t\t\t\treturn {"action": action, "scene": scene_path}
+\t\t\treturn {"action": action, "warning": "Scene not found: " + scene_path}
 \t\t"reload_scene":
-\t\t\tvar current = EditorInterface.get_edited_scene_root()
+\t\t\tvar current := EditorInterface.get_edited_scene_root()
 \t\t\tif current:
-\t\t\t\tvar p = current.scene_file_path
+\t\t\t\tvar p := current.scene_file_path
 \t\t\t\tif p:
 \t\t\t\t\tEditorInterface.reload_scene_from_path(p)
+\t\t\t\t\treturn {"action": action, "scene": p}
+\t\t\treturn {"action": action, "warning": "No scene to reload"}
 \t\t"select_node":
-\t\t\tvar node_path_str = cmd.get("path", "")
-\t\t\tvar root = EditorInterface.get_edited_scene_root()
+\t\t\tvar node_path_str: String = params.get("path", "")
+\t\t\tvar root := EditorInterface.get_edited_scene_root()
 \t\t\tif root and node_path_str:
-\t\t\t\tvar node = root.get_node_or_null(NodePath(node_path_str))
+\t\t\t\tvar node := root.get_node_or_null(NodePath(node_path_str))
 \t\t\t\tif node:
 \t\t\t\t\tEditorInterface.get_selection().clear()
 \t\t\t\t\tEditorInterface.get_selection().add_node(node)
 \t\t\t\t\tEditorInterface.edit_node(node)
+\t\t\t\t\treturn {"action": action, "selected": node_path_str}
+\t\t\treturn {"action": action, "warning": "Node not found: " + node_path_str}
 \t\t"scan":
 \t\t\tEditorInterface.get_resource_filesystem().scan()
+\t\t\treturn {"action": action}
 \t\t"run_scene":
-\t\t\tvar scene_path = cmd.get("path", "")
+\t\t\tvar scene_path: String = params.get("path", "")
 \t\t\tif scene_path:
 \t\t\t\tEditorInterface.play_custom_scene(scene_path)
 \t\t\telse:
 \t\t\t\tEditorInterface.play_main_scene()
+\t\t\treturn {"action": action}
 \t\t"stop":
 \t\t\tEditorInterface.stop_playing_scene()
+\t\t\treturn {"action": action}
+\t\t_:
+\t\t\treturn {"action": action, "warning": "Unknown action"}
 `;
 
 // ── Key code mapping ───────────────────────────────────────
@@ -712,6 +769,217 @@ export function createProjectCommand(): Command {
     });
 
   cmd.addCommand(pluginCmd);
+
+  // ── project validate ────────────────────────────────────
+
+  cmd
+    .command("validate")
+    .description("Validate project integrity (broken refs, missing files)")
+    .action(async (_opts, command) => {
+      const globals = command.optsWithGlobals() as GlobalOptions;
+      const commandName = "project.validate";
+      const projectDir = resolve(globals.project ?? ".");
+      const projectFile = requireProjectFile(projectDir, commandName, globals.human);
+
+      const issues: { level: "error" | "warning"; source: string; message: string }[] = [];
+      let filesChecked = 0;
+
+      const config = readProjectConfig(projectFile);
+      const autoloadSection = configListSection(config, "autoload");
+      if (autoloadSection) {
+        for (const [name, rawValue] of autoloadSection) {
+          const value = rawValue.replace(/^"|"$/g, "");
+          const scriptPath = value.startsWith("*") ? value.slice(1) : value;
+          if (scriptPath.startsWith("res://")) {
+            const fsPath = join(projectDir, scriptPath.slice(6));
+            if (!existsSync(fsPath)) {
+              issues.push({ level: "error", source: `autoload/${name}`, message: `Missing autoload file: ${scriptPath}` });
+            }
+          }
+        }
+      }
+      filesChecked++;
+
+      const SKIP_DIRS = new Set([".godot", ".git", "node_modules"]);
+
+      function walkFiles(dir: string, ext: string): string[] {
+        const results: string[] = [];
+        try {
+          const entries = readdirSync(dir);
+          for (const entry of entries) {
+            if (entry.startsWith(".") || SKIP_DIRS.has(entry)) continue;
+            const fullPath = join(dir, entry);
+            try {
+              const stat = statSync(fullPath);
+              if (stat.isDirectory()) {
+                results.push(...walkFiles(fullPath, ext));
+              } else if (entry.endsWith(ext)) {
+                results.push(fullPath);
+              }
+            } catch {
+              // Skip inaccessible entries
+            }
+          }
+        } catch {
+          // Skip inaccessible directories
+        }
+        return results;
+      }
+
+      const tscnFiles = walkFiles(projectDir, ".tscn");
+      const tresFiles = walkFiles(projectDir, ".tres");
+
+      const resPathRegex = /path="(res:\/\/[^"]+)"/g;
+
+      for (const file of [...tscnFiles, ...tresFiles]) {
+        filesChecked++;
+        try {
+          const content = readFileSync(file, "utf-8");
+          const relSource = relative(projectDir, file);
+          let match: RegExpExecArray | null;
+          resPathRegex.lastIndex = 0;
+          while ((match = resPathRegex.exec(content)) !== null) {
+            const resRef = match[1];
+            const fsPath = join(projectDir, resRef.slice(6));
+            if (!existsSync(fsPath)) {
+              issues.push({ level: "error", source: relSource, message: `Broken reference: ${resRef}` });
+            }
+          }
+        } catch {
+          issues.push({ level: "warning", source: relative(projectDir, file), message: "Could not read file" });
+        }
+      }
+
+      const result = {
+        valid: issues.filter((i) => i.level === "error").length === 0,
+        issues,
+        files_checked: filesChecked,
+      };
+
+      output(success(commandName, globals.fields ? filterFields(result, globals.fields) : result), globals.human);
+    });
+
+  // ── project clean ───────────────────────────────────────
+
+  cmd
+    .command("clean")
+    .description("Find orphaned files (unreferenced scripts/resources)")
+    .action(async (_opts, command) => {
+      const globals = command.optsWithGlobals() as GlobalOptions;
+      const commandName = "project.clean";
+      const projectDir = resolve(globals.project ?? ".");
+      const projectFile = requireProjectFile(projectDir, commandName, globals.human);
+
+      const SKIP_DIRS = new Set([".godot", ".git", "node_modules"]);
+
+      function walkFiles(dir: string, exts: string[]): string[] {
+        const results: string[] = [];
+        try {
+          const entries = readdirSync(dir);
+          for (const entry of entries) {
+            if (entry.startsWith(".") || SKIP_DIRS.has(entry)) continue;
+            const fullPath = join(dir, entry);
+            try {
+              const stat = statSync(fullPath);
+              if (stat.isDirectory()) {
+                results.push(...walkFiles(fullPath, exts));
+              } else if (exts.some((e) => entry.endsWith(e))) {
+                results.push(fullPath);
+              }
+            } catch {
+              // Skip inaccessible entries
+            }
+          }
+        } catch {
+          // Skip inaccessible directories
+        }
+        return results;
+      }
+
+      // Collect all res:// references
+      const referenced = new Set<string>();
+      const resPathRegex = /path="(res:\/\/[^"]+)"/g;
+
+      const tscnFiles = walkFiles(projectDir, [".tscn"]);
+      const tresFiles = walkFiles(projectDir, [".tres"]);
+
+      for (const file of [...tscnFiles, ...tresFiles]) {
+        try {
+          const content = readFileSync(file, "utf-8");
+          let match: RegExpExecArray | null;
+          resPathRegex.lastIndex = 0;
+          while ((match = resPathRegex.exec(content)) !== null) {
+            referenced.add(match[1]);
+          }
+        } catch {
+          // Skip unreadable files
+        }
+      }
+
+      // Collect autoload references
+      const config = readProjectConfig(projectFile);
+      const autoloadSection = configListSection(config, "autoload");
+      if (autoloadSection) {
+        for (const [, rawValue] of autoloadSection) {
+          const value = rawValue.replace(/^"|"$/g, "");
+          const scriptPath = value.startsWith("*") ? value.slice(1) : value;
+          referenced.add(scriptPath);
+        }
+      }
+
+      // Find all project files
+      const allFiles = walkFiles(projectDir, [".gd", ".tres", ".tscn"]);
+
+      // Identify orphans (exclude addons/)
+      const orphaned: string[] = [];
+      for (const file of allFiles) {
+        const rel = relative(projectDir, file);
+        if (rel.startsWith("addons/") || rel.startsWith("addons\\")) continue;
+        const resPath = `res://${rel}`;
+        if (!referenced.has(resPath)) {
+          orphaned.push(resPath);
+        }
+      }
+
+      if (!globals.dryRun && globals.force && orphaned.length > 0) {
+        for (const resPath of orphaned) {
+          const fsPath = join(projectDir, resPath.slice(6));
+          try {
+            unlinkSync(fsPath);
+          } catch {
+            // Skip if already removed
+          }
+        }
+        output(success(commandName, { orphaned_count: orphaned.length, orphaned, deleted: true }), globals.human);
+        return;
+      }
+
+      output(success(commandName, { orphaned_count: orphaned.length, orphaned }), globals.human);
+    });
+
+  // ── project template ────────────────────────────────────
+
+  const templateCmd = new Command("template").description("Project template management");
+
+  templateCmd
+    .command("list")
+    .description("List available project templates")
+    .action(async (_opts, command) => {
+      const globals = command.optsWithGlobals() as GlobalOptions;
+      const commandName = "project.template.list";
+
+      const templates = [
+        { name: "default", description: "Standard 2D project with basic directory structure", root_type: "Node2D" },
+        { name: "3d", description: "3D project template", root_type: "Node3D" },
+        { name: "ui", description: "UI-focused project with Control root", root_type: "Control" },
+        { name: "empty", description: "Minimal project with no directories", root_type: "Node" },
+      ];
+
+      const result = { count: templates.length, templates };
+      output(success(commandName, globals.fields ? filterFields(result, globals.fields) : result), globals.human);
+    });
+
+  cmd.addCommand(templateCmd);
 
   return cmd;
 }

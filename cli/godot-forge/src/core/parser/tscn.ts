@@ -24,8 +24,8 @@ function parseSectionHeader(line: string): SectionHeader | null {
   const raw = m[2].trim();
   const attrs: Record<string, string> = {};
 
-  // Match key=value or key="value" pairs
-  const re = /(\w+)=(\"[^\"]*\"|[^\s]+)/g;
+  // Match key=value or key="value" or key=[...] pairs
+  const re = /(\w+)=(\"[^\"]*\"|\[[^\]]*\]|[^\s]+)/g;
   let match: RegExpExecArray | null;
   while ((match = re.exec(raw)) !== null) {
     let val = match[2];
@@ -127,6 +127,13 @@ export function parseTscn(content: string): TscnDocument {
         if (currentSection.attrs.type) node.type = currentSection.attrs.type;
         if (currentSection.attrs.parent) node.parent = currentSection.attrs.parent;
         if (currentSection.attrs.instance) node.instance = currentSection.attrs.instance;
+        if (currentSection.attrs.groups) {
+          // Parse groups=["a", "b"] format
+          const gm = currentSection.attrs.groups.match(/\["([^"]*(?:",\s*"[^"]*)*)"\]/);
+          if (gm) {
+            node.groups = gm[1].split(/",\s*"/).map((s) => s);
+          }
+        }
         doc.nodes.push(node);
         break;
       }
@@ -235,6 +242,9 @@ export function generateTscn(doc: TscnDocument): string {
     if (node.type) attrs.push(`type="${node.type}"`);
     if (node.parent !== undefined) attrs.push(`parent="${node.parent}"`);
     if (node.instance) attrs.push(`instance=${node.instance}`);
+    if (node.groups && node.groups.length > 0) {
+      attrs.push(`groups=[${node.groups.map((g) => `"${g}"`).join(", ")}]`);
+    }
     parts.push(`[node ${attrs.join(" ")}]`);
     for (const [key, val] of Object.entries(node.properties)) {
       parts.push(`${key} = ${formatValue(val)}`);

@@ -254,6 +254,120 @@ export function createExportCommand(): Command {
       }
     });
 
+  preset
+    .command("remove")
+    .description("Remove an export preset (requires --force)")
+    .option("--name <name>", "Preset name to remove")
+    .action(async (opts, command) => {
+      const globals = command.optsWithGlobals() as GlobalOptions;
+      const commandName = "export.preset.remove";
+      const projectDir = resolve(globals.project ?? ".");
+      const presetsPath = join(projectDir, PRESETS_FILE);
+
+      try {
+        const input = await readInput<{ name: string }>(globals.input);
+        const presetName = opts.name ?? input?.name;
+
+        if (!presetName) {
+          output(
+            error(
+              commandName,
+              "MISSING_INPUT",
+              "Preset name is required",
+              'Provide --name <name> or JSON input: {"name": "Linux"}'
+            ),
+            globals.human
+          );
+          process.exit(1);
+        }
+
+        if (!existsSync(presetsPath)) {
+          output(
+            error(
+              commandName,
+              "NO_PRESETS",
+              `No ${PRESETS_FILE} found at ${projectDir}`,
+              "No presets to remove"
+            ),
+            globals.human
+          );
+          process.exit(1);
+        }
+
+        const content = readFileSync(presetsPath, "utf-8");
+        const presets = parsePresets(content);
+        const target = presets.find((p) => p.name === presetName);
+
+        if (!target) {
+          output(
+            error(
+              commandName,
+              "PRESET_NOT_FOUND",
+              `Preset "${presetName}" not found`,
+              `Available presets: ${presets.map((p) => p.name).join(", ") || "none"}`
+            ),
+            globals.human
+          );
+          process.exit(1);
+        }
+
+        if (!globals.force) {
+          output(
+            error(
+              commandName,
+              "FORCE_REQUIRED",
+              `Removing preset "${presetName}" requires --force`,
+              "Re-run with --force to confirm removal"
+            ),
+            globals.human
+          );
+          process.exit(1);
+        }
+
+        const remaining = presets.filter((p) => p.name !== presetName);
+
+        if (globals.dryRun) {
+          output(
+            success(commandName, {
+              action: "dry-run",
+              name: presetName,
+              removed: true,
+              remaining_count: remaining.length,
+            }),
+            globals.human
+          );
+          return;
+        }
+
+        // Rebuild file with re-indexed presets
+        const newContent = remaining
+          .map((p, i) =>
+            formatPresetBlock(i, {
+              name: p.name,
+              platform: p.platform,
+              path: p.export_path,
+              runnable: p.runnable,
+            })
+          )
+          .join("\n");
+
+        writeFileSync(presetsPath, newContent);
+
+        output(
+          success(commandName, {
+            name: presetName,
+            removed: true,
+            remaining_count: remaining.length,
+          }),
+          globals.human
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        output(error(commandName, "REMOVE_FAILED", msg), globals.human);
+        process.exit(1);
+      }
+    });
+
   cmd.addCommand(preset);
 
   cmd

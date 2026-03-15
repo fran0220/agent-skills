@@ -19,6 +19,7 @@ import {
   addConnection,
   removeConnection,
   recalcLoadSteps,
+  addSubResource,
 } from "../core/parser/tscn.js";
 import type { TscnNode } from "../core/parser/types.js";
 
@@ -46,6 +47,12 @@ interface NodeUpdateInput {
   path: string;
   properties: Record<string, unknown>;
   script?: string;
+}
+
+interface NodeDuplicateInput {
+  scene: string;
+  path: string;
+  new_name?: string;
 }
 
 function resolveScenePath(projectDir: string, scenePath: string): string {
@@ -150,6 +157,21 @@ export function createNodeCommand(): Command {
           const extRes = addExtResource(doc, "Script", scriptPath);
           doc = extRes.doc;
           newNode.properties.script = `ExtResource("${extRes.id}")`;
+        }
+
+        // Auto-create sub_resources for shape nodes
+        const AUTO_SUB_RESOURCES: Record<string, { subType: string; property: string }> = {
+          CollisionShape2D: { subType: "RectangleShape2D", property: "shape" },
+          CollisionShape3D: { subType: "BoxShape3D", property: "shape" },
+        };
+
+        if (nodeType && nodeType in AUTO_SUB_RESOURCES) {
+          const { subType, property } = AUTO_SUB_RESOURCES[nodeType];
+          if (!(property in newNode.properties)) {
+            const subRes = addSubResource(doc, subType, {});
+            doc = subRes.doc;
+            newNode.properties[property] = `SubResource("${subRes.id}")`;
+          }
         }
 
         let updated = addNodeToDoc(doc, newNode);
@@ -406,7 +428,7 @@ export function createNodeCommand(): Command {
               action: "dry-run",
               scene: scenePath,
               node_path: nodePath,
-              updated_properties: Object.keys(properties),
+              updated_properties: Object.keys(properties ?? {}),
             }),
             globals.human
           );
@@ -419,7 +441,7 @@ export function createNodeCommand(): Command {
           scene: scenePath,
           res_path: `res://${relative(projectDir, scenePath)}`,
           node_path: nodePath,
-          updated_properties: Object.keys(properties),
+          updated_properties: Object.keys(properties ?? {}),
         };
 
         output(
@@ -676,6 +698,147 @@ export function createNodeCommand(): Command {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         output(error(commandName, "MOVE_FAILED", msg), globals.human);
+        process.exit(1);
+      }
+    });
+
+  // ── node duplicate ───────────────────────────────────────
+
+  cmd
+    .command("duplicate")
+    .description("Duplicate a node (with its subtree) in a scene")
+    .option("--scene <scene>", "Scene name or path")
+    .option("--path <path>", "Source node path to duplicate")
+    .option("--new-name <name>", "Name for the duplicated node")
+    .action(async (opts, command) => {
+      const globals = command.optsWithGlobals() as GlobalOptions;
+      const commandName = "node.duplicate";
+
+      try {
+        const input = await readInput<Partial<NodeDuplicateInput>>(globals.input);
+        const sceneName = opts.scene ?? input?.scene;
+        const nodePath = opts.path ?? input?.path;
+        const newName = opts.newName ?? input?.new_name;
+
+        if (!sceneName) {
+          output(
+            error(commandName, "MISSING_SCENE", "Scene name is required", 'Pass --scene <scene> or provide {"scene": "..."} via stdin'),
+            globals.human
+          );
+          process.exit(1);
+        }
+        if (!nodePath) {
+          output(
+            error(commandName, "MISSING_PATH", "Node path is required", 'Pass --path <path> or provide {"path": "..."} via stdin'),
+            globals.human
+          );
+          process.exit(1);
+        }
+
+        const projectDir = resolve(globals.project ?? ".");
+        const scenePath = resolveScenePath(projectDir, sceneName);
+        const doc = readScene(scenePath, commandName, globals.human);
+
+        const sourceNode = doc.nodes.find((n) => getNodePath(n) === nodePath);
+        if (!sourceNode) {
+          output(
+            error(commandName, "NODE_NOT_FOUND", `Node not found at path: ${nodePath}`, "Use 'node list' to see available nodes"),
+            globals.human
+          );
+          process.exit(1);
+        }
+
+        if (sourceNode.parent === undefined) {
+          output(
+            error(commandName, "CANNOT_DUPLICATE_ROOT", "The root node cannot be duplicated"),
+            globals.human
+          );
+          process.exit(1);
+        }
+
+        // Determine the duplicated node name
+        let dupName: string;
+        if (newName) {
+          dupName = newName;
+        } else {
+          const baseName = sourceNode.name;
+          const match = baseName.match(/^(.+?)(\d+)$/);
+          if (match) {
+            const prefix = match[1];
+            const num = parseInt(match[2], 10);
+            dupName = `${prefix}${num + 1}`;
+          } else {
+            dupName = `${baseName}2`;
+          }
+        }
+
+        // Check if a node with dupName already exists at the same parent
+        const dupPath = sourceNode.parent === "." ? dupName : `${sourceNode.parent}/${dupName}`;
+        const existing = doc.nodes.find((n) => getNodePath(n) === dupPath);
+        if (existing) {
+          output(
+            error(commandName, "NODE_EXISTS", `A node already exists at path: ${dupPath}`, "Choose a different --new-name"),
+            globals.human
+          );
+          process.exit(1);
+        }
+
+        const sourcePath = getNodePath(sourceNode);
+        const newNodes: TscnNode[] = [];
+
+        // Duplicate the source node itself
+        newNodes.push({ ...sourceNode, name: dupName, properties: { ...sourceNode.properties } });
+
+        // Duplicate children whose parent starts with the source path
+        for (const n of doc.nodes) {
+          if (n.parent === sourcePath) {
+            const newParent = sourceNode.parent === "." ? dupName : `${sourceNode.parent}/${dupName}`;
+            newNodes.push({ ...n, parent: newParent, properties: { ...n.properties } });
+          } else if (n.parent?.startsWith(sourcePath + "/")) {
+            const suffix = n.parent.slice(sourcePath.length);
+            const newParent = sourceNode.parent === "." ? dupName + suffix : `${sourceNode.parent}/${dupName}${suffix}`;
+            newNodes.push({ ...n, parent: newParent, properties: { ...n.properties } });
+          }
+        }
+
+        let updated = { ...doc, nodes: [...doc.nodes, ...newNodes] };
+        updated = recalcLoadSteps(updated);
+
+        const resPath = `res://${relative(projectDir, scenePath)}`;
+
+        if (globals.dryRun) {
+          output(
+            success(commandName, {
+              action: "dry-run",
+              scene: scenePath,
+              res_path: resPath,
+              source_path: sourcePath,
+              duplicated_name: dupName,
+              duplicated_node_count: newNodes.length,
+            }),
+            globals.human
+          );
+          return;
+        }
+
+        writeFileSync(scenePath, generateTscn(updated));
+        sendEditorCommand(projectDir, { action: "reload_scene" });
+
+        const result = {
+          scene: scenePath,
+          res_path: resPath,
+          source_path: sourcePath,
+          duplicated_name: dupName,
+          duplicated_node_count: newNodes.length,
+        };
+
+        output(
+          success(commandName, globals.fields ? filterFields(result, globals.fields) : result),
+          globals.human
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        output(error(commandName, "DUPLICATE_FAILED", msg), globals.human);
         process.exit(1);
       }
     });

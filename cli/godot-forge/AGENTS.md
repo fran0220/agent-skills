@@ -31,31 +31,43 @@ L3a: Godot 引擎运行时操作（需要 godot 二进制）
     → describe node-types/resource-types/class/project-settings (ClassDB 自省)
     → child_process 调用 godot --headless -s script.gd
 
-L3b: Godot 编辑器上下文操作（通过 ForgeSync 插件）
+L3b: Godot 编辑器上下文操作（通过 ForgeSync TCP 插件）
     → 场景打开/重载、节点选中、文件扫描、运行/停止
-    → CLI 写入 .godot-forge/commands.json → 插件轮询执行
+    → CLI 通过 TCP:23685 发送 JSON 命令 → 插件每帧处理
+    → TCP 不可用时降级为写 .godot-forge/commands.json
 ```
 
-## 当前实现状态 — 43 个命令，49 个测试
+## 当前实现状态 — 52 个命令，114 个测试（全部通过）
 
 ### 命令总览
 
 | 命令组 | 子命令 | 层级 |
 |--------|--------|------|
-| `project` | `init`, `info` | L1 |
+| `project` | `init`, `info`, `validate`, `clean` | L1 |
 | `project config` | `get <key>`, `set <key> <value>`, `list [section]` | L1 |
 | `project autoload` | `add`, `remove`, `list` | L1 |
 | `project input` | `add`, `remove`, `list` | L1 |
 | `project plugin` | `list`, `enable`, `disable` | L1 |
-| `scene` | `create`, `read`, `list`, `delete`, `update` | L2 |
-| `node` | `add`, `remove`, `list`, `update`, `move` | L2 |
+| `project template` | `list` | L1 |
+| `scene` | `create`, `read`, `list`, `delete`, `update`, `rename`, `merge` | L2 |
+| `node` | `add`, `remove`, `list`, `update`, `move`, `duplicate` | L2 |
 | `node` | `connect`, `disconnect`, `connections` | L2 |
 | `node group` | `add`, `remove`, `list` | L2 |
-| `script` | `create`, `list`, `validate`, `edit` | L1 |
+| `script` | `create`, `read`, `list`, `validate`, `edit` | L1 |
 | `engine` | `editor`, `validate`, `run`, `import`, `uid`, `preview` | L3a/L3b |
-| `export` | `preset list`, `preset add`, `build` | L1/L3a |
-| `resource` | `create`, `read`, `update`, `list`, `import`, `check` | L1/L2/L3a |
-| `describe` | 43 个命令 schema + 引擎自省 (node-types, resource-types, class:*, project-settings) | L1/L3a |
+| `export` | `preset list`, `preset add`, `preset remove`, `build` | L1/L3a |
+| `resource` | `create`, `read`, `update`, `delete`, `list`, `import`, `check` | L1/L2/L3a |
+| `describe` | 52 个命令 schema + 引擎自省 (node-types, resource-types, class:*, project-settings) | L1/L3a |
+
+### 测试覆盖
+
+| 测试文件 | 测试数 | 类型 |
+|----------|:------:|------|
+| `tests/unit/output.test.ts` | 6 | JSON 信封 + human 格式 + fields 过滤 |
+| `tests/unit/parser.test.ts` | 21 | .tscn 解析/生成 + 节点/资源/连接操作 |
+| `tests/unit/editor-bridge.test.ts` | 7 | TCP 发送/响应 + 降级到文件 + 端口配置 |
+| `tests/e2e/cli.test.ts` | 80 | 全部命令的端到端测试 |
+| **合计** | **114** | **4 文件，全部通过** |
 
 ### 基础设施
 
@@ -64,7 +76,7 @@ L3b: Godot 编辑器上下文操作（通过 ForgeSync 插件）
 | 输出层 | `src/utils/output.ts` | JSON 信封 + `--human` + `--fields` |
 | 输入层 | `src/utils/input.ts` | stdin JSON + `--input` 文件 |
 | 子进程 | `src/utils/subprocess.ts` | `findGodot()` (macOS/Linux/Windows) + `runGodotScript()` |
-| 编辑器桥接 | `src/utils/editor-bridge.ts` | ForgeSync IPC |
+| 编辑器桥接 | `src/utils/editor-bridge.ts` | ForgeSync TCP 桥接（v0.2） |
 | .tscn 解析器 | `src/core/parser/tscn.ts` | 解析/生成 + ext_resource/sub_resource/connection 管理 |
 | INI 解析器 | `src/core/parser/godot-config.ts` | project.godot 读写（含多行值支持） |
 | AST 类型 | `src/core/parser/types.ts` | TscnDocument, TscnNode, Connection |
@@ -94,6 +106,10 @@ echo '{"scene":"main","name":"Player","type":"CharacterBody2D","children":[
   {"name":"Sprite","type":"Sprite2D"},
   {"name":"Collision","type":"CollisionShape2D"}
 ]}' | godot-forge scene create
+
+# 自动子资源创建（CollisionShape2D → RectangleShape2D, CollisionShape3D → BoxShape3D）
+echo '{"scene":"main","name":"Collision","type":"CollisionShape2D"}' | godot-forge node add
+# ↑ 自动创建 RectangleShape2D sub_resource 并关联到 shape 属性
 ```
 
 ---
@@ -158,7 +174,7 @@ interface TscnNode {
 
 ---
 
-## ForgeSync 编辑器桥接
+## ForgeSync 编辑器桥接（v0.2 — TCP）
 
 ### 架构
 
@@ -166,13 +182,27 @@ interface TscnNode {
 CLI (TypeScript)                  Godot Editor
      │                                │
      │ sendEditorCommand()            │
-     │ ──write──> .godot-forge/       │
-     │            commands.json       │
-     │                    ┌───poll────>│ ForgeSync plugin (0.5s)
-     │                    │           │ - 执行动作
-     │                    │           │ - 删除命令文件
-     │                    │           │ - 自动 scan 文件系统
+     │ ──TCP:23685──>                 │ ForgeSync plugin (TCPServer)
+     │                                │ - _process() 中 accept + read
+     │ <──JSON response──             │ - 执行动作，返回结果
+     │                                │
+     │ [fallback: write commands.json]│ (编辑器未打开时)
 ```
+
+### 协议
+
+- **传输**：TCP 短连接，`127.0.0.1:23685`（`GODOT_FORGE_PORT` 环境变量可覆盖）
+- **请求**：`{"id":"<uuid>","action":"<action>","params":{"path":"..."}}\n`
+- **响应**：`{"id":"<uuid>","ok":true,"data":{...}}\n`
+- **错误**：`{"id":"<uuid>","ok":false,"error":"<msg>"}\n`
+- **延迟**：< 16ms（编辑器每帧处理）
+
+### 两种发送模式
+
+| 函数 | 模式 | 等待响应 | 用途 |
+|------|------|:--------:|------|
+| `sendEditorCommand()` | fire-and-forget | ❌ | 通知类操作（reload, open） |
+| `queryEditor()` | async request-response | ✅ | 需要结果的操作 |
 
 ### 支持的动作
 
@@ -185,12 +215,22 @@ CLI (TypeScript)                  Godot Editor
 | `run_scene` | 运行场景 | — |
 | `stop` | 停止运行 | — |
 
+### 降级策略
+
+TCP 连接失败（编辑器未打开）时，自动降级为写 `.godot-forge/commands.json` 文件。
+
 ### 自动安装
 
 `project init` 自动将 ForgeSync 嵌入项目：
 - 写入 `addons/forge_sync/plugin.cfg` + `forge_sync.gd`
 - 在 `project.godot` 的 `[editor_plugins]` 段启用
 - `.gitignore` 包含 `.godot-forge/`
+
+### MCP 立场
+
+**明确拒绝 MCP 集成。** MCP 协议效率过低、上下文开销过大，不适合 Agent-Primary CLI 架构。CLI 的 stdin/stdout JSON 信封 + ForgeSync TCP 已覆盖所有需求。
+
+竞品分析见 `docs/mcp-research.md`（仅作竞争情报参考，非采纳计划）。
 
 ---
 

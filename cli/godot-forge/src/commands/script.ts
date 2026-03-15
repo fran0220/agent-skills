@@ -227,6 +227,79 @@ export function createScriptCommand(): Command {
       }
     });
 
+  // ── script read ──────────────────────────────────────────────────
+  cmd
+    .command("read")
+    .description("Read and parse script structure as JSON")
+    .argument("<path>", "Path to .gd file")
+    .action(async (scriptPath: string, _opts, command) => {
+      const globals = command.optsWithGlobals() as GlobalOptions;
+      const commandName = "script.read";
+      const projectDir = resolve(globals.project ?? ".");
+      const fullPath = resolve(projectDir, scriptPath);
+
+      try {
+        if (!existsSync(fullPath)) {
+          output(
+            error(commandName, "FILE_NOT_FOUND", `Script not found: ${scriptPath}`),
+            globals.human
+          );
+          process.exit(1);
+        }
+
+        const content = readFileSync(fullPath, "utf-8");
+        const lines = content.split("\n");
+
+        const extendsMatch = content.match(/^extends\s+(\S+)/m);
+        const classNameMatch = content.match(/^class_name\s+(\S+)/m);
+
+        const signals: string[] = [];
+        const exports: { name: string; type: string; default: string | null }[] = [];
+        const methods: string[] = [];
+        const onready_vars: string[] = [];
+
+        for (const line of lines) {
+          const sigMatch = line.match(/^signal\s+(\w+)/);
+          if (sigMatch) signals.push(sigMatch[1]);
+
+          const expMatch = line.match(/^@export\s+var\s+(\w+)\s*:\s*(\w+)(?:\s*=\s*(.+))?/);
+          if (expMatch) exports.push({ name: expMatch[1], type: expMatch[2], default: expMatch[3]?.trim() ?? null });
+
+          const funcMatch = line.match(/^func\s+(\w+)/);
+          if (funcMatch) methods.push(funcMatch[1]);
+
+          const onreadyMatch = line.match(/^@onready\s+var\s+(\w+)/);
+          if (onreadyMatch) onready_vars.push(onreadyMatch[1]);
+        }
+
+        const relativePath = fullPath.startsWith(projectDir)
+          ? fullPath.slice(projectDir.length + 1)
+          : scriptPath;
+
+        const result = {
+          path: relativePath,
+          res_path: `res://${relativePath}`,
+          extends: extendsMatch?.[1] ?? null,
+          class_name: classNameMatch?.[1] ?? null,
+          has_class_name: classNameMatch !== null,
+          signals,
+          exports,
+          methods,
+          onready_vars,
+          line_count: lines.length,
+        };
+
+        output(
+          success(commandName, globals.fields ? filterFields(result, globals.fields) : result),
+          globals.human
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        output(error(commandName, "READ_FAILED", msg), globals.human);
+        process.exit(1);
+      }
+    });
+
   // ── script validate ────────────────────────────────────────────────
   cmd
     .command("validate")
