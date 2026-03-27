@@ -1,0 +1,40 @@
+# godot-forge CI — TypeScript lint & test
+name: godot-forge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cli/godot-forge/**'
+      - '.github/workflows/godot-forge.yml'
+  pull_request:
+    paths:
+      - 'cli/godot-forge/**'
+      - '.github/workflows/godot-forge.yml'
+
+defaults:
+  run:
+    working-directory: cli/godot-forge
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: cli/godot-forge/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npx vitest run

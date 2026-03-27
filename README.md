@@ -1,61 +1,50 @@
 # Agent Skills
 
-可复用的 Agent 技能（Skill）与命令行工具（CLI）集合。
+可复用的 Agent 技能（Skill）与命令行工具（CLI）集合。按项目组织的 monorepo。
 
-## 仓库结构
+## 项目列表
+
+| 项目 | 组件 | 说明 |
+|------|------|------|
+| [`godot-forge`](./godot-forge/) | Skill + CLI | AI 驱动的 Godot 4.x 游戏开发 |
+| [`asset-gateway`](./asset-gateway/) | Skill + CLI | 通用资产生成网关（图像/视频/音频/3D/文本） |
+| [`cognee-admin`](./cognee-admin/) | CLI | Cognee 知识引擎管理（CLI + Web 面板） |
+| [`bb-browser`](./bb-browser/) | Skill | 浏览器自动化 |
+| [`jimeng-gateway`](./jimeng-gateway/) | Skill | 即梦 AI 图像/视频网关 |
+| [`openclaw`](./openclaw/) | Skill | OpenClaw 网关最佳实践 |
+| [`pi-agent-sdk`](./pi-agent-sdk/) | Skill | Pi Agent SDK 开发指南 |
+| [`slide-deck`](./slide-deck/) | Skill | AI 幻灯片生成 |
+
+## 结构
+
+每个项目是一个顶级目录，内部按组件类型分：
 
 ```
-agent-skills/
-├── skills/              # Skill 层 — 领域知识，教 Agent 做什么
-│   ├── godotforge/      # Godot 游戏开发
-│   ├── slide-deck/      # AI 幻灯片生成
-│   ├── openclaw-best-practices/
-│   └── pi-agent-sdk/
-│
-└── cli/                 # CLI 层 — 可执行工具，让 Agent 能操作
-    └── godot-forge/     # GodotForge 的 CLI 工具
+<project>/
+├── skill/    # Agent 技能（SKILL.md + reference/ + knowledge/）
+├── cli/      # 命令行工具（TypeScript 或 Rust）
+└── README.md
 ```
-
-**Skill 和 CLI 分离**：Skill 是知识（教 Agent 做什么），CLI 是能力（让 Agent 能执行）。一个 Skill 可以依赖多个 CLI，一个 CLI 可以被多个 Skill 使用。
-
-## 技能列表
-
-| Skill | 用途 | 依赖的 CLI | 其他依赖 |
-|-------|------|-----------|---------|
-| [`godotforge`](./skills/godotforge/) | AI 驱动的 Godot 4.x 游戏开发 | `godot-forge` | Godot 4.4+ |
-| [`slide-deck`](./skills/slide-deck/) | AI 幻灯片生成（内容 → 图片 → PPTX/PDF） | — | Python 3.9+, google-genai |
-| [`openclaw-best-practices`](./skills/openclaw-best-practices/) | OpenClaw 网关最佳实践 | — | — |
-| [`pi-agent-sdk`](./skills/pi-agent-sdk/) | Pi Agent SDK 开发指南 | — | — |
-
-## CLI 列表
-
-| CLI | 用途 | 安装方式 |
-|-----|------|---------|
-| [`godot-forge`](./cli/godot-forge/) | Godot 项目操作（场景/资产/引擎/导出） | `pip install godot-forge` |
 
 ## 使用
 
 ### 安装 Skill
 
 ```bash
-git clone https://github.com/fran0220/agent-skills.git
-
-# 符号链接单个 skill 到项目
-ln -s /path/to/agent-skills/skills/godotforge .agents/skills/godotforge
-
-# 或用户级
-ln -s /path/to/agent-skills/skills/godotforge ~/.config/amp/skills/godotforge
+# 符号链接到 Amp
+ln -s /path/to/agent-skills/<project>/skill ~/.config/amp/skills/<project>
 ```
 
 ### 安装 CLI
 
 ```bash
-cd agent-skills/cli/godot-forge
-pip install -e .   # 开发模式
-# 或
-pip install godot-forge  # 发布后从 PyPI 安装
+# TypeScript CLI
+cd <project>/cli && npm install -g .
+
+# Rust CLI
+cd <project>/cli && cargo install --path .
 ```
 
-## 开发新 Skill / CLI
+## 开发
 
-参见 [AGENTS.md](./AGENTS.md) 中的开发约定。
+参见 [AGENTS.md](./AGENTS.md) 了解项目约定，或查看 [docs/](./docs/) 下的规范文档。

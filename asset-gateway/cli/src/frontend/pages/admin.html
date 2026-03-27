@@ -1,0 +1,1287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Asset Gateway</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-deep: #0a0c10;
+      --bg-base: #0f1218;
+      --bg-raised: #161b24;
+      --bg-surface: #1c222e;
+      --bg-hover: #232a38;
+      --border: #2a3244;
+      --border-soft: #1e2533;
+      --text-primary: #e8ecf4;
+      --text-secondary: #8892a6;
+      --text-muted: #5a6478;
+      --accent: #3b82f6;
+      --accent-soft: rgba(59,130,246,0.12);
+      --accent-glow: rgba(59,130,246,0.25);
+      --green: #22c55e;
+      --green-soft: rgba(34,197,94,0.12);
+      --amber: #f59e0b;
+      --amber-soft: rgba(245,158,11,0.12);
+      --red: #ef4444;
+      --red-soft: rgba(239,68,68,0.12);
+      --purple: #a78bfa;
+      --purple-soft: rgba(167,139,250,0.12);
+      --radius: 8px;
+      --radius-lg: 12px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Outfit', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+
+    body {
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      font-family: var(--sans);
+      font-weight: 400;
+      line-height: 1.5;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ============ LOGIN SCREEN ============ */
+    .login-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse 800px 600px at 30% 20%, rgba(59,130,246,0.06), transparent),
+        radial-gradient(ellipse 600px 400px at 70% 80%, rgba(167,139,250,0.04), transparent),
+        var(--bg-deep);
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      padding: 40px;
+      background: var(--bg-base);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow), 0 0 80px rgba(59,130,246,0.04);
+      animation: loginAppear 0.5s ease-out;
+    }
+
+    @keyframes loginAppear {
+      from { opacity: 0; transform: translateY(16px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .login-logo {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .login-logo .icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent), #7c3aed);
+      margin-bottom: 16px;
+      font-size: 24px;
+    }
+
+    .login-logo h1 {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .login-logo p {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .form-field {
+      margin-bottom: 16px;
+    }
+
+    .form-field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+
+    .form-field input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-family: var(--mono);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-field input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    .form-field input::placeholder { color: var(--text-muted); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-raised);
+      color: var(--text-primary);
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn:hover { background: var(--bg-hover); border-color: var(--text-muted); }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: transparent;
+      color: #fff;
+      width: 100%;
+      padding: 12px;
+      font-size: 14px;
+    }
+
+    .btn-primary:hover { background: #2563eb; }
+
+    .btn-green { background: var(--green-soft); border-color: rgba(34,197,94,0.2); color: var(--green); }
+    .btn-green:hover { background: rgba(34,197,94,0.2); }
+
+    .btn-amber { background: var(--amber-soft); border-color: rgba(245,158,11,0.2); color: var(--amber); }
+    .btn-amber:hover { background: rgba(245,158,11,0.2); }
+
+    .btn-red { background: var(--red-soft); border-color: rgba(239,68,68,0.2); color: var(--red); }
+    .btn-red:hover { background: rgba(239,68,68,0.2); }
+
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+    .login-error {
+      background: var(--red-soft);
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-size: 13px;
+      color: var(--red);
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    /* ============ APP SHELL ============ */
+    .app { display: none; min-height: 100vh; }
+    .app.active { display: flex; }
+
+    .sidebar {
+      width: 240px;
+      min-height: 100vh;
+      background: var(--bg-base);
+      border-right: 1px solid var(--border-soft);
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 100;
+    }
+
+    .sidebar-header {
+      padding: 20px 18px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+
+    .sidebar-header .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-header .brand-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), #7c3aed);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header .brand-text {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .sidebar-header .brand-version {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .sidebar-nav {
+      padding: 12px 10px;
+      flex: 1;
+    }
+
+    .sidebar-nav .nav-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 12px 10px 6px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      transition: all 0.15s;
+      border: 1px solid transparent;
+      margin-bottom: 2px;
+    }
+
+    .nav-item:hover { background: var(--bg-raised); color: var(--text-primary); }
+
+    .nav-item.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: rgba(59,130,246,0.15);
+    }
+
+    .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+    .sidebar-footer {
+      padding: 14px 18px;
+      border-top: 1px solid var(--border-soft);
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #7c3aed, var(--accent));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .user-name { font-size: 13px; font-weight: 600; }
+    .user-role { font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
+
+    .logout-btn {
+      width: 100%;
+      margin-top: 10px;
+      padding: 7px;
+      font-size: 12px;
+    }
+
+    /* ============ MAIN CONTENT ============ */
+    .main {
+      margin-left: 240px;
+      flex: 1;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse 1000px 600px at 80% 0%, rgba(59,130,246,0.03), transparent),
+        var(--bg-deep);
+    }
+
+    .page-header {
+      padding: 24px 32px 20px;
+      border-bottom: 1px solid var(--border-soft);
+      background: rgba(15,18,24,0.6);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .page-header h2 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .page-header p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .page-body { padding: 24px 32px; }
+
+    .view-panel { display: none; }
+    .view-panel.active { display: block; }
+
+    /* ============ SHARED COMPONENTS ============ */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      padding: 16px 18px;
+      background: var(--bg-base);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-lg);
+    }
+
+    .stat-card .stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+
+    .stat-card .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      font-family: var(--mono);
+      letter-spacing: -0.02em;
+      margin-top: 4px;
+    }
+
+    .panel-section {
+      background: var(--bg-base);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-lg);
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-soft);
+      background: var(--bg-raised);
+    }
+
+    .panel-header h3 {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .panel-body { padding: 18px; }
+
+    .form-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+
+    .form-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+
+    .form-row .form-field { flex: 1; min-width: 160px; margin-bottom: 0; }
+
+    select {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-family: var(--sans);
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+    textarea {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-family: var(--mono);
+      font-size: 13px;
+      min-height: 60px;
+      resize: vertical;
+      outline: none;
+    }
+
+    textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+    .actions-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    /* ============ TABLE ============ */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .data-table thead th {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-soft);
+      background: var(--bg-raised);
+      position: sticky;
+      top: 0;
+    }
+
+    .data-table tbody td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border-soft);
+      font-size: 13px;
+      vertical-align: middle;
+    }
+
+    .data-table tbody tr { transition: background 0.1s; }
+    .data-table tbody tr:hover { background: var(--bg-raised); }
+
+    .cell-mono {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .cell-id {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cell-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* ============ PILLS ============ */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .pill.active, .pill.completed { background: var(--green-soft); color: var(--green); border-color: rgba(34,197,94,0.2); }
+    .pill.pending, .pill.running { background: var(--amber-soft); color: var(--amber); border-color: rgba(245,158,11,0.2); }
+    .pill.rejected, .pill.failed, .pill.cancelled { background: var(--red-soft); color: var(--red); border-color: rgba(239,68,68,0.2); }
+    .pill.admin { background: var(--purple-soft); color: var(--purple); border-color: rgba(167,139,250,0.2); }
+
+    .pill-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-right: 6px;
+      background: currentColor;
+    }
+
+    /* ============ TOAST ============ */
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 8px;
+    }
+
+    .toast {
+      padding: 12px 18px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      box-shadow: var(--shadow);
+      animation: toastIn 0.3s ease-out;
+      max-width: 400px;
+    }
+
+    .toast.ok { border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.08); color: var(--green); }
+    .toast.error { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); color: var(--red); }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ============ MODAL ============ */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal {
+      background: var(--bg-base);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      animation: modalIn 0.25s ease-out;
+    }
+
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .modal h3 { margin-bottom: 18px; font-size: 16px; }
+
+    .empty-state {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* ============ RESPONSIVE ============ */
+    @media (max-width: 768px) {
+      .sidebar { width: 60px; overflow: hidden; }
+      .sidebar .brand-text, .sidebar .brand-version,
+      .sidebar .nav-label, .sidebar .nav-item span:not(.nav-icon),
+      .sidebar .user-name, .sidebar .user-role,
+      .sidebar .logout-btn span { display: none; }
+      .sidebar .nav-item { justify-content: center; padding: 10px; }
+      .main { margin-left: 60px; }
+      .page-body { padding: 16px; }
+      .form-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- =============== LOGIN SCREEN =============== -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="icon">⚡</div>
+      <h1>Asset Gateway</h1>
+      <p>Universal asset generation control plane</p>
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <div class="form-field">
+      <label>Username</label>
+      <input id="loginUsername" placeholder="admin" autocomplete="username" />
+    </div>
+    <div class="form-field">
+      <label>Password</label>
+      <input id="loginPassword" type="password" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+    <button class="btn btn-primary" id="loginBtn" style="margin-top:8px">Sign In</button>
+  </div>
+</div>
+
+<!-- =============== APP SHELL =============== -->
+<div class="app" id="appShell">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <div>
+          <div class="brand-text">Asset Gateway</div>
+          <div class="brand-version">v0.1.0</div>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-label">Management</div>
+      <div class="nav-item active" data-page="users">
+        <span class="nav-icon">👤</span><span>Users & Keys</span>
+      </div>
+      <div class="nav-item" data-page="providers">
+        <span class="nav-icon">🔌</span><span>Providers</span>
+      </div>
+      <div class="nav-item" data-page="credentials">
+        <span class="nav-icon">🔑</span><span>Credentials</span>
+      </div>
+      <div class="nav-label">Monitor</div>
+      <div class="nav-item" data-page="jobs">
+        <span class="nav-icon">📋</span><span>Job Logs</span>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="userAvatar">A</div>
+        <div>
+          <div class="user-name" id="userName">admin</div>
+          <div class="user-role" id="userRole">admin</div>
+        </div>
+      </div>
+      <button class="btn logout-btn" id="logoutBtn"><span>Sign Out</span></button>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="main">
+
+    <!-- ===== USERS PAGE ===== -->
+    <div class="view-panel active" id="page-users">
+      <div class="page-header">
+        <h2>Users & API Keys</h2>
+        <p>Manage user access, approval, and API key distribution</p>
+      </div>
+      <div class="page-body">
+        <div class="stat-grid" id="userStats"></div>
+        <div class="panel-section">
+          <div class="panel-header">
+            <h3>All Users</h3>
+            <button class="btn btn-sm" id="reloadUsers">↻ Refresh</button>
+          </div>
+          <div id="usersTable"><div class="empty-state">Loading...</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PROVIDERS PAGE ===== -->
+    <div class="view-panel" id="page-providers">
+      <div class="page-header">
+        <h2>Providers</h2>
+        <p>Configure asset generation providers and routing priorities</p>
+      </div>
+      <div class="page-body">
+        <div class="stat-grid" id="providerStats"></div>
+        <div class="panel-section">
+          <div class="panel-header">
+            <h3>Register Provider</h3>
+          </div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <div class="form-field">
+                <label>ID</label>
+                <input id="providerId" placeholder="gpt_image" />
+              </div>
+              <div class="form-field">
+                <label>Display Name</label>
+                <input id="providerDisplayName" placeholder="GPT Image" />
+              </div>
+              <div class="form-field">
+                <label>Adapter</label>
+                <select id="providerAdapter">
+                  <option>llm_proxy</option>
+                  <option>gpt_image</option>
+                  <option>gemini_image</option>
+                  <option>jimeng</option>
+                  <option>elevenlabs</option>
+                  <option>tripo3d</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>Asset Types</label>
+                <input id="providerAssetTypes" placeholder="image,video" />
+              </div>
+              <div class="form-field">
+                <label>Priority</label>
+                <input id="providerPriority" type="number" value="5" />
+              </div>
+              <div class="form-field">
+                <label>Enabled</label>
+                <select id="providerEnabled">
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-field" style="margin-top:14px">
+              <label>Config JSON</label>
+              <textarea id="providerConfig" placeholder='{"base_url":"..."}'>{}</textarea>
+            </div>
+            <div class="actions-row">
+              <button class="btn btn-primary" id="createProviderBtn" style="width:auto">+ Register Provider</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel-section">
+          <div class="panel-header">
+            <h3>Active Providers</h3>
+            <button class="btn btn-sm" id="reloadProviders">↻ Refresh</button>
+          </div>
+          <div id="providersTable"><div class="empty-state">Loading...</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== CREDENTIALS PAGE ===== -->
+    <div class="view-panel" id="page-credentials">
+      <div class="page-header">
+        <h2>Credentials</h2>
+        <p>Encrypted API keys and secrets for each provider</p>
+      </div>
+      <div class="page-body">
+        <div class="panel-section">
+          <div class="panel-header">
+            <h3>Set Credential</h3>
+          </div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <div class="form-field">
+                <label>Key</label>
+                <input id="credKey" placeholder="OPENAI_API_KEY" />
+              </div>
+              <div class="form-field">
+                <label>Value</label>
+                <input id="credValue" type="password" placeholder="sk-..." />
+              </div>
+              <div class="form-field">
+                <label>Provider ID <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+                <input id="credProvider" placeholder="gpt_image" />
+              </div>
+              <div class="form-field">
+                <label>Description <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+                <input id="credDescription" placeholder="OpenAI production key" />
+              </div>
+            </div>
+            <div class="actions-row">
+              <button class="btn btn-primary" id="setCredentialBtn" style="width:auto">🔒 Save Credential</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel-section">
+          <div class="panel-header">
+            <h3>Stored Credentials</h3>
+            <button class="btn btn-sm" id="reloadCredentials">↻ Refresh</button>
+          </div>
+          <div id="credentialsTable"><div class="empty-state">Loading...</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== JOBS PAGE ===== -->
+    <div class="view-panel" id="page-jobs">
+      <div class="page-header">
+        <h2>Job Logs</h2>
+        <p>Monitor asset generation tasks and their status</p>
+      </div>
+      <div class="page-body">
+        <div class="stat-grid" id="jobStats"></div>
+        <div class="panel-section">
+          <div class="panel-header">
+            <h3>Generation History</h3>
+            <div style="display:flex;gap:8px;align-items:center">
+              <select id="jobStatusFilter" style="width:130px;padding:6px 10px;font-size:12px">
+                <option value="">All Status</option>
+                <option value="completed">Completed</option>
+                <option value="running">Running</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <button class="btn btn-sm" id="reloadJobs">↻ Refresh</button>
+            </div>
+          </div>
+          <div id="jobsTable"><div class="empty-state">Loading...</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<script>
+  const S = {
+    token: localStorage.getItem("ag_token") || "",
+    user: JSON.parse(localStorage.getItem("ag_user") || "null"),
+    page: "users",
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function toast(msg, kind = "") {
+    const el = document.createElement("div");
+    el.className = `toast ${kind}`;
+    el.textContent = msg;
+    $("toastContainer").appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+
+  function baseUrl() {
+    return window.location.origin;
+  }
+
+  async function api(path, opts = {}, auth = true) {
+    const headers = { "Content-Type": "application/json" };
+    if (auth && S.token) headers.Authorization = `Bearer ${S.token}`;
+    const res = await fetch(`${baseUrl()}${path}`, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
+    const body = await res.json().catch(() => ({ ok: false, error: { message: "Invalid response" } }));
+    if (!res.ok || !body.ok) throw new Error(body?.error?.message || `HTTP ${res.status}`);
+    return body.data;
+  }
+
+  function pill(status) {
+    const s = String(status || "unknown").toLowerCase();
+    return `<span class="pill ${s}"><span class="pill-dot"></span>${s}</span>`;
+  }
+
+  // ============ AUTH ============
+  async function login() {
+    const username = $("loginUsername").value.trim();
+    const password = $("loginPassword").value;
+    if (!username || !password) { showLoginError("Username and password required"); return; }
+    try {
+      const data = await api("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }, false);
+      S.token = data.token;
+      S.user = data.user || { username, role: data.role || "user" };
+      localStorage.setItem("ag_token", S.token);
+      localStorage.setItem("ag_user", JSON.stringify(S.user));
+      enterApp();
+    } catch (e) { showLoginError(e.message); }
+  }
+
+  function showLoginError(msg) {
+    const el = $("loginError");
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  function logout() {
+    S.token = "";
+    S.user = null;
+    localStorage.removeItem("ag_token");
+    localStorage.removeItem("ag_user");
+    $("loginScreen").style.display = "";
+    $("appShell").classList.remove("active");
+  }
+
+  function enterApp() {
+    $("loginScreen").style.display = "none";
+    $("appShell").classList.add("active");
+    if (S.user) {
+      $("userName").textContent = S.user.username || "admin";
+      $("userRole").textContent = S.user.role || "user";
+      $("userAvatar").textContent = (S.user.username || "A")[0].toUpperCase();
+    }
+    refreshAll();
+  }
+
+  // ============ NAVIGATION ============
+  function navigate(page) {
+    S.page = page;
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.page === page));
+    document.querySelectorAll(".view-panel").forEach(v => v.classList.toggle("active", v.id === `page-${page}`));
+  }
+
+  // ============ USERS ============
+  async function loadUsers() {
+    try {
+      const data = await api("/api/users");
+      const rows = data.users || [];
+      const active = rows.filter(u => u.status === "active").length;
+      const pending = rows.filter(u => u.status === "pending").length;
+      const withKey = rows.filter(u => u.has_api_key).length;
+
+      $("userStats").innerHTML = `
+        <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value">${rows.length}</div></div>
+        <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" style="color:var(--green)">${active}</div></div>
+        <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value" style="color:var(--amber)">${pending}</div></div>
+        <div class="stat-card"><div class="stat-label">With API Key</div><div class="stat-value" style="color:var(--accent)">${withKey}</div></div>
+      `;
+
+      if (!rows.length) { $("usersTable").innerHTML = '<div class="empty-state">No users yet</div>'; return; }
+      let h = '<table class="data-table"><thead><tr><th>User</th><th>Role</th><th>Status</th><th>API Key</th><th>Quota</th><th>Actions</th></tr></thead><tbody>';
+      for (const u of rows) {
+        h += `<tr>
+          <td><strong>${u.username}</strong><div class="cell-id">${u.id}</div></td>
+          <td>${pill(u.role)}</td>
+          <td>${pill(u.status)}</td>
+          <td><span class="cell-mono">${u.api_key_masked || "—"}</span></td>
+          <td class="cell-mono">${u.api_key_quota_used || 0} / ${u.api_key_quota ?? "∞"}</td>
+          <td><div class="cell-actions">
+            ${u.status === "pending" ? `<button class="btn btn-green btn-sm" onclick="approveUser('${u.id}')">Approve</button>` : ""}
+            ${u.status === "pending" ? `<button class="btn btn-red btn-sm" onclick="rejectUser('${u.id}')">Reject</button>` : ""}
+            ${u.status === "active" && !u.has_api_key ? `<button class="btn btn-sm" onclick="generateKey('${u.id}')">Generate Key</button>` : ""}
+            ${u.has_api_key ? `<button class="btn btn-red btn-sm" onclick="revokeKey('${u.id}')">Revoke</button>` : ""}
+          </div></td>
+        </tr>`;
+      }
+      h += "</tbody></table>";
+      $("usersTable").innerHTML = h;
+    } catch (e) { toast("Load users failed: " + e.message, "error"); }
+  }
+
+  async function approveUser(id) {
+    try { await api(`/api/users/${id}/approve`, { method: "POST" }); toast("User approved", "ok"); loadUsers(); } catch (e) { toast(e.message, "error"); }
+  }
+
+  async function rejectUser(id) {
+    openModal("Reject User", `
+      <div class="form-field"><label>Reason</label><input id="rejectReason" value="Rejected by admin" /></div>
+      <div class="actions-row">
+        <button class="btn btn-red" onclick="confirmReject('${id}')">Confirm Reject</button>
+        <button class="btn" onclick="closeModal()">Cancel</button>
+      </div>
+    `);
+  }
+
+  async function confirmReject(id) {
+    try {
+      await api(`/api/users/${id}/reject`, { method: "POST", body: JSON.stringify({ reason: $("rejectReason").value }) });
+      toast("User rejected", "ok");
+      closeModal();
+      loadUsers();
+    } catch (e) { toast(e.message, "error"); }
+  }
+
+  async function generateKey(id) {
+    openModal("Generate API Key", `
+      <div class="form-field"><label>Quota Limit <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label><input id="gkQuota" type="number" placeholder="1000" /></div>
+      <div class="form-field"><label>Expires At <span style="font-weight:400;color:var(--text-muted)">(RFC3339, optional)</span></label><input id="gkExpires" placeholder="2027-01-01T00:00:00Z" /></div>
+      <div class="actions-row">
+        <button class="btn btn-primary" style="width:auto" onclick="confirmGenKey('${id}')">Generate</button>
+        <button class="btn" onclick="closeModal()">Cancel</button>
+      </div>
+    `);
+  }
+
+  async function confirmGenKey(id) {
+    const quota = $("gkQuota").value.trim() ? Number($("gkQuota").value) : null;
+    const expires = $("gkExpires").value.trim() || null;
+    try {
+      const data = await api(`/api/users/${id}/api-key`, { method: "POST", body: JSON.stringify({ quota_limit: quota, expires_at: expires }) });
+      closeModal();
+      openModal("API Key Generated", `
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px">Copy this key now — it won't be shown again.</p>
+        <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-family:var(--mono);font-size:13px;word-break:break-all;cursor:pointer" onclick="navigator.clipboard.writeText('${data.api_key}');toast('Copied!','ok')">${data.api_key}</div>
+        <div class="actions-row"><button class="btn" onclick="closeModal()">Done</button></div>
+      `);
+      loadUsers();
+    } catch (e) { toast(e.message, "error"); }
+  }
+
+  async function revokeKey(id) {
+    if (!confirm("Revoke this API key?")) return;
+    try { await api(`/api/users/${id}/api-key`, { method: "DELETE" }); toast("API key revoked", "ok"); loadUsers(); } catch (e) { toast(e.message, "error"); }
+  }
+
+  // ============ PROVIDERS ============
+  async function loadProviders() {
+    try {
+      const data = await api("/api/providers");
+      const rows = data.providers || [];
+      const enabled = rows.filter(p => p.enabled).length;
+      const types = [...new Set(rows.flatMap(p => p.asset_types || []))];
+
+      $("providerStats").innerHTML = `
+        <div class="stat-card"><div class="stat-label">Total Providers</div><div class="stat-value">${rows.length}</div></div>
+        <div class="stat-card"><div class="stat-label">Enabled</div><div class="stat-value" style="color:var(--green)">${enabled}</div></div>
+        <div class="stat-card"><div class="stat-label">Asset Types</div><div class="stat-value" style="color:var(--purple)">${types.length}</div></div>
+        <div class="stat-card"><div class="stat-label">Registered</div><div class="stat-value" style="color:var(--accent)">${rows.filter(p => p.registered).length}</div></div>
+      `;
+
+      if (!rows.length) { $("providersTable").innerHTML = '<div class="empty-state">No providers configured</div>'; return; }
+      let h = '<table class="data-table"><thead><tr><th>Provider</th><th>Adapter</th><th>Assets</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+      for (const p of rows) {
+        const types = (p.asset_types || []).map(t => `<span class="pill" style="margin:1px">${t}</span>`).join(" ");
+        h += `<tr>
+          <td><strong>${p.display_name}</strong><div class="cell-id">${p.id}</div></td>
+          <td class="cell-mono">${p.adapter}</td>
+          <td>${types}</td>
+          <td class="cell-mono">${p.priority}</td>
+          <td>${p.enabled ? pill("active") : pill("disabled")} ${p.registered ? "" : '<span style="font-size:11px;color:var(--text-muted)">· not loaded</span>'}</td>
+          <td><div class="cell-actions">
+            <button class="btn btn-sm" onclick="healthProvider('${p.id}')">🏥 Health</button>
+            <button class="btn btn-sm" onclick="editProvider('${p.id}')">✏️ Edit</button>
+            <button class="btn btn-red btn-sm" onclick="deleteProvider('${p.id}')">Delete</button>
+          </div></td>
+        </tr>`;
+      }
+      h += "</tbody></table>";
+      $("providersTable").innerHTML = h;
+    } catch (e) { toast("Load providers failed: " + e.message, "error"); }
+  }
+
+  async function createProvider() {
+    const id = $("providerId").value.trim();
+    const display_name = $("providerDisplayName").value.trim();
+    const adapter = $("providerAdapter").value;
+    const asset_types = $("providerAssetTypes").value.split(",").map(v => v.trim()).filter(Boolean);
+    const priority = Number($("providerPriority").value || 0);
+    const enabled = $("providerEnabled").value === "true";
+    let config = {};
+    try { config = JSON.parse($("providerConfig").value || "{}"); } catch { toast("Config must be valid JSON", "error"); return; }
+    if (!id) { toast("Provider ID is required", "error"); return; }
+    try {
+      await api("/api/providers", { method: "POST", body: JSON.stringify({ id, display_name, adapter, asset_types, priority, enabled, config }) });
+      toast(`Provider ${id} created`, "ok");
+      $("providerId").value = "";
+      $("providerDisplayName").value = "";
+      $("providerAssetTypes").value = "";
+      $("providerConfig").value = "{}";
+      loadProviders();
+    } catch (e) { toast(e.message, "error"); }
+  }
+
+  async function editProvider(id) {
+    openModal(`Edit Provider: ${id}`, `
+      <div class="form-grid">
+        <div class="form-field"><label>Display Name</label><input id="editDisplayName" /></div>
+        <div class="form-field"><label>Priority</label><input id="editPriority" type="number" /></div>
+        <div class="form-field"><label>Enabled</label><select id="editEnabled"><option value="true">Yes</option><option value="false">No</option></select></div>
+        <div class="form-field"><label>Asset Types</label><input id="editAssetTypes" placeholder="image,video" /></div>
+      </div>
+      <div class="form-field" style="margin-top:14px"><label>Config JSON</label><textarea id="editConfig">{}</textarea></div>
+      <div class="actions-row">
+        <button class="btn btn-primary" style="width:auto" onclick="confirmEdit('${id}')">Save Changes</button>
+        <button class="btn" onclick="closeModal()">Cancel</button>
+      </div>
+    `);
+  }
+
+  async function confirmEdit(id) {
+    const payload = {};
+    const dn = $("editDisplayName").value.trim(); if (dn) payload.display_name = dn;
+    const pr = $("editPriority").value.trim(); if (pr) payload.priority = Number(pr);
+    const en = $("editEnabled").value; payload.enabled = en === "true";
+    const at = $("editAssetTypes").value.trim(); if (at) payload.asset_types = at.split(",").map(v => v.trim()).filter(Boolean);
+    const cfg = $("editConfig").value.trim();
+    if (cfg && cfg !== "{}") { try { payload.config = JSON.parse(cfg); } catch { toast("Invalid JSON", "error"); return; } }
+    try { await api(`/api/providers/${id}`, { method: "PUT", body: JSON.stringify(payload) }); toast(`Updated ${id}`, "ok"); closeModal(); loadProviders(); }
+    catch (e) { toast(e.message, "error"); }
+  }
+
+  async function deleteProvider(id) {
+    if (!confirm(`Delete provider ${id}?`)) return;
+    try { await api(`/api/providers/${id}`, { method: "DELETE" }); toast(`Deleted ${id}`, "ok"); loadProviders(); } catch (e) { toast(e.message, "error"); }
+  }
+
+  async function healthProvider(id) {
+    try {
+      const data = await api(`/api/providers/${id}/health`);
+      openModal(`Health: ${id}`, `<pre style="background:var(--bg-raised);padding:14px;border-radius:var(--radius);font-family:var(--mono);font-size:12px;overflow:auto;max-height:300px">${JSON.stringify(data, null, 2)}</pre><div class="actions-row"><button class="btn" onclick="closeModal()">Close</button></div>`);
+    } catch (e) { toast(e.message, "error"); }
+  }
+
+  // ============ CREDENTIALS ============
+  async function loadCredentials() {
+    try {
+      const data = await api("/api/credentials");
+      const rows = data.credentials || [];
+      if (!rows.length) { $("credentialsTable").innerHTML = '<div class="empty-state">No credentials stored</div>'; return; }
+      let h = '<table class="data-table"><thead><tr><th>Key</th><th>Provider</th><th>Value (masked)</th><th>Description</th><th>Actions</th></tr></thead><tbody>';
+      for (const c of rows) {
+        h += `<tr>
+          <td><strong class="cell-mono">${c.key}</strong></td>
+          <td class="cell-mono">${c.provider_id || "—"}</td>
+          <td class="cell-mono">${c.value_masked}</td>
+          <td style="color:var(--text-secondary)">${c.description || "—"}</td>
+          <td><button class="btn btn-red btn-sm" onclick="deleteCredential('${c.key}')">Delete</button></td>
+        </tr>`;
+      }
+      h += "</tbody></table>";
+      $("credentialsTable").innerHTML = h;
+    } catch (e) { toast("Load credentials failed: " + e.message, "error"); }
+  }
+
+  async function setCredential() {
+    const key = $("credKey").value.trim();
+    const value = $("credValue").value;
+    const provider_id = $("credProvider").value.trim() || null;
+    const description = $("credDescription").value.trim() || null;
+    if (!key || !value) { toast("Key and value are required", "error"); return; }
+    try {
+      await api("/api/credentials", { method: "PUT", body: JSON.stringify({ key, value, provider_id, description }) });
+      toast(`Credential ${key} saved`, "ok");
+      $("credKey").value = "";
+      $("credValue").value = "";
+      $("credProvider").value = "";
+      $("credDescription").value = "";
+      loadCredentials();
+    } catch (e) { toast(e.message, "error"); }
+  }
+
+  async function deleteCredential(key) {
+    if (!confirm(`Delete credential ${key}?`)) return;
+    try { await api(`/api/credentials/${encodeURIComponent(key)}`, { method: "DELETE" }); toast(`Deleted ${key}`, "ok"); loadCredentials(); } catch (e) { toast(e.message, "error"); }
+  }
+
+  // ============ JOBS ============
+  async function loadJobs() {
+    try {
+      const status = $("jobStatusFilter").value;
+      const params = new URLSearchParams({ limit: "100" });
+      if (status) params.set("status", status);
+      const data = await api(`/api/jobs?${params}`);
+      const rows = data.jobs || [];
+
+      const completed = rows.filter(j => j.status === "completed").length;
+      const running = rows.filter(j => j.status === "running").length;
+      const failed = rows.filter(j => j.status === "failed").length;
+
+      $("jobStats").innerHTML = `
+        <div class="stat-card"><div class="stat-label">Total Jobs</div><div class="stat-value">${rows.length}</div></div>
+        <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value" style="color:var(--green)">${completed}</div></div>
+        <div class="stat-card"><div class="stat-label">Running</div><div class="stat-value" style="color:var(--amber)">${running}</div></div>
+        <div class="stat-card"><div class="stat-label">Failed</div><div class="stat-value" style="color:var(--red)">${failed}</div></div>
+      `;
+
+      if (!rows.length) { $("jobsTable").innerHTML = '<div class="empty-state">No jobs found</div>'; return; }
+      let h = '<table class="data-table"><thead><tr><th>Job</th><th>Status</th><th>Provider</th><th>Duration</th><th>Cost</th><th>Actions</th></tr></thead><tbody>';
+      for (const j of rows) {
+        h += `<tr>
+          <td><span class="pill" style="margin-bottom:4px">${j.asset_type}</span><div class="cell-id">${j.id}</div></td>
+          <td>${pill(j.status)}</td>
+          <td class="cell-mono">${j.provider_id}</td>
+          <td class="cell-mono">${j.duration_ms != null ? j.duration_ms + "ms" : "—"}</td>
+          <td class="cell-mono">${j.cost_usd != null ? "$" + j.cost_usd : "—"}</td>
+          <td><div class="cell-actions">
+            <button class="btn btn-sm" onclick="jobDetail('${j.id}')">Detail</button>
+            ${j.status === "pending" || j.status === "running" ? `<button class="btn btn-red btn-sm" onclick="cancelJob('${j.id}')">Cancel</button>` : ""}
+          </div></td>
+        </tr>`;
+      }
+      h += "</tbody></table>";
+      $("jobsTable").innerHTML = h;
+    } catch (e) { toast("Load jobs failed: " + e.message, "error"); }
+  }
+
+  async function jobDetail(id) {
+    try {
+      const data = await api(`/api/jobs/${id}`);
+      openModal(`Job Detail`, `<pre style="background:var(--bg-raised);padding:14px;border-radius:var(--radius);font-family:var(--mono);font-size:11px;overflow:auto;max-height:400px;color:var(--text-secondary)">${JSON.stringify(data, null, 2)}</pre><div class="actions-row"><button class="btn" onclick="closeModal()">Close</button></div>`);
+    } catch (e) { toast(e.message, "error"); }
+  }
+
+  async function cancelJob(id) {
+    if (!confirm("Cancel this job?")) return;
+    try { await api(`/api/jobs/${id}/cancel`, { method: "POST" }); toast("Job cancelled", "ok"); loadJobs(); } catch (e) { toast(e.message, "error"); }
+  }
+
+  // ============ MODAL ============
+  function openModal(title, content) {
+    $("modalContent").innerHTML = `<h3>${title}</h3>${content}`;
+    $("modalOverlay").classList.add("active");
+  }
+
+  function closeModal() {
+    $("modalOverlay").classList.remove("active");
+  }
+
+  $("modalOverlay").addEventListener("click", (e) => { if (e.target === $("modalOverlay")) closeModal(); });
+
+  // ============ REFRESH ============
+  async function refreshAll() {
+    try { await Promise.all([loadUsers(), loadProviders(), loadCredentials(), loadJobs()]); }
+    catch (e) { toast("Refresh failed: " + e.message, "error"); }
+  }
+
+  // ============ INIT ============
+  document.querySelectorAll(".nav-item").forEach(n => {
+    n.addEventListener("click", () => navigate(n.dataset.page));
+  });
+
+  $("loginBtn").addEventListener("click", login);
+  $("loginPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+  $("logoutBtn").addEventListener("click", logout);
+  $("reloadUsers").addEventListener("click", loadUsers);
+  $("reloadProviders")?.addEventListener("click", loadProviders);
+  $("createProviderBtn").addEventListener("click", createProvider);
+  $("setCredentialBtn").addEventListener("click", setCredential);
+  $("reloadCredentials")?.addEventListener("click", loadCredentials);
+  $("reloadJobs").addEventListener("click", loadJobs);
+  $("jobStatusFilter").addEventListener("change", loadJobs);
+
+  // Expose to inline onclick handlers
+  window.approveUser = approveUser;
+  window.rejectUser = rejectUser;
+  window.confirmReject = confirmReject;
+  window.generateKey = generateKey;
+  window.confirmGenKey = confirmGenKey;
+  window.revokeKey = revokeKey;
+  window.healthProvider = healthProvider;
+  window.editProvider = editProvider;
+  window.confirmEdit = confirmEdit;
+  window.deleteProvider = deleteProvider;
+  window.deleteCredential = deleteCredential;
+  window.jobDetail = jobDetail;
+  window.cancelJob = cancelJob;
+  window.openModal = openModal;
+  window.closeModal = closeModal;
+
+  if (S.token) { enterApp(); } else { $("loginScreen").style.display = ""; }
+</script>
+</body>
+</html>

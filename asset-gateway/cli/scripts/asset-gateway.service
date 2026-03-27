@@ -1,0 +1,16 @@
+[Unit]
+Description=Asset Gateway
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=opc
+WorkingDirectory=/opt/asset-gateway
+ExecStart=/opt/asset-gateway/asset-gateway serve --host 0.0.0.0 --port 6700
+EnvironmentFile=/opt/asset-gateway/.env
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

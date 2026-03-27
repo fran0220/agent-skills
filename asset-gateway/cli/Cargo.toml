@@ -1,0 +1,55 @@
+[package]
+name = "asset-gateway"
+version = "0.1.0"
+edition = "2021"
+description = "Universal asset generation gateway — unified API for LLM, image, video, audio, and 3D model generation"
+license = "MIT"
+
+[[bin]]
+name = "asset-gateway"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Web framework
+axum = { version = "0.8", features = ["multipart", "ws"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
+tokio = { version = "1", features = ["full"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Auth
+jsonwebtoken = "9"
+argon2 = "0.5"
+
+# Crypto (vault)
+aes-gcm = "0.10"
+rand = "0.8"
+base64 = "0.22"
+
+# HTTP client (provider adapters)
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+dirs = "6"
+
+[profile.release]
+lto = true
+strip = true

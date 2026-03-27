@@ -1,0 +1,79 @@
+# Skills validation — check SKILL.md frontmatter
+name: skills
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'skills/**'
+      - '.github/workflows/skills.yml'
+  pull_request:
+    paths:
+      - 'skills/**'
+      - '.github/workflows/skills.yml'
+
+jobs:
+  validate:
+    name: Validate SKILL.md
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check SKILL.md frontmatter
+        run: |
+          errors=0
+          for skill_dir in skills/*/; do
+            skill_name=$(basename "$skill_dir")
+            skill_file="$skill_dir/SKILL.md"
+
+            if [ ! -f "$skill_file" ]; then
+              echo "❌ $skill_dir: missing SKILL.md"
+              errors=$((errors + 1))
+              continue
+            fi
+
+            # Check frontmatter exists
+            if ! head -1 "$skill_file" | grep -q "^---"; then
+              echo "❌ $skill_file: missing YAML frontmatter"
+              errors=$((errors + 1))
+              continue
+            fi
+
+            # Extract name field
+            name=$(sed -n '/^---$/,/^---$/p' "$skill_file" | grep "^name:" | head -1 | sed 's/name: *//')
+            if [ -z "$name" ]; then
+              echo "❌ $skill_file: missing 'name' in frontmatter"
+              errors=$((errors + 1))
+            elif [ "$name" != "$skill_name" ]; then
+              echo "❌ $skill_file: name '$name' doesn't match directory '$skill_name'"
+              errors=$((errors + 1))
+            fi
+
+            # Check description exists
+            desc=$(sed -n '/^---$/,/^---$/p' "$skill_file" | grep "^description:" | head -1)
+            if [ -z "$desc" ]; then
+              echo "❌ $skill_file: missing 'description' in frontmatter"
+              errors=$((errors + 1))
+            fi
+
+            # Check README exists
+            if [ ! -f "$skill_dir/README.md" ]; then
+              echo "⚠️  $skill_dir: missing README.md (recommended)"
+            fi
+
+            # Check line count
+            lines=$(wc -l < "$skill_file")
+            if [ "$lines" -gt 500 ]; then
+              echo "⚠️  $skill_file: $lines lines (recommended < 500)"
+            fi
+
+            if [ $errors -eq 0 ]; then
+              echo "✅ $skill_name"
+            fi
+          done
+
+          if [ $errors -gt 0 ]; then
+            echo ""
+            echo "Found $errors error(s)"
+            exit 1
+          fi
