@@ -30,10 +30,16 @@ agent-skills/
 │   └── skill/             #   Agent 技能
 ├── openclaw/              # OpenClaw — 网关最佳实践
 │   └── skill/             #   知识库
-├── pi-agent-sdk/          # Pi Agent SDK — SDK 开发指南
+├── pi-sdk-practices/      # Pi SDK Practices — SDK 开发最佳实践
 │   └── skill/             #   知识库
 ├── slide-deck/            # Slide Deck — AI 幻灯片生成
 │   └── skill/             #   Agent 技能
+├── vercel-react-best-practices/  # React/Next.js 性能优化
+│   └── skill/
+├── better-auth-best-practices/   # Better Auth 认证集成
+│   └── skill/
+├── create-auth-skill/     # 应用认证服务创建
+│   └── skill/
 │
 ├── docs/                  # 跨项目开发规范
 │   ├── skill-conventions.md

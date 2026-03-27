@@ -12,8 +12,11 @@
 | [`bb-browser`](./bb-browser/) | Skill | 浏览器自动化 |
 | [`jimeng-gateway`](./jimeng-gateway/) | Skill | 即梦 AI 图像/视频网关 |
 | [`openclaw`](./openclaw/) | Skill | OpenClaw 网关最佳实践 |
-| [`pi-agent-sdk`](./pi-agent-sdk/) | Skill | Pi Agent SDK 开发指南 |
+| [`pi-sdk-practices`](./pi-sdk-practices/) | Skill | Pi Agent SDK 开发最佳实践 |
 | [`slide-deck`](./slide-deck/) | Skill | AI 幻灯片生成 |
+| [`vercel-react-best-practices`](./vercel-react-best-practices/) | Skill | React/Next.js 性能优化（Vercel Engineering） |
+| [`better-auth-best-practices`](./better-auth-best-practices/) | Skill | Better Auth 认证框架集成 |
+| [`create-auth-skill`](./create-auth-skill/) | Skill | 应用认证服务创建 |
 
 ## 结构
 
