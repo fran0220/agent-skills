@@ -1,0 +1,37 @@
+services:
+  rauthy:
+    image: ghcr.io/sebadob/rauthy:latest
+    container_name: rauthy
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - rauthy-data:/app/data
+      - ./rauthy/config.toml:/app/config.toml:ro
+    environment:
+      - TZ=Asia/Shanghai
+
+  jimeng-api:
+    build:
+      context: ./jimeng-free-api-fork
+    image: fran0220/jimeng-free-api-all:fork
+    container_name: jimeng-free-api-all
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - TZ=Asia/Shanghai
+    shm_size: "1gb"
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+volumes:
+  rauthy-data:

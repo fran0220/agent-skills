@@ -26,8 +26,10 @@ agent-skills/
 │   └── cli/               #   Rust CLI + HTMX Web 面板
 ├── bb-browser/            # BB Browser — 浏览器自动化
 │   └── skill/             #   Agent 技能
-├── jimeng-gateway/        # 即梦 Gateway — AI 图像/视频网关
-│   └── skill/             #   Agent 技能
+├── jimeng-gateway/        # 即梦 Gateway — Seedance 视频生成网关
+│   ├── skill/             #   Agent 技能
+│   ├── cli/               #   Rust 后端（axum + 即梦 API）
+│   └── web/               #   React 前端
 ├── openclaw/              # OpenClaw — 网关最佳实践
 │   └── skill/             #   知识库
 ├── pi-sdk-practices/      # Pi SDK Practices — SDK 开发最佳实践
