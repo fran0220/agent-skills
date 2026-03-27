@@ -37,3 +37,7 @@ dist/
 
 # Generated slide output (in project workspace, not in this repo)
 # slide-deck/{topic-slug}/ outputs are project-local
+
+# Rust
+target/
+Cargo.lock
