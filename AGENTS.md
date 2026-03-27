@@ -53,7 +53,7 @@ agent-skills/
 |--------|------|---------|
 | `skill/` | Agent 技能 | SKILL.md + reference/ + knowledge/ |
 | `cli/` | 命令行工具 | package.json/Cargo.toml + src/ + tests/ |
-| `web/` | Web 前端 | （未来扩展） |
+| `web/` | Web 前端 | package.json + src/ (React/Vue 等) |
 | `api/` | API 服务 | （未来扩展） |
 
 ### Skill 与 CLI 的关系
@@ -93,6 +93,8 @@ AGENTS.md                              # 本文件 — 仓库总览
 │   └── cli/AGENTS.md
 ├── cognee-admin/
 │   └── cli/AGENTS.md
+├── jimeng-gateway/
+│   └── AGENTS.md                      # 项目级指令（含后端+前端）
 ├── slide-deck/
 │   └── skill/AGENTS.md
 └── docs/
