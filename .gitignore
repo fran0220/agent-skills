@@ -41,3 +41,5 @@ dist/
 # Rust
 target/
 Cargo.lock
+AccessKey.csv
+SecretKey.csv
