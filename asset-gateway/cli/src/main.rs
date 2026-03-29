@@ -9,6 +9,8 @@ mod frontend;
 mod providers;
 mod server;
 
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -52,6 +54,13 @@ enum Commands {
             default_value = "postgres://localhost/asset_gateway"
         )]
         database_url: String,
+        /// Config file path (TOML)
+        #[arg(
+            long,
+            env = "ASSET_GATEWAY_CONFIG",
+            default_value = "config.toml"
+        )]
+        config: PathBuf,
     },
 
     /// Authentication
@@ -65,10 +74,6 @@ enum Commands {
     /// Manage providers
     #[command(subcommand)]
     Provider(client::ProviderCommands),
-
-    /// Manage credentials
-    #[command(subcommand)]
-    Credential(client::CredentialCommands),
 
     /// Manage jobs
     #[command(subcommand)]
@@ -98,8 +103,9 @@ async fn main() -> anyhow::Result<()> {
             host,
             port,
             database_url,
+            config,
         } => {
-            server::run(host, port, database_url).await?;
+            server::run(host, port, database_url, &config).await?;
         }
         Commands::Auth(cmd) => {
             client::handle_auth(cmd, &cli.gateway_url).await?;
@@ -109,9 +115,6 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Provider(cmd) => {
             client::handle_provider(cmd, &cli.gateway_url).await?;
-        }
-        Commands::Credential(cmd) => {
-            client::handle_credential(cmd, &cli.gateway_url).await?;
         }
         Commands::Job(cmd) => {
             client::handle_job(cmd, &cli.gateway_url).await?;

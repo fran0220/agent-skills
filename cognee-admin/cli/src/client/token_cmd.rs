@@ -37,15 +37,13 @@ pub async fn list(pool: &PgPool) -> Result<Value, AppError> {
 }
 
 pub async fn revoke(pool: &PgPool, id: &str) -> Result<Value, AppError> {
-    let uuid = Uuid::parse_str(id)
-        .map_err(|e| AppError::Config(format!("Invalid UUID: {e}")))?;
+    let uuid = Uuid::parse_str(id).map_err(|e| AppError::Config(format!("Invalid UUID: {e}")))?;
     auth::revoke_token(pool, &uuid).await?;
     Ok(json!({ "revoked": id }))
 }
 
 pub async fn delete(pool: &PgPool, id: &str) -> Result<Value, AppError> {
-    let uuid = Uuid::parse_str(id)
-        .map_err(|e| AppError::Config(format!("Invalid UUID: {e}")))?;
+    let uuid = Uuid::parse_str(id).map_err(|e| AppError::Config(format!("Invalid UUID: {e}")))?;
     auth::delete_token(pool, &uuid).await?;
     Ok(json!({ "deleted": id }))
 }

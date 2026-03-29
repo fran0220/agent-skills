@@ -167,9 +167,10 @@ Exit codes:
 
 ## Providers (v1)
 
-- `llm_proxy`: Claude/GPT/Gemini/Grok/GLM via proxy
+- `llm_proxy`: Claude/GPT/Gemini/Grok via proxy
 - `gpt_image`: OpenAI image generation (supports transparency)
 - `gemini_image`: Google image generation (cost-efficient)
+- `grok_image`: Grok image generation/editing + video generation (xAI)
 - `jimeng`: Jimeng image + Seedance video
 - `elevenlabs`: audio generation (BGM/SFX)
 - `tripo3d`: image/text to 3D model

@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 use cognee_admin::client;
 use cognee_admin::cognee_client::CogneeClient;
@@ -9,19 +10,39 @@ use cognee_admin::output;
 use cognee_admin::server;
 
 #[derive(Parser)]
-#[command(name = "cognee-admin", version, about = "Cognee knowledge engine management CLI")]
+#[command(
+    name = "cognee-admin",
+    version,
+    about = "Cognee knowledge engine management CLI"
+)]
 struct Cli {
     /// Cognee API URL
-    #[arg(long, env = "COGNEE_URL", default_value = "https://cogneeapi.xiaomao.chat")]
+    #[arg(
+        long,
+        env = "COGNEE_URL",
+        default_value = "https://cogneeapi.xiaomao.chat"
+    )]
     cognee_url: String,
 
     /// PostgreSQL connection string
-    #[arg(long, env = "COGNEE_ADMIN_DB", default_value = "postgres://cognee:cognee@localhost:5433/cognee_db")]
+    #[arg(
+        long,
+        env = "COGNEE_ADMIN_DB",
+        default_value = "postgres://cognee:cognee@localhost:5433/cognee_db"
+    )]
     db: String,
 
-    /// API token for authentication
-    #[arg(long, env = "COGNEE_ADMIN_TOKEN")]
-    token: Option<String>,
+    /// Cognee JWT for Cognee API authentication
+    #[arg(long, env = "COGNEE_JWT")]
+    cognee_jwt: Option<String>,
+
+    /// Admin panel token (ca_xxx)
+    #[arg(
+        long = "admin-token",
+        visible_alias = "token",
+        env = "COGNEE_ADMIN_TOKEN"
+    )]
+    admin_token: Option<String>,
 
     /// Human-readable output
     #[arg(long, default_value = "false")]
@@ -44,6 +65,10 @@ enum Commands {
     Health {
         #[arg(long)]
         detailed: bool,
+        #[arg(long, default_value_t = false)]
+        watch: bool,
+        #[arg(long, default_value = "30")]
+        interval: u64,
     },
     /// Dataset management
     Dataset {
@@ -59,14 +84,31 @@ enum Commands {
     Cognify {
         #[arg(long)]
         dataset_id: Option<String>,
+        #[arg(long)]
+        dataset_name: Option<String>,
+        #[arg(long)]
+        custom_prompt: Option<String>,
+        #[arg(long)]
+        custom_prompt_file: Option<PathBuf>,
+        #[arg(long, default_value_t = false)]
+        background: bool,
+        #[arg(long)]
+        chunks_per_batch: Option<u32>,
     },
     /// Search knowledge base
+    #[command(args_conflicts_with_subcommands = true)]
     Search {
-        query: String,
+        query: Option<String>,
         #[arg(long, default_value = "INSIGHTS")]
         search_type: String,
         #[arg(long, default_value = "5")]
         top_k: u32,
+        #[arg(long, value_delimiter = ',')]
+        datasets: Vec<String>,
+        #[arg(long, default_value_t = false)]
+        verbose: bool,
+        #[command(subcommand)]
+        action: Option<SearchAction>,
     },
     /// Configuration management
     Config {
@@ -84,9 +126,7 @@ enum Commands {
         action: PipelineAction,
     },
     /// Command introspection
-    Describe {
-        command: Option<String>,
-    },
+    Describe { command: Option<String> },
     /// Login to Cognee
     Login {
         #[arg(long)]
@@ -98,6 +138,11 @@ enum Commands {
     Token {
         #[command(subcommand)]
         action: TokenAction,
+    },
+    /// Ontology management
+    Ontology {
+        #[command(subcommand)]
+        action: OntologyAction,
     },
 }
 
@@ -113,13 +158,9 @@ enum TokenAction {
     /// List all tokens
     List,
     /// Revoke (disable) a token
-    Revoke {
-        id: String,
-    },
+    Revoke { id: String },
     /// Delete a token permanently
-    Delete {
-        id: String,
-    },
+    Delete { id: String },
 }
 
 #[derive(Subcommand)]
@@ -135,6 +176,11 @@ enum DatasetAction {
     Delete {
         /// Dataset ID
         id: String,
+    },
+    /// Delete all datasets
+    DeleteAll {
+        #[arg(long, default_value_t = false)]
+        yes: bool,
     },
     /// Show dataset processing status
     Status,
@@ -154,6 +200,25 @@ enum DataAction {
         dataset: String,
         /// Text content to add
         content: String,
+    },
+    /// Upload a file to a dataset
+    AddFile {
+        /// Target dataset name
+        #[arg(long)]
+        dataset: String,
+        /// File path to upload
+        path: String,
+    },
+    /// Upload all matching files in a directory to a dataset
+    AddDir {
+        /// Target dataset name
+        #[arg(long)]
+        dataset: String,
+        /// Glob pattern used to filter files
+        #[arg(long, default_value = "*")]
+        glob: String,
+        /// Directory to scan recursively
+        dir: String,
     },
     /// List data in a dataset
     List {
@@ -178,6 +243,17 @@ enum DataAction {
         #[arg(long)]
         data_id: String,
     },
+    /// Replace an existing data item with a new file
+    Update {
+        /// Dataset ID
+        #[arg(long)]
+        dataset_id: String,
+        /// Data ID
+        #[arg(long)]
+        data_id: String,
+        /// File path to upload
+        path: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -189,6 +265,12 @@ enum ConfigAction {
         /// JSON settings string
         settings: String,
     },
+}
+
+#[derive(Subcommand)]
+enum SearchAction {
+    /// Show search history
+    History,
 }
 
 #[derive(Subcommand)]
@@ -221,24 +303,33 @@ enum PipelineAction {
     },
 }
 
+#[derive(Subcommand)]
+enum OntologyAction {
+    /// Upload an ontology file
+    Upload {
+        #[arg(long)]
+        key: String,
+        file: PathBuf,
+    },
+    /// List uploaded ontologies
+    List,
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "warn".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
         )
         .init();
 
     let cli = Cli::parse();
     let human = cli.human;
+    let auth = AuthConfig::load();
 
-    // Resolve token: --token flag > env COGNEE_ADMIN_TOKEN > saved auth config
-    let token = cli.token.clone().or_else(|| {
-        let auth = AuthConfig::load();
-        auth.token
-    });
+    let cognee_jwt = cli.cognee_jwt.clone().or_else(|| auth.cognee_jwt.clone());
+    let _admin_token = cli.admin_token.clone().or_else(|| auth.admin_token.clone());
 
     // Connect to PostgreSQL and run migrations
     let pool = match db::connect(&cli.db).await {
@@ -256,8 +347,19 @@ async fn main() {
 
     // Build the Cognee HTTP client
     let mut cognee = CogneeClient::new(&cli.cognee_url);
-    if let Some(t) = token {
-        cognee = cognee.with_token(t);
+    if matches!(
+        &cli.command,
+        Commands::Health { .. }
+            | Commands::Dataset { .. }
+            | Commands::Data { .. }
+            | Commands::Cognify { .. }
+            | Commands::Search { .. }
+            | Commands::Ontology { .. }
+            | Commands::Config { .. }
+    ) {
+        if let Some(jwt) = cognee_jwt {
+            cognee = cognee.with_token(jwt);
+        }
     }
     if let Some(p) = pool.clone() {
         cognee = cognee.with_pool(p);
@@ -268,7 +370,9 @@ async fn main() {
             let Some(p) = pool else {
                 output::print_result(
                     "serve",
-                    Err(AppError::Config("Database connection required for web server".into())),
+                    Err(AppError::Config(
+                        "Database connection required for web server".into(),
+                    )),
                     human,
                 );
                 return;
@@ -278,8 +382,12 @@ async fn main() {
             }
         }
 
-        Commands::Health { detailed } => {
-            let result = client::health_cmd::run(&cognee, detailed).await;
+        Commands::Health {
+            detailed,
+            watch,
+            interval,
+        } => {
+            let result = client::health_cmd::run(&cognee, detailed, watch, interval, human).await;
             output::print_result("health", result, human);
         }
 
@@ -301,6 +409,10 @@ async fn main() {
                 let result = client::dataset_cmd::delete(&cognee, &id).await;
                 output::print_result("dataset.delete", result, human);
             }
+            DatasetAction::DeleteAll { yes } => {
+                let result = client::dataset_cmd::delete_all(&cognee, yes).await;
+                output::print_result("dataset.delete-all", result, human);
+            }
             DatasetAction::Status => {
                 let result = client::dataset_cmd::status(&cognee).await;
                 output::print_result("dataset.status", result, human);
@@ -316,29 +428,99 @@ async fn main() {
                 let result = client::data_cmd::add(&cognee, &dataset, &content).await;
                 output::print_result("data.add", result, human);
             }
+            DataAction::AddFile { dataset, path } => {
+                let result = client::data_cmd::add_file(&cognee, &dataset, &path).await;
+                output::print_result("data.add-file", result, human);
+            }
+            DataAction::AddDir { dataset, glob, dir } => {
+                let result = client::data_cmd::add_dir(&cognee, &dataset, &dir, &glob).await;
+                output::print_result("data.add-dir", result, human);
+            }
             DataAction::List { dataset_id } => {
                 let result = client::data_cmd::list(&cognee, &dataset_id).await;
                 output::print_result("data.list", result, human);
             }
-            DataAction::Delete { dataset_id, data_id } => {
+            DataAction::Delete {
+                dataset_id,
+                data_id,
+            } => {
                 let result = client::data_cmd::delete(&cognee, &dataset_id, &data_id).await;
                 output::print_result("data.delete", result, human);
             }
-            DataAction::Raw { dataset_id, data_id } => {
+            DataAction::Raw {
+                dataset_id,
+                data_id,
+            } => {
                 let result = client::data_cmd::raw(&cognee, &dataset_id, &data_id).await;
                 output::print_result("data.raw", result, human);
             }
+            DataAction::Update {
+                dataset_id,
+                data_id,
+                path,
+            } => {
+                let result = client::data_cmd::update(&cognee, &dataset_id, &data_id, &path).await;
+                output::print_result("data.update", result, human);
+            }
         },
 
-        Commands::Cognify { dataset_id } => {
-            let result = client::cognify_cmd::run(&cognee, dataset_id.as_deref()).await;
+        Commands::Cognify {
+            dataset_id,
+            dataset_name,
+            custom_prompt,
+            custom_prompt_file,
+            background,
+            chunks_per_batch,
+        } => {
+            let result = client::cognify_cmd::run(
+                &cognee,
+                dataset_id.as_deref(),
+                dataset_name.as_deref(),
+                custom_prompt.as_deref(),
+                custom_prompt_file.as_deref(),
+                background,
+                chunks_per_batch,
+            )
+            .await;
             output::print_result("cognify", result, human);
         }
 
-        Commands::Search { query, search_type, top_k } => {
-            let result = client::search_cmd::run(&cognee, &query, &search_type, top_k).await;
-            output::print_result("search", result, human);
-        }
+        Commands::Search {
+            query,
+            search_type,
+            top_k,
+            datasets,
+            verbose,
+            action,
+        } => match action {
+            Some(SearchAction::History) => {
+                let result = client::search_cmd::history(&cognee).await;
+                output::print_result("search.history", result, human);
+            }
+            None => {
+                let Some(query) = query else {
+                    output::print_result(
+                        "search",
+                        Err(AppError::Config(
+                            "query is required unless using `search history`".into(),
+                        )),
+                        human,
+                    );
+                    return;
+                };
+
+                let result = client::search_cmd::run(
+                    &cognee,
+                    &query,
+                    &search_type,
+                    top_k,
+                    &datasets,
+                    verbose,
+                )
+                .await;
+                output::print_result("search", result, human);
+            }
+        },
 
         Commands::Config { action } => match action {
             ConfigAction::Get => {
@@ -355,7 +537,9 @@ async fn main() {
             let Some(ref p) = pool else {
                 output::print_result(
                     "log",
-                    Err(AppError::Config("Database connection required for log queries".into())),
+                    Err(AppError::Config(
+                        "Database connection required for log queries".into(),
+                    )),
                     human,
                 );
                 return;
@@ -376,7 +560,9 @@ async fn main() {
             let Some(ref p) = pool else {
                 output::print_result(
                     "pipeline",
-                    Err(AppError::Config("Database connection required for pipeline queries".into())),
+                    Err(AppError::Config(
+                        "Database connection required for pipeline queries".into(),
+                    )),
                     human,
                 );
                 return;
@@ -402,7 +588,9 @@ async fn main() {
             let Some(ref p) = pool else {
                 output::print_result(
                     "token",
-                    Err(AppError::Config("Database connection required for token management".into())),
+                    Err(AppError::Config(
+                        "Database connection required for token management".into(),
+                    )),
                     human,
                 );
                 return;
@@ -426,5 +614,16 @@ async fn main() {
                 }
             }
         }
+
+        Commands::Ontology { action } => match action {
+            OntologyAction::Upload { key, file } => {
+                let result = client::ontology_cmd::upload(&cognee, &key, &file).await;
+                output::print_result("ontology.upload", result, human);
+            }
+            OntologyAction::List => {
+                let result = client::ontology_cmd::list(&cognee).await;
+                output::print_result("ontology.list", result, human);
+            }
+        },
     }
 }

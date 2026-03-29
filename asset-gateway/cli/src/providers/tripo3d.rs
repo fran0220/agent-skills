@@ -27,15 +27,13 @@ impl Tripo3dProvider {
         self
     }
 
-    fn resolve_output_format(req: &GenerateRequest) -> String {
-        req.params
-            .get("output_format")
-            .and_then(Value::as_str)
-            .map(|s| s.to_ascii_lowercase())
-            .unwrap_or_else(|| "glb".to_string())
-    }
+    /// Known top-level Tripo3D API fields (not passed through from params).
+    const RESERVED_PARAMS: &[&str] = &[
+        "timeout_seconds", "style", "quality", "transparent", "stream",
+        "output_format",
+    ];
 
-    fn build_task_body(req: &GenerateRequest, output_format: &str) -> anyhow::Result<Value> {
+    fn build_task_body(req: &GenerateRequest) -> anyhow::Result<Value> {
         let mut body = if let Some(input_file) = req.input_file.as_ref() {
             json!({
                 "type": "image_to_model",
@@ -53,42 +51,32 @@ impl Tripo3dProvider {
             anyhow::bail!("Tripo3D requires either input_file or prompt");
         };
 
-        body["output_format"] = json!(output_format);
-
+        // Tripo3D uses `model_version`, not `model`
         if let Some(model) = req.model.as_ref() {
-            body["model"] = json!(model);
+            body["model_version"] = json!(model);
         }
 
-        if let Some(style) = req.style() {
-            body["style"] = json!(style);
-        }
-
-        if let Some(quality) = req.quality() {
-            body["quality"] = json!(quality.as_str());
-        }
-
+        // Pass through extra params (e.g. face_limit, texture, pbr) at top level
         if let Some(params_obj) = req.params.as_object() {
-            let mut passthrough = serde_json::Map::new();
             for (k, v) in params_obj {
-                if k != "output_format" && k != "timeout_seconds" {
-                    passthrough.insert(k.clone(), v.clone());
+                if !Self::RESERVED_PARAMS.contains(&k.as_str()) {
+                    body[k] = v.clone();
                 }
-            }
-            if !passthrough.is_empty() {
-                body["params"] = Value::Object(passthrough);
             }
         }
 
         Ok(body)
     }
 
-    fn extract_model_url(payload: &Value, output_format: &str) -> Option<String> {
-        payload["data"]["output"][output_format]
+    /// Extract the model download URL from the completed task response.
+    /// Tripo3D response: `data.output.model` or `data.output.pbr_model` (URL strings).
+    fn extract_model_url(payload: &Value) -> Option<String> {
+        let output = &payload["data"]["output"];
+        // Prefer `model`, then `pbr_model`, then `base_model`
+        output["model"]
             .as_str()
-            .or_else(|| payload["data"]["output"]["model"][output_format].as_str())
-            .or_else(|| payload["data"]["output"]["model"].as_str())
-            .or_else(|| payload["data"]["model_url"].as_str())
-            .or_else(|| payload["data"]["output"]["url"].as_str())
+            .or_else(|| output["pbr_model"].as_str())
+            .or_else(|| output["base_model"].as_str())
             .map(str::to_string)
     }
 }
@@ -117,8 +105,7 @@ impl AssetProvider for Tripo3dProvider {
 
     async fn generate(&self, req: &GenerateRequest) -> anyhow::Result<GenerateResponse> {
         let start = Instant::now();
-        let output_format = Self::resolve_output_format(req);
-        let body = Self::build_task_body(req, &output_format)?;
+        let body = Self::build_task_body(req)?;
 
         let create_resp = self
             .http
@@ -191,10 +178,18 @@ impl AssetProvider for Tripo3dProvider {
 
             match task_status.as_str() {
                 "success" | "completed" | "succeeded" => {
-                    let model_url = Self::extract_model_url(&poll_json, &output_format)
+                    let model_url = Self::extract_model_url(&poll_json)
                         .ok_or_else(|| {
-                            anyhow::anyhow!("Tripo3D task completed without model URL")
+                            anyhow::anyhow!(
+                                "Tripo3D task completed without model URL. output: {}",
+                                serde_json::to_string(&poll_json["data"]["output"])
+                                    .unwrap_or_default()
+                            )
                         })?;
+
+                    let rendered_image = poll_json["data"]["output"]["rendered_image"]
+                        .as_str()
+                        .map(str::to_string);
 
                     return Ok(GenerateResponse {
                         provider_id: self.id.clone(),
@@ -203,7 +198,7 @@ impl AssetProvider for Tripo3dProvider {
                         output_data: None,
                         metadata: json!({
                             "task_id": task_id,
-                            "output_format": output_format,
+                            "rendered_image": rendered_image,
                         }),
                         cost_usd: None,
                         elapsed_ms: start.elapsed().as_millis() as u64,

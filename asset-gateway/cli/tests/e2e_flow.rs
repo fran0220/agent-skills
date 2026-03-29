@@ -188,6 +188,10 @@ async fn e2e_server_flow_covers_required_scenarios() -> Result<()> {
     let (mock_provider_url, mock_provider_task) = start_mock_provider_server().await?;
     let _mock_provider_guard = AbortOnDrop::new(mock_provider_task);
 
+    let admin_token_value = env::var("ASSET_GATEWAY_ADMIN_TOKEN")
+        .unwrap_or_else(|_| "test-admin-token-e2e".to_string());
+    env::set_var("ASSET_GATEWAY_ADMIN_TOKEN", &admin_token_value);
+
     let gateway_port = random_port()?;
     let gateway_url = format!("http://127.0.0.1:{}", gateway_port);
     let server_task = tokio::spawn({
@@ -200,41 +204,22 @@ async fn e2e_server_flow_covers_required_scenarios() -> Result<()> {
     wait_for_gateway_ready(&client, &gateway_url).await?;
 
     let suffix = Uuid::new_v4().simple().to_string();
-    let admin_username = format!("admin_{}", suffix);
-    let admin_password = format!("Pass-{}-123456", suffix);
-    let normal_username = format!("user_{}", suffix);
-    let normal_password = format!("User-{}-123456", suffix);
     let provider_id = format!("mock-llm-{}", suffix);
     let credential_secret = format!("secret-{}-token", suffix);
 
-    // 1) 注册 + 登录获取 token
-    let register_admin = client
-        .post(format!("{}/auth/register", gateway_url))
-        .json(&json!({
-            "username": &admin_username,
-            "password": &admin_password,
-        }))
-        .send()
-        .await?;
-    assert!(register_admin.status().is_success());
-    let register_admin_body: Value = register_admin.json().await?;
-    assert_eq!(register_admin_body["ok"], json!(true));
-    assert_eq!(register_admin_body["data"]["role"], json!("admin"));
+    // 1) Admin token from env (set by test harness)
+    let admin_token = env::var("ASSET_GATEWAY_ADMIN_TOKEN")
+        .unwrap_or_else(|_| "test-admin-token-e2e".to_string());
 
     let login_admin = client
         .post(format!("{}/auth/login", gateway_url))
-        .json(&json!({
-            "username": &admin_username,
-            "password": &admin_password,
-        }))
+        .json(&json!({ "token": &admin_token }))
         .send()
         .await?;
     assert!(login_admin.status().is_success());
     let login_admin_body: Value = login_admin.json().await?;
-    let admin_token = login_admin_body["data"]["token"]
-        .as_str()
-        .context("missing admin token")?
-        .to_string();
+    assert_eq!(login_admin_body["ok"], json!(true));
+    assert_eq!(login_admin_body["data"]["role"], json!("admin"));
 
     // 2) 设置凭据（验证加密存储）
     let set_credential = client
@@ -389,44 +374,20 @@ async fn e2e_server_flow_covers_required_scenarios() -> Result<()> {
     assert!(masked.ends_with(&credential_secret[credential_secret.len() - 4..]));
 
     // 7) 权限验证（非 admin 不能操作 credentials）
-    let register_user = client
-        .post(format!("{}/auth/register", gateway_url))
-        .json(&json!({
-            "username": &normal_username,
-            "password": &normal_password,
-        }))
-        .send()
-        .await?;
-    assert_eq!(register_user.status(), reqwest::StatusCode::OK);
-    let register_user_body: Value = register_user.json().await?;
-    assert_eq!(register_user_body["data"]["role"], json!("user"));
-    let normal_user_id = register_user_body["data"]["id"]
-        .as_str()
-        .context("missing normal user id")?
-        .to_string();
-
-    let approve_user = client
-        .post(format!(
-            "{}/api/users/{}/approve",
-            gateway_url, normal_user_id
-        ))
+    let normal_username = format!("user_{}", suffix);
+    let create_user = client
+        .post(format!("{}/api/users", gateway_url))
         .header("Authorization", format!("Bearer {}", admin_token))
-        .json(&json!({}))
-        .send()
-        .await?;
-    assert_eq!(approve_user.status(), reqwest::StatusCode::OK);
-
-    let login_user = client
-        .post(format!("{}/auth/login", gateway_url))
         .json(&json!({
             "username": &normal_username,
-            "password": &normal_password,
         }))
         .send()
         .await?;
-    assert_eq!(login_user.status(), reqwest::StatusCode::OK);
-    let login_user_body: Value = login_user.json().await?;
-    let user_token = login_user_body["data"]["token"]
+    assert_eq!(create_user.status(), reqwest::StatusCode::OK);
+    let create_user_body: Value = create_user.json().await?;
+    assert_eq!(create_user_body["ok"], json!(true));
+    assert_eq!(create_user_body["data"]["role"], json!("user"));
+    let user_token = create_user_body["data"]["token"]
         .as_str()
         .context("missing user token")?
         .to_string();

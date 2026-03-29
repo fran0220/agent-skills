@@ -1,0 +1,36 @@
+{
+  "name": "@doufunao123/asset-gateway",
+  "version": "0.2.2",
+  "description": "Universal asset generation gateway CLI",
+  "type": "module",
+  "bin": {
+    "asset-gateway": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fran0220/agent-skills.git",
+    "directory": "asset-gateway/npm"
+  },
+  "author": "doufunao123",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --watch",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0"
+  }
+}

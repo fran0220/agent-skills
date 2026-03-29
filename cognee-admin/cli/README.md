@@ -1,189 +1,164 @@
-# cognee-admin
+# cognee-admin CLI
 
 Cognee knowledge engine management CLI and web dashboard.
 
 One binary, two modes:
-- `cognee-admin serve` runs a web management panel
-- Other subcommands act as CLI clients for the Cognee REST API
 
-## Features
+- `cognee-admin serve` starts the HTMX web management panel.
+- All other subcommands call the Cognee REST API or read operational data from PostgreSQL.
 
-- **Web dashboard** at `cognee.xiaomao.chat` — HTMX + Tailwind, server-rendered
-- **CLI client** — JSON envelope output for agent automation
-- **Dual data source** — Cognee REST API for writes, PostgreSQL direct reads for analytics
-- **Request logging** — all API calls logged to `cognee_admin.request_logs`
-- **Health monitoring** — periodic snapshots stored for trend analysis
+## Install
 
-## Quick Start
-
-### 1) Install
-
-From this monorepo root:
+From the monorepo root:
 
 ```bash
-cargo install --path cli/cognee-admin
+cd cognee-admin/cli
+cargo install --path .
 ```
 
 For local development:
 
 ```bash
-cargo run --manifest-path cli/cognee-admin/Cargo.toml -- --help
+cargo run -- --help
 ```
 
-### 2) Configure
+## Auth Model
 
-```bash
-export COGNEE_URL=https://api.cognee.xiaomao.chat
-export COGNEE_ADMIN_DB=postgres://cognee:cognee@localhost:5433/cognee_db
-```
+`cognee-admin` intentionally separates user-level Cognee access from panel administration.
 
-### 3) Login
+| Credential | Scope | How to get it | Where it is used |
+|------------|-------|---------------|------------------|
+| Cognee JWT | Cognee API commands | `cognee-admin login --username ... --password ...` | `health`, `dataset`, `data`, `cognify`, `search`, `config`, `ontology` |
+| `ca_xxx` admin token | Web/panel admin surface | Created by an admin via `token create` | `https://cognee.xiaomao.chat`, Nginx `auth_request`, token distribution |
 
-```bash
-cognee-admin login --url https://api.cognee.xiaomao.chat --token <your-token>
-```
-
-### 4) Check health
-
-```bash
-cognee-admin health
-```
-
-### 5) Start web panel
-
-```bash
-cognee-admin serve --host 0.0.0.0 --port 3000
-```
+The local config file is `~/.config/cognee-admin/auth.json` and stores `cognee_jwt`, `admin_token`, and `cognee_url`.
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COGNEE_URL` | `https://api.cognee.xiaomao.chat` | Cognee REST API endpoint |
+| `COGNEE_URL` | `https://cogneeapi.xiaomao.chat` | Cognee REST API endpoint |
+| `COGNEE_JWT` | none | Cognee API JWT override |
+| `COGNEE_ADMIN_TOKEN` | none | Admin token override for panel/admin usage |
 | `COGNEE_ADMIN_DB` | `postgres://cognee:cognee@localhost:5433/cognee_db` | PostgreSQL connection string |
-| `COGNEE_ADMIN_HOST` | `0.0.0.0` | Web panel bind address |
-| `COGNEE_ADMIN_PORT` | `3000` | Web panel bind port |
+| `COGNEE_SERVICE_JWT` | none | Required by `serve` for server-side upstream Cognee API access |
 
-## Command Reference
-
-### `serve`
-
-Run the web management panel:
+## Quick Start
 
 ```bash
-cognee-admin serve [--host 0.0.0.0] [--port 3000]
+# 1. Authenticate and persist the Cognee JWT
+cognee-admin login --username alice --password '<password>'
+
+# 2. Create a dataset
+cognee-admin dataset create gamedb-atoms
+
+# 3. Upload one markdown file
+cognee-admin data add-file --dataset gamedb-atoms ./atoms/zelda-botw.md
+
+# 4. Build the knowledge graph in background mode
+cognee-admin cognify --dataset-name gamedb-atoms --background
+
+# 5. Search it
+cognee-admin search "open world traversal" --datasets gamedb-atoms --top-k 10
 ```
 
-### `health`
+## Command Summary
 
-Check Cognee stack health:
+| Command | Description | Example |
+|---------|-------------|---------|
+| `serve` | Start the web dashboard | `cognee-admin serve --host 0.0.0.0 --port 9847` |
+| `health` | Health check, optional watch mode | `cognee-admin health --detailed --watch --interval 15` |
+| `login` | Save a Cognee JWT locally | `cognee-admin login --username alice --password '<password>'` |
+| `dataset` | Dataset CRUD, graph, and status | `cognee-admin dataset delete-all --yes` |
+| `data` | Inline add, file upload, bulk import, list, delete, raw, update | `cognee-admin data add-dir --dataset gamedb-atoms --glob "*.md" ./atoms/` |
+| `cognify` | Trigger knowledge construction | `cognee-admin cognify --dataset-name gamedb-atoms --custom-prompt-file ./prompt.txt` |
+| `search` | Search with filters or inspect history | `cognee-admin search history` |
+| `config` | Get or update Cognee settings | `cognee-admin config set '{"llm":{"provider":"openai","model":"claude-sonnet-4-6","api_key":"<key>"}}'` |
+| `log` | Inspect request logs | `cognee-admin log stats` |
+| `pipeline` | Inspect recent pipeline runs | `cognee-admin pipeline detail <id>` |
+| `token` | Create/list/revoke/delete admin tokens | `cognee-admin token create --name web-admin --role admin` |
+| `ontology` | Upload or list ontologies | `cognee-admin ontology upload --key game-design ./ontology.owl` |
+| `describe` | Emit machine-friendly command schema | `cognee-admin describe data` |
+
+## Common Workflows
+
+### Batch Import
 
 ```bash
-cognee-admin health [--watch]
+cognee-admin data add-dir --dataset gamedb-atoms --glob "*.md" /path/to/atoms/md/
 ```
 
-### `dataset`
+`add-dir` uploads recursively, batches files in groups of 10, sleeps 1 second between batches, and returns uploaded/failed/skipped counts.
 
-Manage knowledge datasets:
+### Custom Cognify Prompt
 
 ```bash
-cognee-admin dataset list [--limit 20]
-cognee-admin dataset get <dataset-id>
-cognee-admin dataset delete <dataset-id> --confirm
-cognee-admin dataset status <dataset-id>
+cognee-admin cognify \
+  --dataset-name gamedb-atoms \
+  --custom-prompt "Extract mechanics, progression systems, and monetization markers." \
+  --background
 ```
 
-### `data`
-
-Manage documents within datasets:
+### Search Across Datasets
 
 ```bash
-cognee-admin data add <dataset-id> --file <path> [--type text|pdf]
-cognee-admin data list <dataset-id>
-cognee-admin data delete <dataset-id> <document-id> --confirm
+cognee-admin search "crafting loop" --datasets gamedb-atoms,design-notes --top-k 10 --verbose
 ```
 
-### `cognify`
-
-Trigger knowledge graph construction:
+### Ontology Upload
 
 ```bash
-cognee-admin cognify [dataset-id]
+cognee-admin ontology upload --key game-design ./ontology/game-design.owl
+cognee-admin ontology list
 ```
 
-### `search`
+## Settings And LLM Configuration
 
-Query the knowledge graph:
+Cognee settings are updated through `config set` or the `/settings` page in the web dashboard.
+
+The settings API accepts:
+
+```json
+{
+  "llm": {
+    "provider": "openai|anthropic|ollama|gemini|mistral",
+    "model": "string",
+    "api_key": "string"
+  }
+}
+```
+
+Recommended proxy-backed setup:
 
 ```bash
-cognee-admin search --query "knowledge graph" [--type graph|insights|chunks]
+cognee-admin config set '{"llm":{"provider":"openai","model":"claude-sonnet-4-6","api_key":"<proxy-key>"}}'
 ```
 
-### `config`
+Set `LLM_ENDPOINT=https://api.xiaomao.chat/v1` on the Cognee server. The endpoint is not stored in Cognee settings.
 
-View and modify Cognee engine configuration:
+## Web Dashboard
 
-```bash
-cognee-admin config show
-cognee-admin config set <key> <value>
-cognee-admin config reset --confirm
-```
+Production URL: `https://cognee.xiaomao.chat`
 
-### `log`
+Login uses a `ca_xxx` token.
 
-Query request logs from `cognee_admin.request_logs`:
+Current key pages:
 
-```bash
-cognee-admin log list [--limit 50] [--endpoint /api/v1/cognify]
-```
+| Route | Description |
+|-------|-------------|
+| `/` | Dashboard with health and activity summary |
+| `/graph` | Interactive knowledge graph view |
+| `/datasets` | Dataset overview and actions |
+| `/search` | Interactive search UI |
+| `/logs` | Request logs and pagination |
+| `/pipelines` | Pipeline history |
+| `/settings` | Runtime settings management |
+| `/tokens` | Admin token CRUD |
+| `/login` | Token-based login page |
 
-### `pipeline`
+## JSON Output Contract
 
-Inspect and manage pipelines:
-
-```bash
-cognee-admin pipeline list
-cognee-admin pipeline status <pipeline-id>
-cognee-admin pipeline reset --confirm
-```
-
-### `describe`
-
-Schema introspection for agent automation:
-
-```bash
-cognee-admin describe
-cognee-admin describe search
-cognee-admin describe dataset.list
-```
-
-### `login`
-
-Save Cognee API authentication:
-
-```bash
-cognee-admin login --url <cognee-api-url> --token <api-token>
-```
-
-## Web Panel
-
-The `serve` command runs an HTMX web dashboard with the following pages:
-
-| Page | Route | Description |
-|------|-------|-------------|
-| Dashboard | `/` | Health overview, recent requests, dataset stats |
-| Datasets | `/datasets` | Dataset list, search, delete |
-| Dataset Detail | `/datasets/:id` | Documents, status, cognify trigger |
-| Search | `/search` | Interactive knowledge graph search |
-| Logs | `/logs` | Request log table with filtering |
-| Health | `/health` | Component status and trend charts |
-| Config | `/config` | Engine configuration viewer |
-
-<!-- TODO: Add screenshots -->
-
-## JSON Contract
-
-All CLI commands output a JSON envelope:
+Default output is a JSON envelope:
 
 ```json
 {
@@ -193,7 +168,7 @@ All CLI commands output a JSON envelope:
 }
 ```
 
-Error shape:
+Error output:
 
 ```json
 {
@@ -207,105 +182,18 @@ Error shape:
 }
 ```
 
-Use `--human` for human-readable output format.
+Use `--human` for human-readable formatting.
 
 Exit codes:
 
 - `0` success
 - `1` command/input error
 - `2` system error
-- `3` external service error (Cognee API)
+- `3` external service error
 
-## Architecture
+## Related Docs
 
-```
-                    ┌──────────────────────────────────────┐
-                    │         cognee-admin binary           │
-                    │                                      │
-                    │  ┌────────────┐  ┌────────────────┐  │
-                    │  │  CLI cmds  │  │  Web panel     │  │
-                    │  │  (clap)    │  │  (Axum+HTMX)   │  │
-                    │  └─────┬──────┘  └───────┬────────┘  │
-                    │        │                 │            │
-                    │  ┌─────┴─────────────────┴────────┐  │
-                    │  │       CogneeClient              │  │
-                    │  │  (reqwest + request logging)    │  │
-                    │  └─────┬──────────────────┬───────┘  │
-                    └────────┼──────────────────┼──────────┘
-                             │                  │
-              REST API       │                  │  PG direct
-              (writes)       │                  │  (reads)
-                             ▼                  ▼
-                    ┌────────────────┐  ┌──────────────┐
-                    │  Cognee API    │  │  PostgreSQL   │
-                    │  (Docker)      │  │              │
-                    │  api.cognee.   │  │  public.*    │
-                    │  xiaomao.chat  │  │  cognee_admin│
-                    └────────────────┘  │  .*          │
-                                       └──────────────┘
-
-    Oracle VPS: 4C ARM / 22G RAM
-    Cognee stack runs in Docker containers
-```
-
-## Deployment
-
-### Cross-compile for ARM (Oracle VPS)
-
-```bash
-# Install target
-rustup target add aarch64-unknown-linux-gnu
-
-# Build release
-cargo build --release --target aarch64-unknown-linux-gnu \
-  --manifest-path cli/cognee-admin/Cargo.toml
-
-# Deploy
-scp target/aarch64-unknown-linux-gnu/release/cognee-admin oracle-vps:/usr/local/bin/
-```
-
-### systemd Service
-
-```ini
-[Unit]
-Description=Cognee Admin Web Panel
-After=network.target postgresql.service docker.service
-
-[Service]
-Type=simple
-User=cognee
-ExecStart=/usr/local/bin/cognee-admin serve --host 0.0.0.0 --port 3000
-Environment=COGNEE_URL=https://api.cognee.xiaomao.chat
-Environment=COGNEE_ADMIN_DB=postgres://cognee:cognee@localhost:5433/cognee_db
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo cp cognee-admin.service /etc/systemd/system/
-sudo systemctl enable --now cognee-admin
-```
-
-### Reverse Proxy (Caddy)
-
-```
-cognee.xiaomao.chat {
-    reverse_proxy localhost:3000
-}
-```
-
-## Database Schema
-
-cognee-admin uses a dedicated `cognee_admin` schema in the same PostgreSQL instance as Cognee:
-
-- `cognee_admin.request_logs` — API request audit trail
-- `cognee_admin.health_snapshots` — periodic health check records
-
-Migrations run automatically on `serve` startup.
-
-## License
-
-MIT
+- Project overview: [`../README.md`](../README.md)
+- Design blueprint: [`BLUEPRINT.md`](./BLUEPRINT.md)
+- Dev instructions: [`AGENTS.md`](./AGENTS.md)
+- Agent skill: [`../skill/SKILL.md`](../skill/SKILL.md)

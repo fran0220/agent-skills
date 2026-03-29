@@ -4,15 +4,15 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 
+use super::{base_html, html_escape, AppState};
 use crate::error::AppError;
-use super::AppState;
-use super::base_html;
 
 #[derive(Debug, Deserialize)]
 pub struct SearchParams {
     pub q: Option<String>,
     pub search_type: Option<String>,
     pub top_k: Option<u32>,
+    pub dataset: Option<String>,
 }
 
 pub async fn page(State(_state): State<Arc<AppState>>) -> Result<Html<String>, AppError> {
@@ -31,7 +31,7 @@ pub async fn page(State(_state): State<Arc<AppState>>) -> Result<Html<String>, A
                                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:border-cyan-400 focus:outline-none"
                                required>
                     </div>
-                    <div class="flex gap-4">
+                    <div class="flex flex-col lg:flex-row gap-4">
                         <div class="flex-1">
                             <label class="block text-sm text-gray-400 mb-1">Search Type</label>
                             <select name="search_type"
@@ -45,6 +45,14 @@ pub async fn page(State(_state): State<Arc<AppState>>) -> Result<Html<String>, A
                             <label class="block text-sm text-gray-400 mb-1">Top K</label>
                             <input type="number" name="top_k" value="10" min="1" max="100"
                                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:border-cyan-400 focus:outline-none">
+                        </div>
+                        <div id="search-dataset-filter"
+                             class="flex-1"
+                             hx-get="/api/datasets?view=options"
+                             hx-trigger="load"
+                             hx-swap="outerHTML">
+                            <label class="block text-sm text-gray-400 mb-1">Dataset Filter</label>
+                            <div class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm text-gray-500">Loading datasets...</div>
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
@@ -70,9 +78,20 @@ pub async fn api_search(
 ) -> Result<Html<String>, AppError> {
     let query = params.q.as_deref().unwrap_or("");
     if query.is_empty() {
-        return Ok(Html(r##"<div class="text-gray-500 text-sm">Enter a query to search.</div>"##.to_string()));
+        return Ok(Html(
+            r##"<div class="text-gray-500 text-sm">Enter a query to search.</div>"##.to_string(),
+        ));
     }
-    let data = state.client.search(query, params.search_type.as_deref(), params.top_k).await?;
+    let datasets = selected_datasets(&params);
+    let data = state
+        .client
+        .search(
+            query,
+            params.search_type.as_deref(),
+            params.top_k,
+            datasets.as_deref(),
+        )
+        .await?;
     Ok(Html(render_results(&data)))
 }
 
@@ -82,10 +101,30 @@ pub async fn api_search_post(
 ) -> Result<Html<String>, AppError> {
     let query = params.q.as_deref().unwrap_or("");
     if query.is_empty() {
-        return Ok(Html(r##"<div class="text-gray-500 text-sm">Enter a query to search.</div>"##.to_string()));
+        return Ok(Html(
+            r##"<div class="text-gray-500 text-sm">Enter a query to search.</div>"##.to_string(),
+        ));
     }
-    let data = state.client.search(query, params.search_type.as_deref(), params.top_k).await?;
+    let datasets = selected_datasets(&params);
+    let data = state
+        .client
+        .search(
+            query,
+            params.search_type.as_deref(),
+            params.top_k,
+            datasets.as_deref(),
+        )
+        .await?;
     Ok(Html(render_results(&data)))
+}
+
+fn selected_datasets(params: &SearchParams) -> Option<Vec<String>> {
+    params
+        .dataset
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| vec![value.to_string()])
 }
 
 fn render_results(data: &Value) -> String {
@@ -97,21 +136,25 @@ fn render_results(data: &Value) -> String {
     });
 
     if results.is_empty() {
-        return r##"<div class="card text-gray-500 text-center py-8">No results found.</div>"##.to_string();
+        return r##"<div class="card text-gray-500 text-center py-8">No results found.</div>"##
+            .to_string();
     }
 
     let mut cards = String::new();
     for (i, result) in results.iter().enumerate() {
-        let text = result.get("text")
+        let text = result
+            .get("text")
             .or_else(|| result.get("content"))
             .or_else(|| result.get("chunk_text"))
             .and_then(|v| v.as_str())
             .unwrap_or("(no text)");
-        let score = result.get("score")
+        let score = result
+            .get("score")
             .and_then(|v| v.as_f64())
             .map(|s| format!("{:.4}", s))
             .unwrap_or_else(|| "—".to_string());
-        let source = result.get("document_name")
+        let source = result
+            .get("document_name")
             .or_else(|| result.get("source"))
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
@@ -134,11 +177,4 @@ fn render_results(data: &Value) -> String {
         r##"<div class="mb-4 text-sm text-gray-400">{} result(s)</div>{cards}"##,
         results.len()
     )
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }

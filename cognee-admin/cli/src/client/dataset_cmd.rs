@@ -15,6 +15,16 @@ pub async fn delete(client: &CogneeClient, id: &str) -> Result<Value, AppError> 
     client.delete_dataset(id).await
 }
 
+pub async fn delete_all(client: &CogneeClient, yes: bool) -> Result<Value, AppError> {
+    if !yes {
+        return Err(AppError::Config(
+            "refusing to delete all datasets: use --yes to confirm".into(),
+        ));
+    }
+
+    client.delete_all_datasets().await
+}
+
 pub async fn status(client: &CogneeClient) -> Result<Value, AppError> {
     client.dataset_status().await
 }

@@ -23,7 +23,10 @@ pub fn error_json(command: &str, err: &AppError) -> Value {
 }
 
 pub fn print_json(value: &Value) {
-    println!("{}", serde_json::to_string_pretty(value).unwrap_or_default());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(value).unwrap_or_default()
+    );
 }
 
 pub fn print_result(command: &str, result: Result<Value, AppError>, human: bool) {

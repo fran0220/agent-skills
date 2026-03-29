@@ -1,12 +1,12 @@
 use axum::extract::{Query, State};
+use axum::http::header::SET_COOKIE;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
-use axum::http::header::SET_COOKIE;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::error::AppError;
 use super::AppState;
+use crate::error::AppError;
 
 #[derive(Debug, Deserialize)]
 pub struct LoginForm {
@@ -82,11 +82,7 @@ pub async fn handle_login(
                 data.token,
                 30 * 24 * 60 * 60
             );
-            Ok((
-                [(SET_COOKIE, cookie)],
-                Redirect::to("/"),
-            )
-                .into_response())
+            Ok(([(SET_COOKIE, cookie)], Redirect::to("/")).into_response())
         }
         Err(_) => Ok(Redirect::to("/login?error=invalid").into_response()),
     }
@@ -94,9 +90,5 @@ pub async fn handle_login(
 
 pub async fn handle_logout() -> Response {
     let cookie = "ca_token=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0";
-    (
-        [(SET_COOKIE, cookie.to_string())],
-        Redirect::to("/login"),
-    )
-        .into_response()
+    ([(SET_COOKIE, cookie.to_string())], Redirect::to("/login")).into_response()
 }

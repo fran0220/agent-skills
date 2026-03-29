@@ -1,7 +1,7 @@
 use super::http::authenticated_client;
 use super::GenerateCommands;
 use crate::output;
-use anyhow::Context;
+use anyhow::{bail, Context};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -48,8 +48,15 @@ fn decode_output_data(asset_type: &str, output_data: &str) -> anyhow::Result<Vec
         return Ok(output_data.as_bytes().to_vec());
     }
 
+    // Strip data URI prefix (e.g. "data:image/png;base64,")
+    let raw = if let Some(pos) = output_data.find(";base64,") {
+        &output_data[pos + 8..]
+    } else {
+        output_data
+    };
+
     STANDARD
-        .decode(output_data)
+        .decode(raw)
         .with_context(|| format!("failed to decode base64 output for asset type {asset_type}"))
 }
 
@@ -112,6 +119,47 @@ async fn save_generated_file(
     data.insert("local_path".into(), Value::String(output_path_string));
 
     Ok(())
+}
+
+fn response_snippet(body: &str) -> String {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return "<empty response body>".to_string();
+    }
+
+    const LIMIT: usize = 400;
+    let snippet: String = trimmed.chars().take(LIMIT).collect();
+    if trimmed.chars().count() > LIMIT {
+        format!("{snippet}...")
+    } else {
+        snippet
+    }
+}
+
+async fn parse_generate_response(resp: reqwest::Response) -> anyhow::Result<Value> {
+    let status = resp.status();
+    let body = resp.text().await.context("failed to read generate response body")?;
+
+    match serde_json::from_str::<Value>(&body) {
+        Ok(json) if status.is_success() => Ok(json),
+        Ok(json) => {
+            let message = json
+                .pointer("/error/message")
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| body.trim());
+            bail!("generate request failed with {}: {}", status, message);
+        }
+        Err(_) if status.is_success() => bail!(
+            "generate request returned {} with a non-JSON body: {}",
+            status,
+            response_snippet(&body)
+        ),
+        Err(_) => bail!(
+            "generate request failed with {}: {}",
+            status,
+            response_snippet(&body)
+        ),
+    }
 }
 
 pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<()> {
@@ -198,7 +246,7 @@ pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<
         .send()
         .await?;
 
-    let mut result: Value = resp.json().await?;
+    let mut result = parse_generate_response(resp).await?;
     save_generated_file(&mut result, asset_type, output_dir).await?;
     output::print_json(&result);
 

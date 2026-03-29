@@ -93,11 +93,10 @@ pub async fn list_tokens(pool: &PgPool) -> Result<Vec<ApiToken>, AppError> {
 
 /// Revoke a token by ID
 pub async fn revoke_token(pool: &PgPool, id: &Uuid) -> Result<(), AppError> {
-    let result =
-        sqlx::query("UPDATE cognee_admin.api_tokens SET enabled = false WHERE id = $1")
-            .bind(id)
-            .execute(pool)
-            .await?;
+    let result = sqlx::query("UPDATE cognee_admin.api_tokens SET enabled = false WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await?;
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Token not found".to_string()));
     }

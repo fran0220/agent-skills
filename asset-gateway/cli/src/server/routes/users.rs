@@ -25,6 +25,19 @@ struct ApiKeyConfigReq {
     expires_at: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct CreateUserReq {
+    username: String,
+    #[serde(default = "default_role")]
+    role: String,
+    quota_limit: Option<i64>,
+    expires_at: Option<String>,
+}
+
+fn default_role() -> String {
+    "user".to_string()
+}
+
 fn mask_secret(secret: &str) -> String {
     let chars: Vec<char> = secret.chars().collect();
     let len = chars.len();
@@ -63,6 +76,64 @@ fn validate_quota(quota_limit: Option<i64>) -> AppResult<Option<i64>> {
         }
     }
     Ok(quota_limit)
+}
+
+async fn create_user(
+    State(state): State<Arc<ServerState>>,
+    current_user: CurrentUser,
+    Json(req): Json<CreateUserReq>,
+) -> AppResult<Json<Value>> {
+    require_admin(&current_user)?;
+
+    let username = req.username.trim().to_string();
+    if username.is_empty() {
+        return Err(AppError::bad_request("username cannot be empty"));
+    }
+
+    let role = if req.role == "admin" { "admin" } else { "user" };
+    let quota_limit = validate_quota(req.quota_limit)?;
+    let expires_at = parse_expires_at(req.expires_at.as_deref())?;
+    let user_id = Uuid::new_v4().to_string();
+    let api_key = format!("agk_{}", Uuid::new_v4().simple());
+
+    let insert_result = sqlx::query(
+        "INSERT INTO users (id, username, password_hash, role, status, api_key, api_key_expires_at, api_key_quota, approved_at, approved_by) VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, now(), $8)"
+    )
+    .bind(&user_id)
+    .bind(&username)
+    .bind("TOKEN_AUTH")
+    .bind(role)
+    .bind(&api_key)
+    .bind(expires_at)
+    .bind(quota_limit)
+    .bind(&current_user.username)
+    .execute(&state.db)
+    .await;
+
+    if let Err(err) = insert_result {
+        if let sqlx::Error::Database(db_err) = &err {
+            if db_err.is_unique_violation() {
+                return Err(AppError::conflict("username already exists"));
+            }
+        }
+        return Err(AppError::internal(err));
+    }
+
+    Ok(Json(json!({
+        "ok": true,
+        "command": "user.create",
+        "data": {
+            "id": user_id,
+            "username": username,
+            "role": role,
+            "status": "active",
+            "token": api_key,
+            "api_key": api_key,
+            "api_key_masked": mask_secret(&api_key),
+            "api_key_expires_at": expires_at.map(|v| v.to_rfc3339()),
+            "api_key_quota": quota_limit,
+        }
+    })))
 }
 
 async fn list_users(
@@ -313,7 +384,7 @@ async fn revoke_api_key(
 
 pub fn router() -> Router<Arc<ServerState>> {
     Router::new()
-        .route("/users", get(list_users))
+        .route("/users", get(list_users).post(create_user))
         .route("/users/{id}/approve", post(approve_user))
         .route("/users/{id}/reject", post(reject_user))
         .route(

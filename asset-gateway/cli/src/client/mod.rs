@@ -1,6 +1,5 @@
 pub mod auth_cmd;
 pub mod config;
-pub mod credential_cmd;
 pub mod generate_cmd;
 pub mod http;
 pub mod job_cmd;
@@ -18,12 +17,9 @@ pub enum AuthCommands {
         /// Gateway URL
         #[arg(long)]
         url: Option<String>,
-        /// Username
+        /// Authentication token (admin or user token)
         #[arg(long)]
-        username: Option<String>,
-        /// Password
-        #[arg(long)]
-        password: Option<String>,
+        token: Option<String>,
     },
     /// Logout
     Logout,
@@ -118,23 +114,6 @@ pub enum ProviderCommands {
     },
 }
 
-// ── Credential commands ──
-
-#[derive(Subcommand)]
-pub enum CredentialCommands {
-    /// Set a credential
-    Set {
-        key: String,
-        value: String,
-        #[arg(long)]
-        provider: Option<String>,
-    },
-    /// List all credentials (masked)
-    List,
-    /// Delete a credential
-    Delete { key: String },
-}
-
 // ── Job commands ──
 
 #[derive(Subcommand)]
@@ -166,10 +145,6 @@ pub async fn handle_provider(cmd: ProviderCommands, gateway_url: &str) -> anyhow
     provider_cmd::handle(cmd, gateway_url).await
 }
 
-pub async fn handle_credential(cmd: CredentialCommands, gateway_url: &str) -> anyhow::Result<()> {
-    credential_cmd::handle(cmd, gateway_url).await
-}
-
 pub async fn handle_job(cmd: JobCommands, gateway_url: &str) -> anyhow::Result<()> {
     job_cmd::handle(cmd, gateway_url).await
 }
@@ -197,11 +172,10 @@ fn describe_schemas() -> Value {
         "auth.login": {
             "input": {
                 "type": "object",
-                "required": ["username", "password"],
+                "required": ["token"],
                 "properties": {
                     "url": { "type": "string", "description": "Optional gateway URL override" },
-                    "username": { "type": "string", "description": "Or ASSET_GATEWAY_USERNAME" },
-                    "password": { "type": "string", "description": "Or ASSET_GATEWAY_PASSWORD" }
+                    "token": { "type": "string", "description": "Admin or user token. Or ASSET_GATEWAY_TOKEN env" }
                 }
             },
             "output": {
@@ -374,53 +348,20 @@ fn describe_schemas() -> Value {
                 "description": "Either provider.health or provider.health.list envelope"
             }
         },
-        "credential.set": {
-            "input": {
-                "type": "object",
-                "required": ["key", "value"],
-                "properties": {
-                    "key": { "type": "string" },
-                    "value": { "type": "string" },
-                    "provider": { "type": "string" }
-                }
-            },
-            "output": {
-                "type": "object",
-                "properties": {
-                    "ok": { "type": "boolean" },
-                    "command": { "const": "credential.set" }
-                }
-            }
-        },
-        "credential.list": {
+        "provider.reload": {
             "input": { "type": "object", "properties": {} },
             "output": {
                 "type": "object",
                 "properties": {
                     "ok": { "type": "boolean" },
-                    "command": { "const": "credential.list" },
+                    "command": { "const": "provider.reload" },
                     "data": {
                         "type": "object",
                         "properties": {
-                            "credentials": { "type": "array" }
+                            "loaded": { "type": "integer" },
+                            "providers": { "type": "array", "items": { "type": "string" } }
                         }
                     }
-                }
-            }
-        },
-        "credential.delete": {
-            "input": {
-                "type": "object",
-                "required": ["key"],
-                "properties": {
-                    "key": { "type": "string" }
-                }
-            },
-            "output": {
-                "type": "object",
-                "properties": {
-                    "ok": { "type": "boolean" },
-                    "command": { "const": "credential.delete" }
                 }
             }
         },

@@ -1,11 +1,14 @@
-use axum::extract::{Request, State};
+use axum::extract::{multipart::Field, Request, State};
 use axum::http::{header, StatusCode};
 use axum::routing::{delete, get, post};
 use axum::Router;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
+use tokio::{fs::File, io::AsyncWriteExt};
+use uuid::Uuid;
 
 use super::AppState;
 use crate::auth;
+use crate::error::AppError;
 
 pub mod api;
 pub mod dashboard;
@@ -13,16 +16,20 @@ pub mod datasets;
 pub mod graph;
 pub mod login;
 pub mod logs;
+pub mod ontologies;
 pub mod pipelines;
 pub mod search;
 pub mod settings;
 pub mod tokens;
+pub mod upload;
 
 pub fn ui_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(dashboard::page))
         .route("/graph", get(graph::page))
         .route("/datasets", get(datasets::page))
+        .route("/upload", get(upload::page))
+        .route("/ontologies", get(ontologies::page))
         .route("/search", get(search::page))
         .route("/logs", get(logs::page))
         .route("/pipelines", get(pipelines::page))
@@ -38,12 +45,31 @@ pub fn api_routes() -> Router<Arc<AppState>> {
         .route("/auth/validate", get(validate_token))
         .route("/api/health", get(dashboard::api_health))
         .route("/api/datasets", get(datasets::api_datasets))
+        .route(
+            "/api/datasets/all",
+            delete(datasets::api_delete_all_datasets),
+        )
+        .route("/api/cognify", post(datasets::api_cognify))
+        .route("/api/upload", post(upload::api_upload))
+        .route(
+            "/api/ontologies",
+            get(ontologies::api_list).post(ontologies::api_upload),
+        )
         .route("/api/graph/{dataset_id}", get(graph::api_graph))
-        .route("/api/search", get(search::api_search).post(search::api_search_post))
+        .route(
+            "/api/search",
+            get(search::api_search).post(search::api_search_post),
+        )
         .route("/api/logs", get(logs::api_logs))
         .route("/api/pipelines", get(pipelines::api_pipelines))
-        .route("/api/settings", get(settings::api_get_settings).post(settings::api_save_settings))
-        .route("/api/tokens", get(tokens::api_list_tokens).post(tokens::api_create_token))
+        .route(
+            "/api/settings",
+            get(settings::api_get_settings).post(settings::api_save_settings),
+        )
+        .route(
+            "/api/tokens",
+            get(tokens::api_list_tokens).post(tokens::api_create_token),
+        )
         .route("/api/tokens/{id}/revoke", post(tokens::api_revoke_token))
         .route("/api/tokens/{id}", delete(tokens::api_delete_token))
 }
@@ -72,14 +98,56 @@ struct NavItem {
 }
 
 const NAV_ITEMS: &[NavItem] = &[
-    NavItem { path: "/", label: "Dashboard", icon: "📊" },
-    NavItem { path: "/graph", label: "Knowledge Graph", icon: "🕸️" },
-    NavItem { path: "/datasets", label: "Datasets", icon: "📁" },
-    NavItem { path: "/search", label: "Search", icon: "🔍" },
-    NavItem { path: "/logs", label: "Request Logs", icon: "📋" },
-    NavItem { path: "/pipelines", label: "Pipelines", icon: "⚙️" },
-    NavItem { path: "/settings", label: "Settings", icon: "🔧" },
-    NavItem { path: "/tokens", label: "Tokens", icon: "🔑" },
+    NavItem {
+        path: "/",
+        label: "Dashboard",
+        icon: "📊",
+    },
+    NavItem {
+        path: "/graph",
+        label: "Knowledge Graph",
+        icon: "🕸️",
+    },
+    NavItem {
+        path: "/datasets",
+        label: "Datasets",
+        icon: "📁",
+    },
+    NavItem {
+        path: "/upload",
+        label: "Upload",
+        icon: "📤",
+    },
+    NavItem {
+        path: "/ontologies",
+        label: "Ontologies",
+        icon: "📐",
+    },
+    NavItem {
+        path: "/search",
+        label: "Search",
+        icon: "🔍",
+    },
+    NavItem {
+        path: "/logs",
+        label: "Request Logs",
+        icon: "📋",
+    },
+    NavItem {
+        path: "/pipelines",
+        label: "Pipelines",
+        icon: "⚙️",
+    },
+    NavItem {
+        path: "/settings",
+        label: "Settings",
+        icon: "🔧",
+    },
+    NavItem {
+        path: "/tokens",
+        label: "Tokens",
+        icon: "🔑",
+    },
 ];
 
 pub fn base_html(title: &str, active: &str, content: &str) -> String {
@@ -151,4 +219,91 @@ pub fn base_html(title: &str, active: &str, content: &str) -> String {
 </body>
 </html>"#
     )
+}
+
+pub(super) struct TempUpload {
+    pub path: PathBuf,
+    pub filename: String,
+    pub size: u64,
+}
+
+pub(super) async fn persist_field_to_temp_file(
+    mut field: Field<'_>,
+    prefix: &str,
+) -> Result<TempUpload, AppError> {
+    let filename = field
+        .file_name()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| AppError::Config("Uploaded file is missing a filename".into()))?;
+
+    let temp_path = std::env::temp_dir().join(format!(
+        "cognee-admin-{prefix}-{}-{}",
+        Uuid::new_v4(),
+        sanitize_filename(&filename)
+    ));
+
+    let mut file = File::create(&temp_path).await.map_err(|err| {
+        AppError::Config(format!(
+            "Failed to create temp upload file for {}: {}",
+            filename, err
+        ))
+    })?;
+
+    let mut size = 0_u64;
+    while let Some(chunk) = field.chunk().await.map_err(|err| {
+        AppError::Config(format!(
+            "Failed to read upload stream for {}: {}",
+            filename, err
+        ))
+    })? {
+        size += chunk.len() as u64;
+        file.write_all(&chunk).await.map_err(|err| {
+            AppError::Config(format!(
+                "Failed to write temp upload file for {}: {}",
+                filename, err
+            ))
+        })?;
+    }
+
+    file.flush().await.map_err(|err| {
+        AppError::Config(format!(
+            "Failed to flush temp upload file for {}: {}",
+            filename, err
+        ))
+    })?;
+
+    Ok(TempUpload {
+        path: temp_path,
+        filename,
+        size,
+    })
+}
+
+pub(super) fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn sanitize_filename(name: &str) -> String {
+    let sanitized: String = name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    if sanitized.is_empty() {
+        "upload.bin".to_string()
+    } else {
+        sanitized
+    }
 }

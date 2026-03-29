@@ -637,12 +637,8 @@
     </div>
     <div class="login-error" id="loginError"></div>
     <div class="form-field">
-      <label>Username</label>
-      <input id="loginUsername" placeholder="admin" autocomplete="username" />
-    </div>
-    <div class="form-field">
-      <label>Password</label>
-      <input id="loginPassword" type="password" placeholder="••••••••" autocomplete="current-password" />
+      <label>Token</label>
+      <input id="loginToken" type="password" placeholder="agk_admin_..." autocomplete="off" />
     </div>
     <button class="btn btn-primary" id="loginBtn" style="margin-top:8px">Sign In</button>
   </div>
@@ -667,11 +663,11 @@
       <div class="nav-item active" data-page="users">
         <span class="nav-icon">👤</span><span>Users & Keys</span>
       </div>
+      <div class="nav-item" data-page="config">
+        <span class="nav-icon">⚙️</span><span>Config</span>
+      </div>
       <div class="nav-item" data-page="providers">
         <span class="nav-icon">🔌</span><span>Providers</span>
-      </div>
-      <div class="nav-item" data-page="credentials">
-        <span class="nav-icon">🔑</span><span>Credentials</span>
       </div>
       <div class="nav-label">Monitor</div>
       <div class="nav-item" data-page="jobs">
@@ -711,6 +707,38 @@
       </div>
     </div>
 
+    <!-- ===== CONFIG PAGE ===== -->
+    <div class="view-panel" id="page-config">
+      <div class="page-header">
+        <h2>Configuration</h2>
+        <p>Edit provider keys and settings — saves to config.toml and hot-reloads providers</p>
+      </div>
+      <div class="page-body">
+        <div class="panel-section">
+          <div class="panel-header">
+            <h3>config.toml</h3>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span id="configPath" style="font-size:11px;color:var(--text-muted);font-family:var(--mono)"></span>
+              <button class="btn btn-sm" id="reloadConfig">↻ Reload</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <textarea id="configEditor" style="width:100%;min-height:360px;font-family:var(--mono);font-size:13px;line-height:1.6;background:var(--bg-raised);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius);padding:14px;resize:vertical;tab-size:4" spellcheck="false"></textarea>
+            <div class="actions-row" style="margin-top:14px;display:flex;gap:10px;align-items:center">
+              <button class="btn btn-primary" id="saveConfigBtn" style="width:auto">💾 Save & Reload Providers</button>
+              <span id="configStatus" style="font-size:12px;color:var(--text-muted)"></span>
+            </div>
+          </div>
+        </div>
+        <div class="panel-section">
+          <div class="panel-header">
+            <h3>Loaded Providers</h3>
+          </div>
+          <div id="configProviderList"><div class="empty-state">Save config to see loaded providers</div></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== PROVIDERS PAGE ===== -->
     <div class="view-panel" id="page-providers">
       <div class="page-header">
@@ -721,51 +749,37 @@
         <div class="stat-grid" id="providerStats"></div>
         <div class="panel-section">
           <div class="panel-header">
-            <h3>Register Provider</h3>
+            <h3>Add Provider</h3>
           </div>
           <div class="panel-body">
             <div class="form-grid">
               <div class="form-field">
-                <label>ID</label>
-                <input id="providerId" placeholder="gpt_image" />
-              </div>
-              <div class="form-field">
-                <label>Display Name</label>
-                <input id="providerDisplayName" placeholder="GPT Image" />
-              </div>
-              <div class="form-field">
-                <label>Adapter</label>
-                <select id="providerAdapter">
-                  <option>llm_proxy</option>
-                  <option>gpt_image</option>
-                  <option>gemini_image</option>
-                  <option>jimeng</option>
-                  <option>elevenlabs</option>
-                  <option>tripo3d</option>
+                <label>Type</label>
+                <select id="providerAdapter" onchange="onAdapterChange()">
+                  <option value="llm_proxy">LLM Text (Claude/GPT/Gemini/Grok)</option>
+                  <option value="gpt_image">GPT Image (supports transparency)</option>
+                  <option value="gemini_image">Gemini Image (cost-efficient)</option>
+                  <option value="grok_image">Grok Image/Video (xAI)</option>
+                  <option value="jimeng">Jimeng Image + Video</option>
+                  <option value="elevenlabs">ElevenLabs Audio</option>
+                  <option value="tripo3d">Tripo 3D Model</option>
                 </select>
               </div>
               <div class="form-field">
-                <label>Asset Types</label>
-                <input id="providerAssetTypes" placeholder="image,video" />
+                <label>Base URL</label>
+                <input id="providerBaseUrl" placeholder="https://api.xiaomao.chat" />
               </div>
               <div class="form-field">
-                <label>Priority</label>
-                <input id="providerPriority" type="number" value="5" />
+                <label>API Key</label>
+                <input id="providerApiKey" type="password" placeholder="sk-..." />
               </div>
-              <div class="form-field">
-                <label>Enabled</label>
-                <select id="providerEnabled">
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
+              <div class="form-field" id="providerModelField">
+                <label>Default Model <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+                <input id="providerDefaultModel" placeholder="claude-sonnet-4-6" />
               </div>
-            </div>
-            <div class="form-field" style="margin-top:14px">
-              <label>Config JSON</label>
-              <textarea id="providerConfig" placeholder='{"base_url":"..."}'>{}</textarea>
             </div>
             <div class="actions-row">
-              <button class="btn btn-primary" id="createProviderBtn" style="width:auto">+ Register Provider</button>
+              <button class="btn btn-primary" id="createProviderBtn" style="width:auto">+ Add Provider</button>
             </div>
           </div>
         </div>
@@ -775,51 +789,6 @@
             <button class="btn btn-sm" id="reloadProviders">↻ Refresh</button>
           </div>
           <div id="providersTable"><div class="empty-state">Loading...</div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== CREDENTIALS PAGE ===== -->
-    <div class="view-panel" id="page-credentials">
-      <div class="page-header">
-        <h2>Credentials</h2>
-        <p>Encrypted API keys and secrets for each provider</p>
-      </div>
-      <div class="page-body">
-        <div class="panel-section">
-          <div class="panel-header">
-            <h3>Set Credential</h3>
-          </div>
-          <div class="panel-body">
-            <div class="form-grid">
-              <div class="form-field">
-                <label>Key</label>
-                <input id="credKey" placeholder="OPENAI_API_KEY" />
-              </div>
-              <div class="form-field">
-                <label>Value</label>
-                <input id="credValue" type="password" placeholder="sk-..." />
-              </div>
-              <div class="form-field">
-                <label>Provider ID <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
-                <input id="credProvider" placeholder="gpt_image" />
-              </div>
-              <div class="form-field">
-                <label>Description <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
-                <input id="credDescription" placeholder="OpenAI production key" />
-              </div>
-            </div>
-            <div class="actions-row">
-              <button class="btn btn-primary" id="setCredentialBtn" style="width:auto">🔒 Save Credential</button>
-            </div>
-          </div>
-        </div>
-        <div class="panel-section">
-          <div class="panel-header">
-            <h3>Stored Credentials</h3>
-            <button class="btn btn-sm" id="reloadCredentials">↻ Refresh</button>
-          </div>
-          <div id="credentialsTable"><div class="empty-state">Loading...</div></div>
         </div>
       </div>
     </div>
@@ -899,13 +868,12 @@
 
   // ============ AUTH ============
   async function login() {
-    const username = $("loginUsername").value.trim();
-    const password = $("loginPassword").value;
-    if (!username || !password) { showLoginError("Username and password required"); return; }
+    const token = $("loginToken").value.trim();
+    if (!token) { showLoginError("Token required"); return; }
     try {
-      const data = await api("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }, false);
-      S.token = data.token;
-      S.user = data.user || { username, role: data.role || "user" };
+      const data = await api("/auth/login", { method: "POST", body: JSON.stringify({ token }) }, false);
+      S.token = data.token || token;
+      S.user = data.user || { username: "admin", role: data.role || "user" };
       localStorage.setItem("ag_token", S.token);
       localStorage.setItem("ag_user", JSON.stringify(S.user));
       enterApp();
@@ -943,6 +911,7 @@
     S.page = page;
     document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.page === page));
     document.querySelectorAll(".view-panel").forEach(v => v.classList.toggle("active", v.id === `page-${page}`));
+    if (page === "config") loadConfig();
   }
 
   // ============ USERS ============
@@ -1074,23 +1043,52 @@
     } catch (e) { toast("Load providers failed: " + e.message, "error"); }
   }
 
-  async function createProvider() {
-    const id = $("providerId").value.trim();
-    const display_name = $("providerDisplayName").value.trim();
+  const ADAPTER_PRESETS = {
+    llm_proxy:    { name: "LLM Text Proxy",     types: ["text"],          priority: 10, defaultUrl: "https://api.xiaomao.chat", showModel: true },
+    gpt_image:    { name: "GPT Image",           types: ["image"],         priority: 10, defaultUrl: "https://api.xiaomao.chat", showModel: false },
+    gemini_image: { name: "Gemini Image",         types: ["image"],         priority: 5,  defaultUrl: "https://api.xiaomao.chat", showModel: false },
+    grok_image:   { name: "Grok Image/Video",     types: ["image","video"], priority: 7,  defaultUrl: "https://api.xiaomao.chat", showModel: false },
+    jimeng:       { name: "Jimeng Image+Video",    types: ["image","video"], priority: 5,  defaultUrl: "https://api.jimeng.ai",   showModel: false },
+    elevenlabs:   { name: "ElevenLabs Audio",      types: ["audio"],         priority: 10, defaultUrl: "",                         showModel: false },
+    tripo3d:      { name: "Tripo 3D",              types: ["model3d"],       priority: 10, defaultUrl: "",                         showModel: false },
+  };
+
+  function onAdapterChange() {
     const adapter = $("providerAdapter").value;
-    const asset_types = $("providerAssetTypes").value.split(",").map(v => v.trim()).filter(Boolean);
-    const priority = Number($("providerPriority").value || 0);
-    const enabled = $("providerEnabled").value === "true";
-    let config = {};
-    try { config = JSON.parse($("providerConfig").value || "{}"); } catch { toast("Config must be valid JSON", "error"); return; }
-    if (!id) { toast("Provider ID is required", "error"); return; }
+    const preset = ADAPTER_PRESETS[adapter] || {};
+    $("providerBaseUrl").placeholder = preset.defaultUrl || "https://...";
+    $("providerModelField").style.display = preset.showModel ? "" : "none";
+  }
+  onAdapterChange();
+
+  async function createProvider() {
+    const adapter = $("providerAdapter").value;
+    const preset = ADAPTER_PRESETS[adapter] || {};
+    const baseUrl = ($("providerBaseUrl").value || "").trim() || preset.defaultUrl;
+    const apiKey = ($("providerApiKey").value || "").trim();
+    const defaultModel = ($("providerDefaultModel").value || "").trim();
+
+    if (!apiKey) { toast("API Key is required", "error"); return; }
+
+    const config = {};
+    if (baseUrl) config.base_url = baseUrl;
+    if (defaultModel) config.default_model = defaultModel;
+
     try {
-      await api("/api/providers", { method: "POST", body: JSON.stringify({ id, display_name, adapter, asset_types, priority, enabled, config }) });
-      toast(`Provider ${id} created`, "ok");
-      $("providerId").value = "";
-      $("providerDisplayName").value = "";
-      $("providerAssetTypes").value = "";
-      $("providerConfig").value = "{}";
+      // 1. Save API key credential first (provider registration needs it)
+      await api("/api/credentials", { method: "PUT", body: JSON.stringify({
+        key: "api_key", value: apiKey, provider_id: adapter
+      })});
+      // 2. Create provider (will load credential on registration)
+      await api("/api/providers", { method: "POST", body: JSON.stringify({
+        id: adapter, display_name: preset.name || adapter, adapter,
+        asset_types: preset.types || [], priority: preset.priority || 5,
+        enabled: true, config
+      })});
+      toast(`${preset.name || adapter} added`, "ok");
+      $("providerBaseUrl").value = "";
+      $("providerApiKey").value = "";
+      $("providerDefaultModel").value = "";
       loadProviders();
     } catch (e) { toast(e.message, "error"); }
   }
@@ -1135,48 +1133,54 @@
     } catch (e) { toast(e.message, "error"); }
   }
 
-  // ============ CREDENTIALS ============
-  async function loadCredentials() {
+  // ============ CONFIG ============
+  async function loadConfig() {
     try {
-      const data = await api("/api/credentials");
-      const rows = data.credentials || [];
-      if (!rows.length) { $("credentialsTable").innerHTML = '<div class="empty-state">No credentials stored</div>'; return; }
-      let h = '<table class="data-table"><thead><tr><th>Key</th><th>Provider</th><th>Value (masked)</th><th>Description</th><th>Actions</th></tr></thead><tbody>';
-      for (const c of rows) {
-        h += `<tr>
-          <td><strong class="cell-mono">${c.key}</strong></td>
-          <td class="cell-mono">${c.provider_id || "—"}</td>
-          <td class="cell-mono">${c.value_masked}</td>
-          <td style="color:var(--text-secondary)">${c.description || "—"}</td>
-          <td><button class="btn btn-red btn-sm" onclick="deleteCredential('${c.key}')">Delete</button></td>
-        </tr>`;
+      const data = await api("/api/config");
+      $("configEditor").value = data.config || '';
+      $("configPath").textContent = data.path || '';
+      $("configStatus").textContent = "";
+    } catch (e) { toast("Load config failed: " + e.message, "error"); }
+  }
+
+  async function saveConfig() {
+    const content = $("configEditor").value;
+    $("configStatus").textContent = "Saving...";
+    $("saveConfigBtn").disabled = true;
+    try {
+      const data = await api("/api/config", {
+        method: "PUT",
+        body: JSON.stringify({ config: content })
+      });
+      const ids = data.providers || [];
+      $("configStatus").textContent = `✓ ${data.loaded} providers loaded`;
+      $("configStatus").style.color = "var(--green)";
+      let h = '<div class="panel-body"><div style="display:flex;flex-wrap:wrap;gap:8px">';
+      for (const id of ids) {
+        h += `<span class="pill">${id}</span>`;
       }
-      h += "</tbody></table>";
-      $("credentialsTable").innerHTML = h;
-    } catch (e) { toast("Load credentials failed: " + e.message, "error"); }
+      h += '</div></div>';
+      $("configProviderList").innerHTML = h;
+      toast(`Config saved — ${data.loaded} providers loaded`, "ok");
+      // Also refresh the providers page
+      loadProviders();
+    } catch (e) {
+      $("configStatus").textContent = "✗ " + e.message;
+      $("configStatus").style.color = "var(--red)";
+      toast(e.message, "error");
+    } finally {
+      $("saveConfigBtn").disabled = false;
+    }
   }
 
-  async function setCredential() {
-    const key = $("credKey").value.trim();
-    const value = $("credValue").value;
-    const provider_id = $("credProvider").value.trim() || null;
-    const description = $("credDescription").value.trim() || null;
-    if (!key || !value) { toast("Key and value are required", "error"); return; }
-    try {
-      await api("/api/credentials", { method: "PUT", body: JSON.stringify({ key, value, provider_id, description }) });
-      toast(`Credential ${key} saved`, "ok");
-      $("credKey").value = "";
-      $("credValue").value = "";
-      $("credProvider").value = "";
-      $("credDescription").value = "";
-      loadCredentials();
-    } catch (e) { toast(e.message, "error"); }
-  }
-
-  async function deleteCredential(key) {
-    if (!confirm(`Delete credential ${key}?`)) return;
-    try { await api(`/api/credentials/${encodeURIComponent(key)}`, { method: "DELETE" }); toast(`Deleted ${key}`, "ok"); loadCredentials(); } catch (e) { toast(e.message, "error"); }
-  }
+  $("configEditor").addEventListener("keydown", function(e) {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const s = this.selectionStart, end = this.selectionEnd;
+      this.value = this.value.substring(0, s) + "  " + this.value.substring(end);
+      this.selectionStart = this.selectionEnd = s + 2;
+    }
+  });
 
   // ============ JOBS ============
   async function loadJobs() {
@@ -1244,7 +1248,7 @@
 
   // ============ REFRESH ============
   async function refreshAll() {
-    try { await Promise.all([loadUsers(), loadProviders(), loadCredentials(), loadJobs()]); }
+    try { await Promise.all([loadUsers(), loadProviders(), loadConfig(), loadJobs()]); }
     catch (e) { toast("Refresh failed: " + e.message, "error"); }
   }
 
@@ -1254,13 +1258,13 @@
   });
 
   $("loginBtn").addEventListener("click", login);
-  $("loginPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+  $("loginToken").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
   $("logoutBtn").addEventListener("click", logout);
   $("reloadUsers").addEventListener("click", loadUsers);
   $("reloadProviders")?.addEventListener("click", loadProviders);
   $("createProviderBtn").addEventListener("click", createProvider);
-  $("setCredentialBtn").addEventListener("click", setCredential);
-  $("reloadCredentials")?.addEventListener("click", loadCredentials);
+  $("saveConfigBtn").addEventListener("click", saveConfig);
+  $("reloadConfig").addEventListener("click", loadConfig);
   $("reloadJobs").addEventListener("click", loadJobs);
   $("jobStatusFilter").addEventListener("change", loadJobs);
 
@@ -1275,7 +1279,6 @@
   window.editProvider = editProvider;
   window.confirmEdit = confirmEdit;
   window.deleteProvider = deleteProvider;
-  window.deleteCredential = deleteCredential;
   window.jobDetail = jobDetail;
   window.cancelJob = cancelJob;
   window.openModal = openModal;

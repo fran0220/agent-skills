@@ -2,9 +2,9 @@ use axum::extract::State;
 use axum::response::Html;
 use std::sync::Arc;
 
-use crate::error::AppError;
-use super::AppState;
 use super::base_html;
+use super::AppState;
+use crate::error::AppError;
 
 pub async fn page(State(_state): State<Arc<AppState>>) -> Result<Html<String>, AppError> {
     let content = r##"
@@ -34,7 +34,7 @@ pub async fn page(State(_state): State<Arc<AppState>>) -> Result<Html<String>, A
 pub async fn api_pipelines(State(state): State<Arc<AppState>>) -> Result<Html<String>, AppError> {
     let rows = sqlx::query_as::<_, PipelineRow>(
         "SELECT id, status, pipeline_name, created_at, updated_at, duration_ms, error_message \
-         FROM public.pipeline_runs ORDER BY created_at DESC LIMIT 50"
+         FROM public.pipeline_runs ORDER BY created_at DESC LIMIT 50",
     )
     .fetch_all(&state.pool)
     .await;

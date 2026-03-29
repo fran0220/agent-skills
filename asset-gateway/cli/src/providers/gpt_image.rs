@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::core::*;
 use serde_json::{json, Value};
 
-const DEFAULT_MODEL: &str = "gpt-image-1";
+const DEFAULT_MODEL: &str = "gpt-image-1.5";
 const SUPPORTED_MODELS: &[&str] = &["gpt-image-1", "gpt-image-1.5"];
 
 /// GPT Image provider (OpenAI gpt-image-1 / gpt-image-1.5).

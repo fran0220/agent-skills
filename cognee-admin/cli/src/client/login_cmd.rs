@@ -13,8 +13,9 @@ pub async fn run(client: &CogneeClient, username: &str, password: &str) -> Resul
         .ok_or_else(|| AppError::CogneeApi("No access_token in login response".to_string()))?;
 
     let mut auth = AuthConfig::load();
-    auth.token = Some(token.to_string());
-    auth.save().map_err(|e| AppError::Config(format!("Failed to save auth config: {e}")))?;
+    auth.cognee_jwt = Some(token.to_string());
+    auth.save()
+        .map_err(|e| AppError::Config(format!("Failed to save auth config: {e}")))?;
 
     Ok(result)
 }

@@ -25,6 +25,10 @@ impl ProviderRegistry {
         self.providers.write().await.remove(id).is_some()
     }
 
+    pub async fn clear(&self) {
+        self.providers.write().await.clear();
+    }
+
     pub async fn get(&self, id: &str) -> Option<Arc<dyn AssetProvider>> {
         self.providers.read().await.get(id).cloned()
     }

@@ -1,3 +1,4 @@
+use anyhow::Context;
 use axum::middleware as axum_mw;
 use axum::Router;
 use sqlx::PgPool;
@@ -16,7 +17,13 @@ pub struct AppState {
 }
 
 pub async fn run(host: &str, port: u16, cognee_url: &str, pool: PgPool) -> anyhow::Result<()> {
-    let client = CogneeClient::new(cognee_url).with_pool(pool.clone());
+    let service_jwt = std::env::var("COGNEE_SERVICE_JWT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .context("COGNEE_SERVICE_JWT is required for web server upstream Cognee API access")?;
+    let client = CogneeClient::new(cognee_url)
+        .with_token(service_jwt)
+        .with_pool(pool.clone());
     let state = Arc::new(AppState { client, pool });
 
     let app = Router::new()

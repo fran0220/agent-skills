@@ -6,10 +6,10 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use super::base_html;
+use super::AppState;
 use crate::auth::{self, ApiToken};
 use crate::error::AppError;
-use super::AppState;
-use super::base_html;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTokenForm {

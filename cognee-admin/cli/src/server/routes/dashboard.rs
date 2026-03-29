@@ -3,9 +3,9 @@ use axum::response::Html;
 use serde_json::json;
 use std::sync::Arc;
 
-use crate::error::AppError;
-use super::AppState;
 use super::base_html;
+use super::AppState;
+use crate::error::AppError;
 
 pub async fn page(State(_state): State<Arc<AppState>>) -> Result<Html<String>, AppError> {
     let content = r##"
@@ -84,15 +84,12 @@ pub async fn api_health(State(state): State<Arc<AppState>>) -> Result<Html<Strin
 
     let html = match health {
         Ok(data) => {
-            let status = data.get("status")
+            let status = data
+                .get("status")
                 .and_then(|s| s.as_str())
                 .unwrap_or("unknown");
-            let components = data.get("components")
-                .cloned()
-                .unwrap_or(json!({}));
-            let uptime = data.get("uptime")
-                .and_then(|u| u.as_i64())
-                .unwrap_or(0);
+            let components = data.get("components").cloned().unwrap_or(json!({}));
+            let uptime = data.get("uptime").and_then(|u| u.as_i64()).unwrap_or(0);
 
             let _ = sqlx::query(
                 "INSERT INTO cognee_admin.health_snapshots (status, components, uptime) VALUES ($1, $2, $3)"
@@ -103,7 +100,8 @@ pub async fn api_health(State(state): State<Arc<AppState>>) -> Result<Html<Strin
             .execute(&state.pool)
             .await;
 
-            let version = data.get("version")
+            let version = data
+                .get("version")
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown");
 
@@ -222,22 +220,25 @@ async fn build_chart_data(pool: &sqlx::PgPool) -> String {
     for (ts, components) in rows.iter().rev() {
         labels.push(ts.format("%H:%M").to_string());
         db_latencies.push(
-            components.get("relational_db")
+            components
+                .get("relational_db")
                 .and_then(|c| c.get("latency_ms"))
                 .and_then(|l| l.as_f64())
-                .unwrap_or(0.0)
+                .unwrap_or(0.0),
         );
         vector_latencies.push(
-            components.get("vector_db")
+            components
+                .get("vector_db")
                 .and_then(|c| c.get("latency_ms"))
                 .and_then(|l| l.as_f64())
-                .unwrap_or(0.0)
+                .unwrap_or(0.0),
         );
         graph_latencies.push(
-            components.get("graph_db")
+            components
+                .get("graph_db")
                 .and_then(|c| c.get("latency_ms"))
                 .and_then(|l| l.as_f64())
-                .unwrap_or(0.0)
+                .unwrap_or(0.0),
         );
     }
 

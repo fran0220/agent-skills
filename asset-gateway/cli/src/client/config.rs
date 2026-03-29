@@ -1,4 +1,6 @@
 use anyhow::{anyhow, Context};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -65,8 +67,12 @@ fn write_store(store: &AuthStore) -> anyhow::Result<()> {
     }
 
     let content = serde_json::to_string_pretty(store).context("failed to encode auth store")?;
-    fs::write(&path, content)
-        .with_context(|| format!("failed to write auth config at {}", path.display()))
+    fs::write(&path, &content)
+        .with_context(|| format!("failed to write auth config at {}", path.display()))?;
+    #[cfg(unix)]
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("failed to set permissions on {}", path.display()))?;
+    Ok(())
 }
 
 pub fn save_auth(

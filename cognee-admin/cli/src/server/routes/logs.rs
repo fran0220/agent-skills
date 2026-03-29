@@ -3,9 +3,9 @@ use axum::response::Html;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::error::AppError;
-use super::AppState;
 use super::base_html;
+use super::AppState;
+use crate::error::AppError;
 
 #[derive(Debug, Deserialize)]
 pub struct LogsParams {
@@ -68,7 +68,8 @@ pub async fn api_logs(
 
     if rows.is_empty() {
         return Ok(Html(
-            r##"<div class="card text-gray-500 text-center py-8">No request logs yet.</div>"##.to_string()
+            r##"<div class="card text-gray-500 text-center py-8">No request logs yet.</div>"##
+                .to_string(),
         ));
     }
 
@@ -89,8 +90,14 @@ pub async fn api_logs(
         let ts = r.timestamp.format("%Y-%m-%d %H:%M:%S").to_string();
         let method = &r.method;
         let endpoint = &r.endpoint;
-        let status = r.status_code.map(|c| c.to_string()).unwrap_or_else(|| "—".to_string());
-        let latency = r.latency_ms.map(|l| format!("{}ms", l)).unwrap_or_else(|| "—".to_string());
+        let status = r
+            .status_code
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "—".to_string());
+        let latency = r
+            .latency_ms
+            .map(|l| format!("{}ms", l))
+            .unwrap_or_else(|| "—".to_string());
         let source = &r.source;
 
         row_html.push_str(&format!(
@@ -160,18 +167,16 @@ async fn fetch_logs_unfiltered(
 ) -> Result<(Vec<LogRow>, i64), AppError> {
     let rows = sqlx::query_as::<_, LogRow>(
         "SELECT id, timestamp, method, endpoint, status_code, latency_ms, source \
-         FROM cognee_admin.request_logs ORDER BY timestamp DESC LIMIT $1 OFFSET $2"
+         FROM cognee_admin.request_logs ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
     )
     .bind(limit)
     .bind(offset)
     .fetch_all(pool)
     .await?;
 
-    let total: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM cognee_admin.request_logs"
-    )
-    .fetch_one(pool)
-    .await?;
+    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM cognee_admin.request_logs")
+        .fetch_one(pool)
+        .await?;
 
     Ok((rows, total.0))
 }
@@ -192,12 +197,11 @@ async fn fetch_logs_filtered(
     .fetch_all(pool)
     .await?;
 
-    let total: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM cognee_admin.request_logs WHERE endpoint ILIKE $1"
-    )
-    .bind(pattern)
-    .fetch_one(pool)
-    .await?;
+    let total: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM cognee_admin.request_logs WHERE endpoint ILIKE $1")
+            .bind(pattern)
+            .fetch_one(pool)
+            .await?;
 
     Ok((rows, total.0))
 }

@@ -4,65 +4,49 @@ use crate::output;
 use anyhow::anyhow;
 use serde_json::Value;
 
-fn resolve_login_field(
-    value: Option<String>,
-    env_name: &str,
-    flag_name: &str,
-) -> anyhow::Result<String> {
-    if let Some(flag) = value {
-        let trimmed = flag.trim();
+fn resolve_token(value: Option<String>) -> anyhow::Result<String> {
+    if let Some(token) = value {
+        let trimmed = token.trim();
         if !trimmed.is_empty() {
             return Ok(trimmed.to_string());
         }
     }
-
-    if let Ok(from_env) = std::env::var(env_name) {
+    if let Ok(from_env) = std::env::var("ASSET_GATEWAY_TOKEN") {
         let trimmed = from_env.trim();
         if !trimmed.is_empty() {
             return Ok(trimmed.to_string());
         }
     }
-
-    Err(anyhow!(
-        "missing {flag_name}: pass --{flag_name} or set {env_name}"
-    ))
+    Err(anyhow!("missing token: pass --token or set ASSET_GATEWAY_TOKEN"))
 }
 
 pub async fn handle(cmd: AuthCommands, gateway_url: &str) -> anyhow::Result<()> {
     match cmd {
-        AuthCommands::Login {
-            url,
-            username,
-            password,
-        } => {
+        AuthCommands::Login { url, token } => {
             let target = normalize_gateway_url(url.as_deref().unwrap_or(gateway_url));
-            let username = resolve_login_field(username, "ASSET_GATEWAY_USERNAME", "username")?;
-            let password = resolve_login_field(password, "ASSET_GATEWAY_PASSWORD", "password")?;
+            let token = resolve_token(token)?;
 
             let client = reqwest::Client::new();
             let resp = client
                 .post(format!("{}/auth/login", target))
-                .json(&serde_json::json!({
-                    "username": username.clone(),
-                    "password": password,
-                }))
+                .json(&serde_json::json!({ "token": token }))
                 .send()
                 .await?;
 
             let body: Value = resp.json().await?;
 
             if body.get("ok").and_then(Value::as_bool).unwrap_or(false) {
-                let token = body
+                let returned_token = body
                     .pointer("/data/token")
                     .and_then(Value::as_str)
-                    .ok_or_else(|| anyhow!("login response missing data.token"))?;
+                    .unwrap_or(&token);
                 let expires_at = body.pointer("/data/expires_at").and_then(Value::as_str);
                 let api_key = body.pointer("/data/api_key").and_then(Value::as_str);
                 let login_username = body
                     .pointer("/data/user/username")
                     .and_then(Value::as_str)
-                    .unwrap_or(&username);
-                save_auth(&target, token, expires_at, api_key, login_username)?;
+                    .unwrap_or("unknown");
+                save_auth(&target, returned_token, expires_at, api_key, login_username)?;
             }
 
             output::print_json(&body);
@@ -93,7 +77,6 @@ pub async fn handle(cmd: AuthCommands, gateway_url: &str) -> anyhow::Result<()> 
                     "message": "not logged in",
                 }),
             };
-
             output::print_json(&output::success("auth.whoami", payload));
         }
     }

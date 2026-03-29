@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::core::*;
 use serde_json::{json, Value};
 
-const DEFAULT_MODEL: &str = "gemini-2.0-flash-preview-image-generation";
+const DEFAULT_MODEL: &str = "gemini-3.1-flash-image-preview";
 
 /// Gemini Flash Image provider (Google).
 /// Cost-effective, no transparency support.

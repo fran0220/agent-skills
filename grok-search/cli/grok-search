@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""
+grok-search — Grok-powered web search CLI (Agent-primary).
+
+Uses grok2api as backend, calls grok-4.1-expert for high-quality search.
+
+Usage:
+  grok-search "今天有什么科技新闻"
+  grok-search "latest AI breakthroughs" --model grok-4.1-fast --num 5
+  grok-search "compare React vs Vue" --model grok-4.20-beta --json
+  echo '{"query":"..."}' | grok-search --stdin
+
+Environment:
+  GROK_API_URL   — grok2api endpoint (default: https://grok.xiaomao.chat)
+  GROK_API_KEY   — API bearer token
+"""
+
+import argparse
+import json
+import os
+import sys
+import urllib.request
+import urllib.error
+
+DEFAULT_URL = "https://grok.xiaomao.chat"
+DEFAULT_MODEL = "grok-4.1-expert"
+
+SEARCH_MODELS = [
+    "grok-4.1-expert",   # best quality, 4 quota/req
+    "grok-4.1-fast",     # good balance, 1 quota/req
+    "grok-4.20-beta",    # latest beta, 1 quota/req
+    "grok-4",            # standard, 1 quota/req
+    "grok-4-thinking",   # with chain-of-thought
+]
+
+SYSTEM_PROMPT = """You are a real-time web search assistant. When the user asks a question:
+1. Search the web for the most current, accurate information
+2. Return results in a structured format with sources
+3. Be concise but comprehensive
+4. Always include dates and sources when available
+5. If the query is in Chinese, respond in Chinese; otherwise match the query language"""
+
+
+def search(query, model=DEFAULT_MODEL, num_results=5, api_url=None, api_key=None, raw_json=False):
+    url = (api_url or os.environ.get("GROK_API_URL", DEFAULT_URL)).rstrip("/")
+    key = api_key or os.environ.get("GROK_API_KEY", "")
+
+    if not key:
+        return {"ok": False, "error": {"code": "NO_API_KEY", "message": "GROK_API_KEY not set", "suggestion": "export GROK_API_KEY=your_key"}}
+
+    user_msg = f"{query}\n\nPlease find and list the top {num_results} most relevant and recent results."
+
+    payload = json.dumps({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_msg},
+        ],
+        "stream": False,
+    }).encode()
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {key}",
+    }
+
+    req = urllib.request.Request(f"{url}/v1/chat/completions", data=payload, headers=headers, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        return {"ok": False, "error": {"code": f"HTTP_{e.code}", "message": body}}
+    except Exception as e:
+        return {"ok": False, "error": {"code": "REQUEST_FAILED", "message": str(e)}}
+
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    usage = data.get("usage", {})
+
+    if raw_json:
+        return {"ok": True, "command": "search", "data": {
+            "model": model,
+            "query": query,
+            "content": content,
+            "usage": usage,
+        }}
+    else:
+        return {"ok": True, "command": "search", "data": {
+            "model": model,
+            "query": query,
+            "content": content,
+            "tokens": usage.get("total_tokens", 0),
+        }}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Grok-powered web search", prog="grok-search")
+    parser.add_argument("query", nargs="?", help="Search query")
+    parser.add_argument("--model", "-m", default=DEFAULT_MODEL, choices=SEARCH_MODELS, help=f"Model to use (default: {DEFAULT_MODEL})")
+    parser.add_argument("--num", "-n", type=int, default=5, help="Number of results to request (default: 5)")
+    parser.add_argument("--url", default=None, help="API base URL (or GROK_API_URL env)")
+    parser.add_argument("--key", default=None, help="API key (or GROK_API_KEY env)")
+    parser.add_argument("--json", dest="raw_json", action="store_true", help="Full JSON output with usage details")
+    parser.add_argument("--stdin", action="store_true", help="Read JSON input from stdin")
+    parser.add_argument("--human", action="store_true", help="Human-readable output (default for terminal)")
+    parser.add_argument("--models", action="store_true", help="List available search models")
+
+    args = parser.parse_args()
+
+    if args.models:
+        print(json.dumps({"ok": True, "command": "models", "data": {"models": SEARCH_MODELS}}, indent=2))
+        return
+
+    if args.stdin:
+        input_data = json.load(sys.stdin)
+        query = input_data.get("query", "")
+        model = input_data.get("model", args.model)
+        num = input_data.get("num", args.num)
+    elif args.query:
+        query = args.query
+        model = args.model
+        num = args.num
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+    result = search(query, model=model, num_results=num, api_url=args.url, api_key=args.key, raw_json=args.raw_json)
+
+    is_tty = sys.stdout.isatty()
+
+    if (is_tty and not args.raw_json) or args.human:
+        if result["ok"]:
+            d = result["data"]
+            print(f"\n🔍 [{d['model']}] Search: {d['query']}\n")
+            print(d["content"])
+            tokens = d.get("tokens") or d.get("usage", {}).get("total_tokens", "?")
+            print(f"\n📊 Tokens: {tokens}")
+        else:
+            print(f"❌ Error: {result['error']['message']}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        json.dump(result, sys.stdout, ensure_ascii=False)
+        print()
+
+    if not result["ok"]:
+        sys.exit(3)
+
+
+if __name__ == "__main__":
+    main()

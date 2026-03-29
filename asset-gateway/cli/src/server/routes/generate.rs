@@ -48,7 +48,9 @@ async fn generate(
     current_user: CurrentUser,
     Json(req): Json<GenerateReq>,
 ) -> AppResult<Json<Value>> {
-    enforce_quota(&state, &current_user.id).await?;
+    if !current_user.is_admin() {
+        enforce_quota(&state, &current_user.id).await?;
+    }
 
     let job_id = Uuid::new_v4().to_string();
     let provider_hint = req.provider.clone().unwrap_or_else(|| "auto".into());

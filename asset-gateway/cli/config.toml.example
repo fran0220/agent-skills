@@ -1,0 +1,20 @@
+# Asset Gateway Configuration
+# Env vars override file values: ASSET_GATEWAY_<KEY> > config.toml > defaults
+
+[server]
+admin_token = ""
+
+[proxy]
+url = "https://api.xiaomao.chat"
+key = ""
+default_model = "claude-sonnet-4-6"
+
+[elevenlabs]
+key = ""
+
+[tripo3d]
+key = ""
+
+[jimeng]
+url = ""
+key = ""

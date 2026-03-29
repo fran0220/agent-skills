@@ -4,14 +4,17 @@ use sqlx::PgPool;
 use crate::error::AppError;
 
 pub async fn list(pool: &PgPool, limit: i64, offset: i64) -> Result<Value, AppError> {
-    let rows = sqlx::query_as::<_, (
-        i64,
-        String,
-        String,
-        i32,
-        Option<i64>,
-        chrono::DateTime<chrono::Utc>,
-    )>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            i64,
+            String,
+            String,
+            i32,
+            Option<i64>,
+            chrono::DateTime<chrono::Utc>,
+        ),
+    >(
         r#"
         SELECT id, endpoint, method, status_code, latency_ms, timestamp
         FROM cognee_admin.request_logs
@@ -26,16 +29,18 @@ pub async fn list(pool: &PgPool, limit: i64, offset: i64) -> Result<Value, AppEr
 
     let logs: Vec<Value> = rows
         .into_iter()
-        .map(|(id, endpoint, method, status_code, latency_ms, timestamp)| {
-            json!({
-                "id": id,
-                "endpoint": endpoint,
-                "method": method,
-                "status_code": status_code,
-                "latency_ms": latency_ms,
-                "timestamp": timestamp.to_rfc3339(),
-            })
-        })
+        .map(
+            |(id, endpoint, method, status_code, latency_ms, timestamp)| {
+                json!({
+                    "id": id,
+                    "endpoint": endpoint,
+                    "method": method,
+                    "status_code": status_code,
+                    "latency_ms": latency_ms,
+                    "timestamp": timestamp.to_rfc3339(),
+                })
+            },
+        )
         .collect();
 
     Ok(json!({ "logs": logs, "limit": limit, "offset": offset }))

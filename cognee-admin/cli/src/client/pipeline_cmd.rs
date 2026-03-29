@@ -4,13 +4,16 @@ use sqlx::PgPool;
 use crate::error::AppError;
 
 pub async fn list(pool: &PgPool, limit: i64) -> Result<Value, AppError> {
-    let rows = sqlx::query_as::<_, (
-        String,
-        String,
-        Option<String>,
-        Option<chrono::DateTime<chrono::Utc>>,
-        Option<chrono::DateTime<chrono::Utc>>,
-    )>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            Option<String>,
+            Option<chrono::DateTime<chrono::Utc>>,
+            Option<chrono::DateTime<chrono::Utc>>,
+        ),
+    >(
         r#"
         SELECT id::text, status, error,
                created_at AT TIME ZONE 'UTC' as created_at,
@@ -41,14 +44,17 @@ pub async fn list(pool: &PgPool, limit: i64) -> Result<Value, AppError> {
 }
 
 pub async fn detail(pool: &PgPool, id: &str) -> Result<Value, AppError> {
-    let row = sqlx::query_as::<_, (
-        String,
-        String,
-        Option<String>,
-        Option<Value>,
-        Option<chrono::DateTime<chrono::Utc>>,
-        Option<chrono::DateTime<chrono::Utc>>,
-    )>(
+    let row = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            Option<String>,
+            Option<Value>,
+            Option<chrono::DateTime<chrono::Utc>>,
+            Option<chrono::DateTime<chrono::Utc>>,
+        ),
+    >(
         r#"
         SELECT id::text, status, error, metadata,
                created_at AT TIME ZONE 'UTC' as created_at,

@@ -4,12 +4,16 @@ use axum::Json;
 use serde_json::Value;
 use std::sync::Arc;
 
-use crate::error::AppError;
-use super::AppState;
 use super::base_html;
+use super::AppState;
+use crate::error::AppError;
 
 pub async fn page(State(state): State<Arc<AppState>>) -> Result<Html<String>, AppError> {
-    let datasets = state.client.datasets().await.unwrap_or(Value::Array(vec![]));
+    let datasets = state
+        .client
+        .datasets()
+        .await
+        .unwrap_or(Value::Array(vec![]));
     let dataset_arr = datasets.as_array().cloned().unwrap_or_default();
 
     let mut options = r##"<option value="">Select a dataset...</option>"##.to_string();
