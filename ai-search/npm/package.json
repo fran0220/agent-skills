@@ -1,0 +1,36 @@
+{
+  "name": "@doufunao123/ai-search",
+  "version": "0.2.0",
+  "description": "AI-powered web search CLI with query splitting",
+  "type": "module",
+  "bin": {
+    "ai-search": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fran0220/agent-skills.git",
+    "directory": "ai-search/npm"
+  },
+  "author": "doufunao123",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --watch",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0"
+  }
+}

@@ -34,14 +34,6 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         llm.id = "llm_proxy".into();
         providers.push(Arc::new(llm));
 
-        // GPT Image
-        let mut gpt = crate::providers::gpt_image::GptImageProvider::new(
-            config.proxy_url.clone(),
-            config.proxy_key.clone(),
-        );
-        gpt.id = "gpt_image".into();
-        providers.push(Arc::new(gpt));
-
         // Gemini Image
         let mut gemini = crate::providers::gemini_image::GeminiImageProvider::new(
             config.proxy_url.clone(),
@@ -60,28 +52,36 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
     }
 
     if !config.elevenlabs_key.is_empty() {
-        let mut el = crate::providers::elevenlabs::ElevenLabsProvider::new(
-            config.elevenlabs_key.clone(),
-        );
+        let mut el =
+            crate::providers::elevenlabs::ElevenLabsProvider::new(config.elevenlabs_key.clone());
         el.id = "elevenlabs".into();
         providers.push(Arc::new(el));
     }
 
     if !config.tripo3d_key.is_empty() {
-        let mut tripo = crate::providers::tripo3d::Tripo3dProvider::new(
-            config.tripo3d_key.clone(),
-        );
+        let mut tripo = crate::providers::tripo3d::Tripo3dProvider::new(config.tripo3d_key.clone());
         tripo.id = "tripo3d".into();
         providers.push(Arc::new(tripo));
     }
 
-    if !config.jimeng_key.is_empty() && !config.jimeng_url.is_empty() {
-        let mut jimeng = crate::providers::jimeng::JimengProvider::new(
-            config.jimeng_url.clone(),
-            config.jimeng_key.clone(),
-        );
-        jimeng.id = "jimeng".into();
-        providers.push(Arc::new(jimeng));
+    // MiniMax TTS — own config or fallback to shared proxy
+    {
+        let mm_url = if config.minimax_url.is_empty() {
+            &config.proxy_url
+        } else {
+            &config.minimax_url
+        };
+        let mm_key = if config.minimax_key.is_empty() {
+            &config.proxy_key
+        } else {
+            &config.minimax_key
+        };
+        if !mm_key.is_empty() {
+            let mut minimax =
+                crate::providers::minimax::MinimaxTtsProvider::new(mm_url.clone(), mm_key.clone());
+            minimax.id = "minimax_tts".into();
+            providers.push(Arc::new(minimax));
+        }
     }
 
     providers
@@ -98,7 +98,12 @@ pub async fn load_providers(config: &AppConfig, registry: &Arc<ProviderRegistry>
     count
 }
 
-pub async fn run(host: String, port: u16, database_url: String, config_path: &Path) -> anyhow::Result<()> {
+pub async fn run(
+    host: String,
+    port: u16,
+    database_url: String,
+    config_path: &Path,
+) -> anyhow::Result<()> {
     let config = AppConfig::load(host.clone(), port, database_url.clone(), config_path)?;
     let db = crate::db::connect(&database_url).await?;
 

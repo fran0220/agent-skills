@@ -1,7 +1,11 @@
 pub mod dispatcher;
+pub mod pipeline;
 pub mod queue;
 pub mod registry;
+#[allow(dead_code)]
 pub mod vault;
+
+use std::any::Any;
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +18,7 @@ pub enum AssetType {
     Image,
     Video,
     Audio,
+    Tts,
     Model3d,
 }
 
@@ -24,6 +29,7 @@ impl AssetType {
             Self::Image => "image",
             Self::Video => "video",
             Self::Audio => "audio",
+            Self::Tts => "tts",
             Self::Model3d => "model3d",
         }
     }
@@ -32,6 +38,20 @@ impl AssetType {
 impl std::fmt::Display for AssetType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl AssetType {
+    /// Map TTS extension to mp3 like audio.
+    #[allow(dead_code)]
+    pub fn file_extension(&self) -> &'static str {
+        match self {
+            Self::Image => "png",
+            Self::Audio | Self::Tts => "mp3",
+            Self::Video => "mp4",
+            Self::Model3d => "glb",
+            Self::Text => "txt",
+        }
     }
 }
 
@@ -151,6 +171,7 @@ pub struct HealthStatus {
 
 #[async_trait::async_trait]
 pub trait AssetProvider: Send + Sync {
+    fn as_any(&self) -> &dyn Any;
     fn id(&self) -> &str;
     fn display_name(&self) -> &str;
     fn asset_types(&self) -> &[AssetType];

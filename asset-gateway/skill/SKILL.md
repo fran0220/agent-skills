@@ -1,11 +1,11 @@
 ---
 name: asset-gateway
-description: "Unified multi-provider asset generation (text, image, video, audio, 3D) via CLI. Use when the user asks to generate images, audio, video, 3D models, or text content — or when any project needs asset creation."
+description: "Unified multi-provider asset generation (text, image, video, audio, TTS, 3D) via CLI + 2D image post-processing and Tripo 3D pipeline steps (rig, animate, texture, convert, stylize). Use when the user asks to generate or transform images, audio, TTS/speech, video, 3D models, or text content."
 ---
 
 # Asset Gateway
 
-`asset-gateway` is the **single CLI** for all asset generation. It routes requests to the best available provider automatically, with health-check filtering and fallback. Always prefer this over calling provider APIs directly.
+`asset-gateway` is the **single CLI** for all asset generation and post-processing. It routes requests to the best available provider automatically, with health-check filtering and fallback. Always prefer this over calling provider APIs directly.
 
 ## Install & Auth
 
@@ -22,14 +22,28 @@ Default gateway: `https://assets.xiaomao.chat`. Override with `--gateway-url` or
 | User wants... | Command | Key flags |
 |--------------|---------|-----------|
 | An image from text | `generate image` | `--prompt`, `--transparent`, `--provider`, `--size` |
-| A transparent PNG (icon/sprite) | `generate image` | `--prompt`, **`--transparent`** |
+| Edit an existing image | `generate image` | `--prompt`, `--input <url>`, `--provider` |
 | A video clip | `generate video` | `--prompt` |
 | Sound effect or BGM | `generate audio` | `--prompt`, `--type sfx\|bgm`, `--duration` |
-| 3D model from text | `generate model` | `--prompt` |
-| 3D model from image | `generate model` | `--image <url>` |
+| Text-to-speech (Chinese/multilingual) | `generate tts` | `--prompt`, `--voice-id`, `--model`, `--speed`, `--language-boost` |
+| A game-ready 3D model | `generate model` | `--prompt`, `--face-limit`, `--pbr`, `--model-version` |
+| 3D from reference image | `generate model` | `--image <url>`, `--face-limit`, `--pbr` |
+| 3D from 4 angles | `generate model` | `--multiview front,left,back,right` |
+| Convert 3D format | `process3d convert` | `--task-id`, `--format FBX\|USDZ\|OBJ` |
+| Rig a 3D character | `process3d rig` | `--task-id`, `--spec mixamo` |
+| Animate a character | `process3d animate` | `--task-id`, `--animation preset:walk` |
+| Re-texture a model | `process3d texture` | `--task-id`, `--prompt`, `--pbr` |
+| Reduce polygon count | `process3d reduce` | `--task-id`, `--face-limit 3000` |
+| Stylize to voxel/lego | `process3d stylize` | `--task-id`, `--style lego` |
+| Segment a mesh into parts | `process3d segment` | `--task-id` |
+| Check whether a mesh is riggable | `process3d prerigcheck` | `--task-id` |
 | LLM text completion | `generate text` | `--prompt`, `--model`, `--max-tokens` |
+| Remove image background | `process remove-bg` | `--input`, `--smart-crop` |
+| Crop to power-of-2 | `process crop` | `--input`, `--mode power_of2` |
+| Resize image | `process resize` | `--input`, `--width`, `--height` |
+| AI upscale (2x/4x) | `process upscale` | `--input`, `--scale 4` |
 
-**All generate commands require `--output-dir`** to save files locally. The output `local_path` in the JSON response is the saved file path.
+**All generate commands require `--output-dir`** to save files locally. `process` and `process3d` commands also use `--output-dir`.
 
 ## Core Workflows
 
@@ -39,21 +53,225 @@ Default gateway: `https://assets.xiaomao.chat`. Override with `--gateway-url` or
 # Default: auto-selects best provider (gemini_image, highest priority)
 asset-gateway generate image --prompt "isometric village, clean lighting" --output-dir ./assets
 
-# Transparent background (auto-routes to gpt_image)
-asset-gateway generate image --prompt "game icon, potion bottle" --transparent --output-dir ./assets
-
-# Force specific provider
-asset-gateway generate image --prompt "anime forest" --provider gpt_image --output-dir ./assets
-
 # With specific size
 asset-gateway generate image --prompt "banner" --size 1792x1024 --output-dir ./assets
+
+# Force specific provider
+asset-gateway generate image --prompt "anime forest" --provider grok_image --output-dir ./assets
+
+# Image editing: modify an existing image with a prompt
+asset-gateway generate image --prompt "make the background a sunset" --input "https://example.com/photo.png" --output-dir ./assets
+
+# Image editing with specific provider
+asset-gateway generate image --prompt "add a hat to the character" --input "https://example.com/char.png" --provider grok_image --output-dir ./assets
 ```
 
 **Provider choice guide for images:**
-- **Need transparency** → add `--transparent` (auto-routes to `gpt_image`)
-- **Fast & cheap** → default (routes to `gemini_image`, ~15s)
-- **Highest quality** → `--provider gpt_image` (~60-90s, slower but detailed)
-- **即梦风格** → `--provider jimeng`
+- **Fast & default** → `gemini_image` (~15s, also supports editing via `--input`)
+- **Grok style** → `--provider grok_image` (supports editing and video)
+- **Image editing** → both `gemini_image` and `grok_image` support `--input` for editing
+
+### 3D Model Generation
+
+`generate model` is the entry point for Tripo's full 3D pipeline. It supports `--model-version` (latest flagship: `P1-20260311`), `--face-limit`, `--pbr`, `--texture-quality standard|detailed`, `--auto-size`, `--negative-prompt`, and `--multiview`.
+
+Every successful 3D generation returns `metadata.tripo_task_id`. Use that task ID as the `--task-id` input for the first `process3d` step.
+
+```bash
+# High-quality text-to-3D with the latest P1 model
+asset-gateway generate model \
+  --prompt "low-poly warrior character, T-pose" \
+  --model-version P1-20260311 \
+  --face-limit 5000 \
+  --pbr \
+  --texture-quality detailed \
+  --auto-size \
+  --output-dir ./assets
+
+# Image-to-3D from a public reference image
+asset-gateway generate model \
+  --image "https://assets.xiaomao.chat/uploads/character-concept.png" \
+  --model-version P1-20260311 \
+  --face-limit 8000 \
+  --pbr \
+  --output-dir ./assets
+
+# Negative guidance for cleaner outputs
+asset-gateway generate model \
+  --prompt "stylized sci-fi soldier" \
+  --negative-prompt "no weapons, no cape" \
+  --output-dir ./assets
+
+# Multi-view generation for highest accuracy
+asset-gateway generate model \
+  --multiview front.png,left.png,back.png,right.png \
+  --model-version P1-20260311 \
+  --face-limit 5000 \
+  --pbr \
+  --output-dir ./assets
+```
+
+### 3D Post-Processing Pipeline
+
+All `process3d` commands continue an existing Tripo task. Use `metadata.tripo_task_id` from `generate model`, or `data.tripo_task_id` from a previous `process3d` response.
+
+```bash
+# Format conversion + optional quad remesh / face cap
+asset-gateway process3d convert --task-id abc-123 --format FBX --quad --face-limit 3000 --output-dir ./assets
+
+# Re-texture a model and upgrade to detailed PBR output
+asset-gateway process3d texture --task-id abc-123 --prompt "cartoon style, bright colors" --pbr --quality detailed --output-dir ./assets
+
+# Auto-rig with Mixamo-compatible skeleton
+asset-gateway process3d rig --task-id abc-123 --spec mixamo --format fbx --output-dir ./assets
+
+# Apply a preset animation
+asset-gateway process3d animate --task-id abc-123 --animation preset:walk --format fbx --output-dir ./assets
+
+# Reduce polygon count for mobile targets
+asset-gateway process3d reduce --task-id abc-123 --face-limit 2000 --quad --output-dir ./assets
+
+# Stylize geometry
+asset-gateway process3d stylize --task-id abc-123 --style voxel --output-dir ./assets
+
+# Segment parts or validate riggability
+asset-gateway process3d segment --task-id abc-123 --output-dir ./assets
+asset-gateway process3d prerigcheck --task-id abc-123 --output-dir ./assets
+```
+
+**What each `process3d` command does:**
+- `convert` → export to `FBX`, `USDZ`, `OBJ`, `STL`, `GLTF`, or `3MF`, with optional quad remesh and face reduction
+- `texture` → re-texture, enable PBR, or upgrade to higher texture quality with prompt guidance
+- `rig` → add a skeleton using `mixamo` or `tripo` rig specs
+- `animate` → retarget a preset animation such as walk, run, idle, slash, or dance
+- `reduce` → optimize high-poly meshes down to a face budget
+- `stylize` → generate themed variants like `lego`, `voxel`, `voronoi`, or `minecraft`
+- `segment` → split the mesh into semantic parts for downstream editing
+- `prerigcheck` → validate whether the mesh is suitable for auto-rigging
+
+### 3D Workflows
+
+**Game character with animations:**
+
+```bash
+# 1. Generate the character
+asset-gateway generate model --prompt "low-poly warrior character, T-pose" \
+  --model-version P1-20260311 --face-limit 5000 --pbr --output-dir ./assets
+# Response includes metadata.tripo_task_id = "abc-123"
+
+# 2. Rig the model
+asset-gateway process3d rig --task-id abc-123 --spec mixamo --output-dir ./assets
+
+# 3. Animate using the rig task's returned tripo_task_id
+asset-gateway process3d animate --task-id <rig-task-id> --animation preset:idle --output-dir ./assets
+asset-gateway process3d animate --task-id <rig-task-id> --animation preset:walk --output-dir ./assets
+asset-gateway process3d animate --task-id <rig-task-id> --animation preset:run --output-dir ./assets
+
+# 4. Export for game engine import
+asset-gateway process3d convert --task-id <animate-task-id> --format FBX --output-dir ./assets
+```
+
+**Game prop (optimized):**
+
+```bash
+asset-gateway generate model --prompt "wooden treasure chest" \
+  --face-limit 3000 --pbr --texture-quality detailed --output-dir ./assets
+
+asset-gateway process3d convert --task-id <id> --format FBX --quad --output-dir ./assets
+```
+
+**High-quality from reference images:**
+
+```bash
+# Upload reference images first if they are local
+asset-gateway upload file ./character-concept.png
+
+asset-gateway generate model --image "https://assets.xiaomao.chat/uploads/<uploaded-file>.png" \
+  --model-version P1-20260311 --face-limit 8000 --pbr --output-dir ./assets
+```
+
+**Multi-view precision model:**
+
+```bash
+asset-gateway generate model \
+  --multiview front.png,left.png,back.png,right.png \
+  --face-limit 5000 --pbr --output-dir ./assets
+```
+
+**Reduce + re-texture workflow:**
+
+```bash
+asset-gateway process3d reduce --task-id <id> --face-limit 2000 --quad --output-dir ./assets
+asset-gateway process3d texture --task-id <id> --prompt "cartoon style, bright colors" --pbr --quality detailed --output-dir ./assets
+```
+
+**Stylization:**
+
+```bash
+asset-gateway process3d stylize --task-id <id> --style voxel --output-dir ./assets
+asset-gateway process3d stylize --task-id <id> --style minecraft --output-dir ./assets
+```
+
+### Animation Presets
+
+Use `process3d animate --animation preset:<name>` with Tripo's preset library. Common presets include `walk`, `run`, `idle`, `jump`, `slash`, `shoot`, `dance_01` through `dance_06`, `box_01` through `box_03`, `climb`, `swim`, `surf`, `cast_a_spell`, `cheer`, `clap`, `bow`, `wave_goodbye`, `sit`, `fall`, `hurt`, `defeat`, `cry`, and `laugh`.
+
+### Tripo Cost Guide
+
+| Operation | Credits | ~USD |
+|-----------|---------|------|
+| `text_to_model` (`P1`) | 30-40 | $0.30-0.40 |
+| `image_to_model` (`P1`) | 40-50 | $0.40-0.50 |
+| `multiview_to_model` | 40-50 | $0.40-0.50 |
+| `texture_model` | 20-40 | $0.20-0.40 |
+| `animate_rig` | ~25 | $0.25 |
+| `animate_retarget` | ~25 | $0.25 |
+| `convert_model` | 5-10 | $0.05-0.10 |
+| `highpoly_to_lowpoly` | ~30 | $0.30 |
+| `stylize_model` | ~5 | $0.05 |
+
+### Post-Processing Pipeline
+
+Process commands transform existing images via server-side tools (rembg BiRefNet, ImageMagick, Real-ESRGAN).
+
+```bash
+# Remove background (AI-powered, BiRefNet model)
+asset-gateway process remove-bg --input ./character.png --output-dir ./sprites
+
+# Remove background + auto crop to power-of-2 (game engine ready)
+asset-gateway process remove-bg --input ./character.png --smart-crop --output-dir ./sprites
+
+# Smart crop (trim transparent borders)
+asset-gateway process crop --input ./sprite.png --mode tightest --output-dir ./out
+
+# Crop to nearest power-of-2 dimensions
+asset-gateway process crop --input ./sprite.png --mode power_of2 --output-dir ./out
+
+# Resize to exact dimensions
+asset-gateway process resize --input ./img.png --width 512 --height 512 --output-dir ./out
+
+# AI upscale 4x (Real-ESRGAN)
+asset-gateway process upscale --input ./low_res.png --scale 4 --output-dir ./out
+```
+
+**Typical game asset workflow:**
+1. `generate image` → raw image with background
+2. `process remove-bg --smart-crop` → transparent sprite, power-of-2 aligned
+3. Ready for Bevy/Godot/Unity
+
+Operations can also be chained via the API:
+```bash
+curl -X POST https://assets.xiaomao.chat/api/process \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "input": "https://example.com/raw.png",
+    "operations": [
+      {"op": "remove_bg"},
+      {"op": "smart_crop", "mode": "power_of2"},
+      {"op": "resize", "width": 256, "height": 256}
+    ]
+  }'
+```
 
 ### Audio Generation
 
@@ -65,21 +283,32 @@ asset-gateway generate audio --prompt "sword slash impact" --output-dir ./assets
 asset-gateway generate audio --prompt "ambient medieval tavern" --type bgm --duration 30 --output-dir ./assets
 ```
 
+### Text-to-Speech (TTS)
+
+```bash
+# Chinese TTS (default voice: Chinese Mandarin Lyrical Voice)
+asset-gateway generate tts --prompt "你好，欢迎来到我们的世界" --output-dir ./assets
+
+# Specify voice and speed
+asset-gateway generate tts --prompt "Hello world" --voice-id English_radiant_girl --speed 1.2 --output-dir ./assets
+
+# Use turbo model for faster generation
+asset-gateway generate tts --prompt "快速生成语音" --model speech-2.6-turbo --output-dir ./assets
+
+# Language boost for better multilingual handling
+asset-gateway generate tts --prompt "Bonjour le monde" --language-boost French --output-dir ./assets
+```
+
+**Models:** `speech-2.6-hd` (default, high quality), `speech-2.6-turbo` (faster), `speech-02-hd`, `speech-02-turbo`
+**Common Chinese voices:** `Chinese (Mandarin)_Lyrical_Voice`, `Chinese (Mandarin)_News_Anchor`, `Chinese (Mandarin)_Warm_Girl`, `Chinese (Mandarin)_Male_Announcer`
+**Common English voices:** `English_radiant_girl`, `English_expressive_narrator`, `English_Trustworth_Man`
+**Emotions:** `happy`, `sad`, `angry`, `fearful`, `disgusted`, `surprised`, `calm`, `fluent`
+
 ### Video Generation
 
 ```bash
-# Auto-routes to available video provider (jimeng or grok_image)
+# Auto-routes to grok_image video provider
 asset-gateway generate video --prompt "camera slowly panning over a misty mountain" --output-dir ./assets
-```
-
-### 3D Model Generation
-
-```bash
-# Text to 3D
-asset-gateway generate model --prompt "low-poly wooden chair" --output-dir ./assets
-
-# Image to 3D (better results)
-asset-gateway generate model --image "https://example.com/chair-ref.png" --output-dir ./assets
 ```
 
 ### Text / LLM
@@ -109,13 +338,12 @@ Only proceed if the required provider type shows `healthy: true`.
 
 | ID | Asset Types | Speed | Notes |
 |----|------------|-------|-------|
-| `gemini_image` | image | ~15s | Default for images, cost-effective |
-| `gpt_image` | image | ~60-90s | Transparency support, high detail |
-| `jimeng` | image, video | varies | 即梦 + Seedance video |
-| `grok_image` | image, video | varies | Grok imagine |
-| `elevenlabs` | audio | ~2s | SFX and BGM, TTS |
-| `tripo3d` | model3d | ~30-60s | Text/image to 3D |
-| `llm_proxy` | text | ~1-3s | Claude, GPT, Gemini, Grok |
+| `gemini_image` | image | ~15s | Default for images, supports editing via `--input`, ~$0.04/gen |
+| `grok_image` | image, video | varies | Grok imagine, supports editing, ~$0.07/img, ~$0.10/video |
+| `minimax_tts` | tts | ~1-3s | Chinese/multilingual TTS, 300+ voices, ~$0.005/call |
+| `elevenlabs` | audio | ~2s | BGM/SFX sound generation, ~$0.05/call |
+| `tripo3d` | model3d | ~30-90s | text/image/multiview → 3D, plus rig, animate, texture, convert, stylize, reduce; full chain typically tops out around ~$1.00 |
+| `llm_proxy` | text | ~1-3s | Claude/GPT/Gemini/Grok, ~$0.02-0.10/call |
 
 ## Output Contract
 
@@ -128,6 +356,7 @@ Every command returns a JSON envelope:
   "data": {
     "job_id": "uuid",
     "provider_id": "gemini_image",
+    "cost_usd": 0.04,
     "elapsed_ms": 15000,
     "local_path": "./assets/image_1234.png",
     "metadata": { "model": "gemini-3.1-flash-image-preview" }
@@ -135,13 +364,53 @@ Every command returns a JSON envelope:
 }
 ```
 
+Process commands return:
+
+```json
+{
+  "ok": true,
+  "command": "process",
+  "data": {
+    "local_path": "./sprites/processed_20260330_120000.png",
+    "width": 256,
+    "height": 256,
+    "operations_applied": ["remove_bg", "smart_crop:PowerOf2", "resize:256x256"],
+    "elapsed_ms": 39000
+  }
+}
+```
+
+Process3d commands return:
+
+```json
+{
+  "ok": true,
+  "command": "process3d",
+  "data": {
+    "job_id": "uuid",
+    "operation": "convert",
+    "tripo_task_id": "tripo-task-456",
+    "output_url": "https://assets.xiaomao.chat/uploads/model_123.fbx",
+    "local_path": "./assets/model_123.fbx",
+    "metadata": {
+      "source_task_id": "tripo-task-123",
+      "format": "FBX",
+      "quad": true
+    },
+    "elapsed_ms": 5200,
+    "cost_usd": 0.08
+  }
+}
+```
+
 **Key fields to use:**
 - `data.local_path` — the saved file path (use this to reference the generated asset)
-- `data.provider_id` — which provider handled the request
-- `data.elapsed_ms` — generation time in milliseconds
+- `data.provider_id` — which provider handled the request (generate only)
+- `data.metadata.tripo_task_id` — returned by `generate model`; pass this into the first `process3d --task-id`
+- `data.tripo_task_id` — returned by `process3d`; use this to chain the next Tripo pipeline step
+- `data.cost_usd` — estimated cost per generation (e.g. 0.04 for gemini image)
+- `data.elapsed_ms` — generation/processing time in milliseconds
 - `ok` — `true` on success, `false` on failure
-
-Use `--fields local_path,provider_id` to get only specific fields.
 
 ## Error Recovery
 
@@ -159,7 +428,7 @@ ok=false → check error.code:
 
 ## Job Tracking
 
-For long-running tasks (video, 3D), check job history:
+For long-running tasks (video, `generate model`, `process3d`), check job history:
 
 ```bash
 asset-gateway job list --limit 10
@@ -170,7 +439,7 @@ asset-gateway job cancel <job-id>
 
 ## Upload & Reference Assets
 
-Upload local files to get a public URL for use as input to generation commands:
+Upload local files to get a public URL for use as input to generation or process commands:
 
 ```bash
 # Upload a reference image → get URL
@@ -180,14 +449,9 @@ asset-gateway upload file ./reference.png
 # Use the URL for image-to-3D
 asset-gateway generate model --image "https://assets.xiaomao.chat/uploads/uuid.png" --output-dir ./out
 
-# Use for Grok image editing (via generate with input_file)
-asset-gateway generate image --prompt "add a hat" --provider grok_image --output-dir ./out
+# Use uploaded URL as process input
+asset-gateway process remove-bg --input "https://assets.xiaomao.chat/uploads/uuid.png" --output-dir ./sprites
 ```
-
-**Upload → Generate workflow:**
-1. `upload file ./local-image.png` → get `url`
-2. Prepend gateway URL: `https://assets.xiaomao.chat{url}`
-3. Pass full URL to `--image` or provider-specific params
 
 ```bash
 # List uploaded files
@@ -206,6 +470,7 @@ Uploaded files are accessible at `https://assets.xiaomao.chat/uploads/<filename>
 - **Don't force `--provider` unless necessary** — let the gateway auto-route for best availability.
 - **Don't retry blindly on PROVIDER_ERROR** — check `provider health` first to avoid wasting time on a down provider.
 - **Don't use `generate text` for complex multi-turn conversations** — it's for single-shot completions only.
+- **Don't manually remove backgrounds** — use `process remove-bg` for AI-powered removal with BiRefNet.
 
 ## Schema Introspection
 
@@ -214,6 +479,8 @@ For automation, use `describe` to get JSON schemas of all commands:
 ```bash
 asset-gateway describe                 # all commands
 asset-gateway describe generate.image  # specific command
+asset-gateway describe process         # process pipeline schema
+asset-gateway describe process3d       # 3D pipeline schema
 ```
 
 This returns input/output schemas suitable for programmatic tool integration.

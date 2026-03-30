@@ -55,11 +55,7 @@ enum Commands {
         )]
         database_url: String,
         /// Config file path (TOML)
-        #[arg(
-            long,
-            env = "ASSET_GATEWAY_CONFIG",
-            default_value = "config.toml"
-        )]
+        #[arg(long, env = "ASSET_GATEWAY_CONFIG", default_value = "config.toml")]
         config: PathBuf,
     },
 
@@ -70,6 +66,14 @@ enum Commands {
     /// Generate assets
     #[command(subcommand)]
     Generate(client::GenerateCommands),
+
+    /// Post-process images (remove-bg, crop, resize, upscale)
+    #[command(subcommand)]
+    Process(client::ProcessCommands),
+
+    /// Post-process 3D models via Tripo3D
+    #[command(subcommand)]
+    Process3d(client::Process3dCommands),
 
     /// Manage providers
     #[command(subcommand)]
@@ -112,6 +116,12 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Generate(cmd) => {
             client::handle_generate(cmd, &cli.gateway_url).await?;
+        }
+        Commands::Process(cmd) => {
+            client::handle_process(cmd, &cli.gateway_url).await?;
+        }
+        Commands::Process3d(cmd) => {
+            client::handle_process3d(cmd, &cli.gateway_url).await?;
         }
         Commands::Provider(cmd) => {
             client::handle_provider(cmd, &cli.gateway_url).await?;

@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::core::*;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 
 const DEFAULT_MODEL: &str = "gemini-3.1-flash-image-preview";
@@ -40,6 +41,22 @@ impl GeminiImageProvider {
         prompt
     }
 
+    async fn fetch_image_as_base64(&self, input: &str) -> anyhow::Result<String> {
+        if input.starts_with("data:") {
+            let b64 = input
+                .split_once(";base64,")
+                .map(|(_, data)| data.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Invalid data URI: missing ;base64, segment"))?;
+            Ok(b64)
+        } else if input.starts_with("http://") || input.starts_with("https://") {
+            let bytes = self.http.get(input).send().await?.bytes().await?;
+            Ok(STANDARD.encode(&bytes))
+        } else {
+            let bytes = tokio::fs::read(input).await?;
+            Ok(STANDARD.encode(&bytes))
+        }
+    }
+
     fn extract_inline_image(payload: &Value) -> Option<(String, Option<String>)> {
         let parts = payload["candidates"][0]["content"]["parts"].as_array()?;
 
@@ -57,6 +74,10 @@ impl GeminiImageProvider {
 
 #[async_trait::async_trait]
 impl AssetProvider for GeminiImageProvider {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn id(&self) -> &str {
         &self.id
     }
@@ -82,8 +103,18 @@ impl AssetProvider for GeminiImageProvider {
         let prompt = self.build_prompt(req);
         let start = Instant::now();
 
+        let parts = if let Some(ref input_file) = req.input_file {
+            let image_data = self.fetch_image_as_base64(input_file).await?;
+            json!([
+                {"inlineData": {"mimeType": "image/png", "data": image_data}},
+                {"text": prompt}
+            ])
+        } else {
+            json!([{"text": prompt}])
+        };
+
         let body = json!({
-            "contents": [{"parts": [{"text": prompt}]}],
+            "contents": [{"parts": parts}],
             "generationConfig": {
                 "responseModalities": ["IMAGE"],
             }
@@ -121,8 +152,9 @@ impl AssetProvider for GeminiImageProvider {
                 "mime_type": mime_type,
                 "quality": req.quality().map(|q| q.as_str()),
                 "style": req.style(),
+                "editing": req.input_file.is_some(),
             }),
-            cost_usd: None,
+            cost_usd: Some(if req.input_file.is_some() { 0.08 } else { 0.04 }),
             elapsed_ms: start.elapsed().as_millis() as u64,
         })
     }

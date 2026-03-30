@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Search Gateway</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-deep: #0a0c10;
+      --bg-base: #0f1218;
+      --bg-raised: #161b24;
+      --bg-surface: #1c222e;
+      --bg-hover: #232a38;
+      --border: #2a3244;
+      --border-soft: #1e2533;
+      --text-primary: #e8ecf4;
+      --text-secondary: #8892a6;
+      --text-muted: #5a6478;
+      --accent: #3b82f6;
+      --accent-soft: rgba(59,130,246,0.12);
+      --green: #22c55e;
+      --green-soft: rgba(34,197,94,0.12);
+      --red: #ef4444;
+      --red-soft: rgba(239,68,68,0.12);
+      --amber: #f59e0b;
+      --amber-soft: rgba(245,158,11,0.12);
+      --radius: 8px;
+      --radius-lg: 14px;
+      --shadow: 0 24px 60px rgba(0,0,0,0.35);
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Outfit', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(59,130,246,0.12), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(34,197,94,0.08), transparent 24%),
+        var(--bg-deep);
+      color: var(--text-primary);
+      font-family: var(--sans);
+      line-height: 1.5;
+    }
+
+    button, input, select, textarea {
+      font: inherit;
+    }
+
+    .hidden { display: none !important; }
+
+    .login-screen {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .login-card {
+      width: min(460px, 100%);
+      padding: 34px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: rgba(15,18,24,0.94);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .login-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .login-card h1 {
+      font-size: 30px;
+      line-height: 1.1;
+      margin-bottom: 10px;
+      letter-spacing: -0.03em;
+    }
+
+    .login-card p {
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .field,
+    .field-row {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field { margin-bottom: 16px; }
+
+    .field-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-secondary);
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg-raised);
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    textarea {
+      min-height: 180px;
+      resize: vertical;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-raised);
+      color: var(--text-primary);
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      background: var(--bg-hover);
+      border-color: #3a465d;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #2563eb, #3b82f6);
+      border-color: transparent;
+      color: white;
+    }
+
+    .btn-red {
+      background: var(--red-soft);
+      border-color: rgba(239,68,68,0.24);
+      color: var(--red);
+    }
+
+    .error-box,
+    .note-box {
+      padding: 12px 14px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      margin-bottom: 14px;
+    }
+
+    .error-box {
+      display: none;
+      background: var(--red-soft);
+      border: 1px solid rgba(239,68,68,0.2);
+      color: var(--red);
+    }
+
+    .note-box {
+      background: rgba(59,130,246,0.08);
+      border: 1px solid rgba(59,130,246,0.16);
+      color: var(--text-secondary);
+    }
+
+    .app-shell {
+      display: none;
+      min-height: 100vh;
+    }
+
+    .app-shell.active { display: flex; }
+
+    .sidebar {
+      width: 240px;
+      min-height: 100vh;
+      position: fixed;
+      inset: 0 auto 0 0;
+      padding: 20px 14px;
+      border-right: 1px solid var(--border-soft);
+      background: rgba(15,18,24,0.96);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding: 8px;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #2563eb, #22c55e);
+      box-shadow: 0 10px 24px rgba(37,99,235,0.25);
+      font-size: 18px;
+    }
+
+    .brand h2 {
+      font-size: 16px;
+      letter-spacing: -0.02em;
+    }
+
+    .brand p {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .nav-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      color: var(--text-secondary);
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      text-align: left;
+      margin-bottom: 4px;
+    }
+
+    .nav-item.active,
+    .nav-item:hover {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 14px 10px 0;
+      display: grid;
+      gap: 10px;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .main {
+      margin-left: 240px;
+      width: calc(100% - 240px);
+      padding: 26px;
+    }
+
+    .panel {
+      display: none;
+      animation: rise 0.24s ease;
+    }
+
+    .panel.active { display: block; }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+
+    .hero h3 {
+      font-size: 28px;
+      letter-spacing: -0.03em;
+      margin-bottom: 6px;
+    }
+
+    .hero p {
+      color: var(--text-secondary);
+      max-width: 720px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .card,
+    .surface {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: rgba(22,27,36,0.82);
+      box-shadow: var(--shadow);
+    }
+
+    .card {
+      padding: 18px;
+    }
+
+    .card .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .card .value {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+
+    .surface {
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+
+    .surface-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .surface-header h4 {
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .muted {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .answer-box {
+      min-height: 220px;
+      white-space: pre-wrap;
+      font-size: 15px;
+      color: var(--text-primary);
+    }
+
+    .result-list,
+    .provider-grid {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .result-item,
+    .provider-item {
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+    }
+
+    .result-item a {
+      color: #8ec5ff;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .result-item p,
+    .provider-item p {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-top: 6px;
+    }
+
+    .meta,
+    .pill-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--bg-raised);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .pill.ok {
+      background: var(--green-soft);
+      color: var(--green);
+      border-color: rgba(34,197,94,0.24);
+    }
+
+    .pill.fail {
+      background: var(--red-soft);
+      color: var(--red);
+      border-color: rgba(239,68,68,0.24);
+    }
+
+    .code {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .table th,
+    .table td {
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--border-soft);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .table th {
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .table td {
+      color: var(--text-secondary);
+    }
+
+    .table strong { color: var(--text-primary); }
+
+    .empty {
+      padding: 36px 16px;
+      text-align: center;
+      color: var(--text-muted);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+    }
+
+    .toast-stack {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      display: grid;
+      gap: 10px;
+      z-index: 1000;
+    }
+
+    .toast {
+      min-width: 240px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(22,27,36,0.95);
+      box-shadow: var(--shadow);
+    }
+
+    .toast.ok { border-color: rgba(34,197,94,0.24); }
+    .toast.error { border-color: rgba(239,68,68,0.24); }
+
+    @media (max-width: 960px) {
+      .sidebar {
+        position: static;
+        width: 100%;
+        min-height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--border-soft);
+      }
+
+      .app-shell.active {
+        display: block;
+      }
+
+      .main {
+        width: 100%;
+        margin-left: 0;
+        padding: 18px;
+      }
+
+      .card-grid,
+      .field-row {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-screen" id="loginScreen">
+    <div class="login-card">
+      <div class="login-badge">Gateway Admin</div>
+      <h1>AI Search Gateway</h1>
+      <p>Inspect providers, run live searches, edit TOML config, and watch request logs from one control surface.</p>
+      <div class="error-box" id="loginError"></div>
+      <div class="note-box" id="loginNote">If the gateway has no token configured, this panel opens directly.</div>
+      <div class="field">
+        <label for="loginToken">Gateway Token</label>
+        <input id="loginToken" type="password" placeholder="Paste gateway_token" />
+      </div>
+      <button class="btn btn-primary" id="loginBtn">Enter Admin Panel</button>
+    </div>
+  </div>
+
+  <div class="app-shell" id="appShell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">S</div>
+        <div>
+          <h2>AI Search</h2>
+          <p>gateway console</p>
+        </div>
+      </div>
+
+      <button class="nav-item active" data-page="search">Search Lab</button>
+      <button class="nav-item" data-page="providers">Providers</button>
+      <button class="nav-item" data-page="config">Config</button>
+      <button class="nav-item" data-page="logs">Logs</button>
+
+      <div class="sidebar-footer">
+        <div>
+          <div id="authStatus">Auth unknown</div>
+          <div class="code" id="gatewayVersion">version</div>
+        </div>
+        <button class="btn btn-red" id="logoutBtn">Clear Token</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="panel active" id="page-search">
+        <div class="hero">
+          <div>
+            <h3>Search Lab</h3>
+            <p>Drive the gateway in-place, compare modes, and inspect the exact source blend returned by the search engine.</p>
+          </div>
+          <div class="hero-actions">
+            <button class="btn" id="loadModelsBtn">Refresh Models</button>
+            <button class="btn" id="refreshHealthBtn">Refresh Health</button>
+          </div>
+        </div>
+
+        <div class="card-grid">
+          <div class="card"><div class="label">Mode</div><div class="value" id="statMode">-</div></div>
+          <div class="card"><div class="label">Tokens</div><div class="value" id="statTokens">0</div></div>
+          <div class="card"><div class="label">Sources</div><div class="value" id="statSources">0</div></div>
+          <div class="card"><div class="label">Results</div><div class="value" id="statResults">0</div></div>
+        </div>
+
+        <div class="surface">
+          <div class="surface-header">
+            <div>
+              <h4>Run Search</h4>
+              <div class="muted">Supports fast, deep, and answer orchestration modes.</div>
+            </div>
+          </div>
+          <div class="field">
+            <label for="searchQuery">Query</label>
+            <textarea id="searchQuery" placeholder="What changed in the latest Rust release notes?"></textarea>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="searchMode">Mode</label>
+              <select id="searchMode">
+                <option value="fast">Fast</option>
+                <option value="deep">Deep</option>
+                <option value="answer">Answer</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="searchModel">Model</label>
+              <select id="searchModel">
+                <option value="">Use configured default</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="searchSplit">Split</label>
+              <input id="searchSplit" type="number" min="1" value="1" />
+            </div>
+            <div class="field">
+              <label for="searchNum">Desired Results</label>
+              <input id="searchNum" type="number" min="1" value="5" />
+            </div>
+          </div>
+          <div class="hero-actions">
+            <button class="btn btn-primary" id="runSearchBtn">Run Search</button>
+            <button class="btn" id="clearSearchBtn">Clear</button>
+          </div>
+        </div>
+
+        <div class="surface">
+          <div class="surface-header">
+            <div>
+              <h4>Answer</h4>
+              <div class="muted">Rendered response from the gateway</div>
+            </div>
+          </div>
+          <div class="answer-box" id="searchAnswer">Run a query to inspect the synthesized response.</div>
+          <div class="result-list" id="sourceResults"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="page-providers">
+        <div class="hero">
+          <div>
+            <h3>Providers</h3>
+            <p>Check which upstream search providers are configured and whether the gateway currently considers them healthy.</p>
+          </div>
+          <div class="hero-actions">
+            <button class="btn" id="reloadProvidersBtn">Reload</button>
+            <button class="btn btn-primary" id="providerHealthBtn">Run Health Check</button>
+          </div>
+        </div>
+        <div class="provider-grid" id="providersList"></div>
+      </section>
+
+      <section class="panel" id="page-config">
+        <div class="hero">
+          <div>
+            <h3>Config</h3>
+            <p>Edit the gateway TOML directly. Saving rewrites the config file and refreshes the in-memory search engine.</p>
+          </div>
+          <div class="hero-actions">
+            <button class="btn" id="reloadConfigBtn">Reload Config</button>
+            <button class="btn btn-primary" id="saveConfigBtn">Save Config</button>
+          </div>
+        </div>
+        <div class="surface">
+          <div class="surface-header">
+            <div>
+              <h4>Summary</h4>
+              <div class="muted" id="configPath">config path</div>
+            </div>
+          </div>
+          <div class="pill-row" id="configSummary"></div>
+        </div>
+        <div class="surface">
+          <div class="surface-header">
+            <div>
+              <h4>TOML Editor</h4>
+              <div class="muted">Protected by gateway token when auth is enabled.</div>
+            </div>
+          </div>
+          <textarea id="configEditor" spellcheck="false"></textarea>
+        </div>
+      </section>
+
+      <section class="panel" id="page-logs">
+        <div class="hero">
+          <div>
+            <h3>Logs</h3>
+            <p>Recent in-memory search records. v1 keeps the latest 1000 requests in process memory.</p>
+          </div>
+          <div class="hero-actions">
+            <select id="logLimit">
+              <option value="20">20 rows</option>
+              <option value="50" selected>50 rows</option>
+              <option value="100">100 rows</option>
+            </select>
+            <button class="btn btn-primary" id="reloadLogsBtn">Refresh Logs</button>
+          </div>
+        </div>
+        <div class="surface">
+          <div id="logsTable"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast-stack" id="toasts"></div>
+
+  <script>
+    const S = {
+      token: getCookie("ai_search_gateway_token") || "",
+      authRequired: true,
+      page: "search",
+      version: "",
+      models: [],
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function toast(message, kind = "") {
+      const el = document.createElement("div");
+      el.className = `toast ${kind}`;
+      el.textContent = message;
+      $("toasts").appendChild(el);
+      setTimeout(() => el.remove(), 3500);
+    }
+
+    function getCookie(name) {
+      const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+      return match ? decodeURIComponent(match[1]) : "";
+    }
+
+    function setToken(token) {
+      S.token = token;
+      document.cookie = `ai_search_gateway_token=${encodeURIComponent(token)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+    }
+
+    function clearToken() {
+      S.token = "";
+      document.cookie = "ai_search_gateway_token=; path=/; max-age=0; SameSite=Lax";
+    }
+
+    async function api(path, opts = {}, auth = true) {
+      const headers = { ...(opts.headers || {}) };
+      if (!(opts.body instanceof FormData) && !headers["Content-Type"]) {
+        headers["Content-Type"] = "application/json";
+      }
+      if (auth && S.token) {
+        headers.Authorization = `Bearer ${S.token}`;
+      }
+      const res = await fetch(path, { ...opts, headers });
+      const body = await res.json().catch(() => ({ ok: false, error: { message: `HTTP ${res.status}` } }));
+      if (!res.ok || !body.ok) {
+        if ((res.status === 401 || res.status === 403) && S.authRequired) {
+          clearToken();
+          showLogin(body?.error?.message || "Authentication failed");
+        }
+        throw new Error(body?.error?.message || `HTTP ${res.status}`);
+      }
+      return body.data;
+    }
+
+    function showLogin(message = "") {
+      $("loginScreen").classList.remove("hidden");
+      $("appShell").classList.remove("active");
+      const el = $("loginError");
+      if (message) {
+        el.style.display = "block";
+        el.textContent = message;
+      } else {
+        el.style.display = "none";
+        el.textContent = "";
+      }
+      $("loginNote").textContent = S.authRequired
+        ? "Enter the configured gateway token to unlock admin APIs."
+        : "No gateway token is configured. This panel can be opened directly.";
+    }
+
+    function enterApp() {
+      $("loginScreen").classList.add("hidden");
+      $("appShell").classList.add("active");
+      $("authStatus").textContent = S.authRequired ? "Token auth enabled" : "Open admin mode";
+      $("gatewayVersion").textContent = S.version || "version";
+      navigate(S.page);
+      refreshShared();
+    }
+
+    function navigate(page) {
+      S.page = page;
+      document.querySelectorAll(".nav-item").forEach((button) => {
+        button.classList.toggle("active", button.dataset.page === page);
+      });
+      document.querySelectorAll(".panel").forEach((panel) => {
+        panel.classList.toggle("active", panel.id === `page-${page}`);
+      });
+      if (page === "providers") loadProviders().catch((error) => toast(error.message, "error"));
+      if (page === "config") loadConfig().catch((error) => toast(error.message, "error"));
+      if (page === "logs") loadLogs().catch((error) => toast(error.message, "error"));
+    }
+
+    async function init() {
+      try {
+        const health = await api("/health", {}, false);
+        S.authRequired = !!health.auth_required;
+        S.version = health.version || "";
+        if (!S.authRequired || S.token) {
+          enterApp();
+        } else {
+          showLogin();
+        }
+      } catch (error) {
+        showLogin(error.message);
+      }
+    }
+
+    async function login() {
+      const token = $("loginToken").value.trim();
+      if (!token) {
+        showLogin("Gateway token required");
+        return;
+      }
+      setToken(token);
+      try {
+        await api("/api/models");
+        enterApp();
+      } catch (error) {
+        clearToken();
+        showLogin(error.message);
+      }
+    }
+
+    async function refreshShared() {
+      await Promise.all([
+        loadModels().catch(() => {}),
+        loadLogs().catch(() => {}),
+        loadProviders().catch(() => {}),
+      ]);
+    }
+
+    async function loadModels() {
+      const data = await api("/api/models");
+      S.models = data.models || [];
+      $("searchMode").value = data.current?.default_mode || "fast";
+      const select = $("searchModel");
+      const current = select.value;
+      select.innerHTML = '<option value="">Use configured default</option>';
+      for (const model of S.models) {
+        const option = document.createElement("option");
+        option.value = model;
+        option.textContent = model;
+        select.appendChild(option);
+      }
+      if (current) {
+        select.value = current;
+      }
+    }
+
+    async function runSearch() {
+      const query = $("searchQuery").value.trim();
+      if (!query) {
+        toast("Search query required", "error");
+        return;
+      }
+      $("runSearchBtn").disabled = true;
+      $("runSearchBtn").textContent = "Searching...";
+      try {
+        const data = await api("/api/search", {
+          method: "POST",
+          body: JSON.stringify({
+            query,
+            mode: $("searchMode").value,
+            model: $("searchModel").value || null,
+            split: Number($("searchSplit").value || 1),
+            num: Number($("searchNum").value || 5),
+          }),
+        });
+
+        $("searchAnswer").textContent = data.content || "";
+        $("statMode").textContent = data.mode || "-";
+        $("statTokens").textContent = String(data.tokens || 0);
+        $("statSources").textContent = String((data.providers || []).length);
+        $("statResults").textContent = String((data.results || []).length);
+
+        const resultContainer = $("sourceResults");
+        const results = data.results || [];
+        if (!results.length) {
+          resultContainer.innerHTML = '<div class="empty">No structured result rows returned.</div>';
+        } else {
+          resultContainer.innerHTML = results.map((item) => {
+            const title = escapeHtml(item.title || item.url || 'Untitled result');
+            const url = escapeHtml(item.url || '#');
+            const snippet = escapeHtml(item.snippet || '');
+            const source = escapeHtml(item.source || 'unknown');
+            const score = escapeHtml(item.score ?? '-');
+            const date = escapeHtml(item.published_date || 'date n/a');
+            return `
+              <div class="result-item">
+                <a href="${url}" target="_blank" rel="noreferrer noopener">${title}</a>
+                <p>${snippet}</p>
+                <div class="meta">
+                  <span class="pill">${source}</span>
+                  <span class="pill">score ${score}</span>
+                  <span class="pill">${date}</span>
+                </div>
+              </div>
+            `;
+          }).join("");
+        }
+        toast("Search completed", "ok");
+        loadLogs().catch(() => {});
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        $("runSearchBtn").disabled = false;
+        $("runSearchBtn").textContent = "Run Search";
+      }
+    }
+
+    async function loadProviders() {
+      const data = await api("/api/providers");
+      const providers = data.providers || [];
+      const container = $("providersList");
+      if (!providers.length) {
+        container.innerHTML = '<div class="empty">No provider metadata available.</div>';
+        return;
+      }
+      container.innerHTML = providers.map((provider) => `
+        <div class="provider-item">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+            <div>
+              <strong>${escapeHtml(provider.name)}</strong>
+              <div class="code">${escapeHtml(provider.id)}</div>
+            </div>
+            <div class="pill-row">
+              <span class="pill ${provider.configured ? 'ok' : 'fail'}">${provider.configured ? 'configured' : 'missing key'}</span>
+              <span class="pill ${provider.healthy ? 'ok' : 'fail'}">${provider.healthy ? 'healthy' : 'unhealthy'}</span>
+            </div>
+          </div>
+          <p>${escapeHtml(provider.details || '')}</p>
+        </div>
+      `).join("");
+    }
+
+    async function runProviderHealth() {
+      const data = await api("/api/providers/health");
+      toast(`Checked ${data.providers?.length || 0} providers`, "ok");
+      loadProviders().catch(() => {});
+    }
+
+    async function loadConfig() {
+      const data = await api("/api/config");
+      $("configPath").textContent = data.path || "config path";
+      $("configEditor").value = data.config || "";
+      const summary = data.summary || {};
+      $("configSummary").innerHTML = [
+        `default mode: ${summary.default_mode || '-'}`,
+        `search model: ${summary.search_model || '-'}`,
+        `analysis model: ${summary.analysis_model || '-'}`,
+        `split: ${summary.max_split ?? '-'}`,
+        `timeout: ${summary.timeout_secs ?? '-'}s`,
+        `proxy key: ${summary.proxy_key_configured ? 'yes' : 'no'}`,
+        `exa key: ${summary.exa_key_configured ? 'yes' : 'no'}`,
+        `tavily key: ${summary.tavily_key_configured ? 'yes' : 'no'}`,
+        `token: ${summary.gateway_token_configured ? 'enabled' : 'open'}`,
+      ].map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join("");
+    }
+
+    async function saveConfig() {
+      try {
+        await api("/api/config", {
+          method: "PUT",
+          headers: { "Content-Type": "text/plain" },
+          body: $("configEditor").value,
+        });
+        toast("Config saved and engine refreshed", "ok");
+        loadConfig().catch(() => {});
+        loadProviders().catch(() => {});
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    }
+
+    async function loadLogs() {
+      const limit = Number($("logLimit").value || 50);
+      const data = await api(`/api/jobs?limit=${limit}`);
+      const rows = data.jobs || [];
+      const table = $("logsTable");
+      if (!rows.length) {
+        table.innerHTML = '<div class="empty">No search logs recorded yet.</div>';
+        return;
+      }
+
+      table.innerHTML = `
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Query</th>
+              <th>Mode</th>
+              <th>Sources</th>
+              <th>Tokens</th>
+              <th>Duration</th>
+              <th>Status</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td><strong>${escapeHtml(row.query || '')}</strong><div class="code">${escapeHtml(row.model || '')}</div></td>
+                <td>${escapeHtml(row.mode || '-')}</td>
+                <td>${escapeHtml(((row.sources_used || []).join(', ')) || '—')}</td>
+                <td>${escapeHtml(row.tokens ?? 0)}</td>
+                <td>${escapeHtml(row.duration_ms ?? 0)} ms</td>
+                <td><span class="pill ${row.status === 'completed' ? 'ok' : 'fail'}">${escapeHtml(row.status || '-')}</span></td>
+                <td>${escapeHtml(row.created_at || '')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    $("loginBtn").addEventListener("click", login);
+    $("logoutBtn").addEventListener("click", () => {
+      clearToken();
+      if (S.authRequired) {
+        showLogin("Token cleared");
+      } else {
+        enterApp();
+      }
+    });
+    $("runSearchBtn").addEventListener("click", runSearch);
+    $("clearSearchBtn").addEventListener("click", () => {
+      $("searchQuery").value = "";
+      $("searchAnswer").textContent = "Run a query to inspect the synthesized response.";
+      $("sourceResults").innerHTML = "";
+    });
+    $("reloadProvidersBtn").addEventListener("click", () => loadProviders().catch((error) => toast(error.message, "error")));
+    $("providerHealthBtn").addEventListener("click", () => runProviderHealth().catch((error) => toast(error.message, "error")));
+    $("reloadConfigBtn").addEventListener("click", () => loadConfig().catch((error) => toast(error.message, "error")));
+    $("saveConfigBtn").addEventListener("click", saveConfig);
+    $("reloadLogsBtn").addEventListener("click", () => loadLogs().catch((error) => toast(error.message, "error")));
+    $("loadModelsBtn").addEventListener("click", () => loadModels().catch((error) => toast(error.message, "error")));
+    $("refreshHealthBtn").addEventListener("click", async () => {
+      try {
+        const data = await api("/health", {}, false);
+        toast(`Gateway ${data.status} · auth ${data.auth_required ? 'on' : 'off'}`, "ok");
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    });
+    $("logLimit").addEventListener("change", () => loadLogs().catch((error) => toast(error.message, "error")));
+    document.querySelectorAll(".nav-item").forEach((button) => {
+      button.addEventListener("click", () => navigate(button.dataset.page));
+    });
+
+    init();
+  </script>
+</body>
+</html>

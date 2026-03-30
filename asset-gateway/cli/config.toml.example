@@ -15,6 +15,7 @@ key = ""
 [tripo3d]
 key = ""
 
-[jimeng]
+# MiniMax TTS — falls back to [proxy] url/key if not set
+[minimax]
 url = ""
 key = ""

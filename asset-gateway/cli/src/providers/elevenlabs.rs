@@ -23,6 +23,7 @@ impl ElevenLabsProvider {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_base_url(mut self, base_url: String) -> Self {
         self.base_url = base_url;
         self
@@ -125,6 +126,10 @@ impl ElevenLabsProvider {
 
 #[async_trait::async_trait]
 impl AssetProvider for ElevenLabsProvider {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn id(&self) -> &str {
         &self.id
     }
@@ -172,7 +177,7 @@ impl AssetProvider for ElevenLabsProvider {
                 "content_type": content_type.unwrap_or_else(|| "audio/mpeg".to_string()),
                 "duration_seconds": req.params.get("duration_seconds"),
             }),
-            cost_usd: None,
+            cost_usd: Some(0.05),
             elapsed_ms: start.elapsed().as_millis() as u64,
         })
     }

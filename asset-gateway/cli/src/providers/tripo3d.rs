@@ -1,46 +1,234 @@
+use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::core::*;
-use reqwest::StatusCode;
-use serde_json::{json, Value};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use reqwest::{multipart, StatusCode};
+use serde::Serialize;
+use serde_json::{json, Map, Value};
 
-/// Tripo3D provider — image/text to 3D model generation.
-pub struct Tripo3dProvider {
-    pub id: String,
-    pub api_key: String,
-    pub base_url: String,
+use crate::core::*;
+
+const DEFAULT_TIMEOUT_SECS: u64 = 300;
+const DEFAULT_MODEL_VERSION: &str = "P1-20260311";
+const MAX_POLL_INTERVAL: Duration = Duration::from_secs(20);
+const DEFAULT_TRIPO_COST_USD: f64 = 0.20;
+
+#[derive(Clone)]
+pub struct TripoClient {
+    api_key: String,
+    base_url: String,
     http: reqwest::Client,
 }
 
-impl Tripo3dProvider {
+impl TripoClient {
     pub fn new(api_key: String) -> Self {
         Self {
-            id: "tripo3d".into(),
             api_key,
             base_url: "https://api.tripo3d.ai/v2/openapi".into(),
             http: reqwest::Client::new(),
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url;
         self
     }
 
-    /// Known top-level Tripo3D API fields (not passed through from params).
-    const RESERVED_PARAMS: &[&str] = &[
-        "timeout_seconds", "style", "quality", "transparent", "stream",
+    fn auth_header(&self) -> String {
+        format!("Bearer {}", self.api_key)
+    }
+
+    pub async fn create_task(&self, body: Value) -> anyhow::Result<String> {
+        let resp = self
+            .http
+            .post(format!("{}/task", self.base_url))
+            .header("Authorization", self.auth_header())
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let text = resp.text().await?;
+
+        if !status.is_success() {
+            anyhow::bail!("Tripo3D task creation returned {}: {}", status, text);
+        }
+
+        let payload: Value = serde_json::from_str(&text)?;
+        payload["data"]["task_id"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| anyhow::anyhow!("missing task_id in Tripo3D response"))
+    }
+
+    pub async fn poll_task(&self, task_id: &str, timeout_secs: u64) -> anyhow::Result<Value> {
+        let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+        let mut poll_interval = Duration::from_secs(2);
+
+        loop {
+            if Instant::now() >= deadline {
+                anyhow::bail!("Tripo3D task {} timed out after {}s", task_id, timeout_secs);
+            }
+
+            tokio::time::sleep(poll_interval).await;
+
+            let resp = self
+                .http
+                .get(format!("{}/task/{}", self.base_url, task_id))
+                .header("Authorization", self.auth_header())
+                .send()
+                .await?;
+
+            let status = resp.status();
+            let text = resp.text().await?;
+
+            if !status.is_success() {
+                if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
+                    poll_interval = (poll_interval * 2).min(MAX_POLL_INTERVAL);
+                    continue;
+                }
+
+                anyhow::bail!(
+                    "Tripo3D polling returned {} for task {}: {}",
+                    status,
+                    task_id,
+                    text
+                );
+            }
+
+            let payload: Value = serde_json::from_str(&text)?;
+            let task_status = payload["data"]["status"]
+                .as_str()
+                .unwrap_or("unknown")
+                .to_ascii_lowercase();
+
+            match task_status.as_str() {
+                "success" | "completed" | "succeeded" => return Ok(payload),
+                "failed" | "error" | "canceled" | "cancelled" => {
+                    anyhow::bail!(
+                        "Tripo3D task {} failed: {}",
+                        task_id,
+                        extract_error_message(&payload)
+                    );
+                }
+                _ => {
+                    poll_interval = (poll_interval * 2).min(MAX_POLL_INTERVAL);
+                }
+            }
+        }
+    }
+
+    pub async fn upload_file(&self, file_bytes: &[u8], file_type: &str) -> anyhow::Result<String> {
+        for endpoint in ["upload/sts", "upload"] {
+            let part = multipart::Part::bytes(file_bytes.to_vec())
+                .file_name(format!("upload.{}", normalize_file_type(file_type)))
+                .mime_str(mime_for_file_type(file_type))?;
+            let form = multipart::Form::new().part("file", part);
+
+            let resp = self
+                .http
+                .post(format!("{}/{}", self.base_url, endpoint))
+                .header("Authorization", self.auth_header())
+                .multipart(form)
+                .send()
+                .await?;
+
+            let status = resp.status();
+            let text = resp.text().await?;
+
+            if status == StatusCode::NOT_FOUND || status == StatusCode::METHOD_NOT_ALLOWED {
+                continue;
+            }
+
+            if !status.is_success() {
+                anyhow::bail!("Tripo3D file upload returned {}: {}", status, text);
+            }
+
+            let payload: Value = serde_json::from_str(&text)?;
+            if let Some(token) = payload["data"]["image_token"]
+                .as_str()
+                .or_else(|| payload["data"]["file_token"].as_str())
+            {
+                return Ok(token.to_string());
+            }
+
+            anyhow::bail!("Tripo3D upload response did not include an image token");
+        }
+
+        anyhow::bail!("Tripo3D upload endpoint not found")
+    }
+
+    pub async fn health_check(&self) -> anyhow::Result<HealthStatus> {
+        let start = Instant::now();
+        let resp = self
+            .http
+            .get(format!("{}/user/balance", self.base_url))
+            .header("Authorization", self.auth_header())
+            .send()
+            .await;
+
+        match resp {
+            Ok(r) => Ok(HealthStatus {
+                healthy: r.status().is_success(),
+                latency_ms: Some(start.elapsed().as_millis() as u64),
+                message: None,
+            }),
+            Err(e) => Ok(HealthStatus {
+                healthy: false,
+                latency_ms: Some(start.elapsed().as_millis() as u64),
+                message: Some(e.to_string()),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Process3dResponse {
+    pub output_url: Option<String>,
+    pub metadata: Value,
+    pub elapsed_ms: u64,
+}
+
+/// Tripo3D provider — image/text to 3D model generation and post-processing.
+pub struct Tripo3dProvider {
+    pub id: String,
+    client: TripoClient,
+}
+
+impl Tripo3dProvider {
+    pub fn new(api_key: String) -> Self {
+        Self {
+            id: "tripo3d".into(),
+            client: TripoClient::new(api_key),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn with_base_url(mut self, url: String) -> Self {
+        self.client = self.client.with_base_url(url);
+        self
+    }
+
+    const RESERVED_GENERATE_PARAMS: &[&str] = &[
+        "timeout_seconds",
+        "quality",
+        "transparent",
+        "stream",
         "output_format",
+        "multiview",
     ];
 
-    fn build_task_body(req: &GenerateRequest) -> anyhow::Result<Value> {
-        let mut body = if let Some(input_file) = req.input_file.as_ref() {
+    async fn build_task_body(&self, req: &GenerateRequest) -> anyhow::Result<Value> {
+        let mut body = if let Some(multiview) = req.params.get("multiview") {
+            json!({
+                "type": "multiview_to_model",
+                "files": self.build_multiview_files(multiview).await?,
+            })
+        } else if let Some(input_file) = req.input_file.as_ref() {
             json!({
                 "type": "image_to_model",
-                "file": {
-                    "type": "url",
-                    "url": input_file,
-                }
+                "file": self.build_file_input(input_file).await?,
             })
         } else if let Some(prompt) = req.prompt.as_ref() {
             json!({
@@ -48,41 +236,253 @@ impl Tripo3dProvider {
                 "prompt": prompt,
             })
         } else {
-            anyhow::bail!("Tripo3D requires either input_file or prompt");
+            anyhow::bail!("Tripo3D requires either input_file, multiview, or prompt");
         };
 
-        // Tripo3D uses `model_version`, not `model`
-        if let Some(model) = req.model.as_ref() {
-            body["model_version"] = json!(model);
+        let params = req.params.as_object();
+        body["model_version"] = json!(self.model_version(req));
+        body["pbr"] = json!(bool_param(params, "pbr").unwrap_or(true));
+        body["texture"] = json!(bool_param(params, "texture").unwrap_or(true));
+
+        if let Some(face_limit) = u64_param(params, "face_limit") {
+            validate_face_limit(face_limit)?;
+            body["face_limit"] = json!(face_limit);
         }
 
-        // Pass through extra params (e.g. face_limit, texture, pbr) at top level
-        if let Some(params_obj) = req.params.as_object() {
-            for (k, v) in params_obj {
-                if !Self::RESERVED_PARAMS.contains(&k.as_str()) {
-                    body[k] = v.clone();
+        copy_string_param(&mut body, params, "texture_quality")?;
+        copy_bool_param(&mut body, params, "auto_size")?;
+        copy_string_param(&mut body, params, "negative_prompt")?;
+        copy_string_param(&mut body, params, "style")?;
+
+        if let Some(params_obj) = params {
+            let body_obj = body
+                .as_object_mut()
+                .ok_or_else(|| anyhow::anyhow!("Tripo3D request body must be a JSON object"))?;
+
+            for (key, value) in params_obj {
+                if Self::RESERVED_GENERATE_PARAMS.contains(&key.as_str())
+                    || body_obj.contains_key(key)
+                {
+                    continue;
                 }
+                body_obj.insert(key.clone(), value.clone());
             }
         }
 
         Ok(body)
     }
 
+    async fn build_multiview_files(&self, multiview: &Value) -> anyhow::Result<Vec<Value>> {
+        let Some(entries) = multiview.as_array() else {
+            anyhow::bail!("multiview must be an array of 4 image inputs");
+        };
+
+        if entries.len() != 4 {
+            anyhow::bail!("multiview must contain exactly 4 image inputs: front,left,back,right");
+        }
+
+        let mut files = Vec::with_capacity(4);
+        for entry in entries {
+            let Some(input) = entry.as_str() else {
+                anyhow::bail!("multiview entries must be strings");
+            };
+            files.push(self.build_file_input(input).await?);
+        }
+        Ok(files)
+    }
+
+    async fn build_file_input(&self, input: &str) -> anyhow::Result<Value> {
+        if input.starts_with("http://") || input.starts_with("https://") {
+            let file_type = infer_file_type(input, None);
+            return Ok(json!({
+                "type": normalize_file_type(&file_type),
+                "url": input,
+            }));
+        }
+
+        let (bytes, file_type) = if input.starts_with("data:") {
+            decode_data_uri(input)?
+        } else if Path::new(input).exists() {
+            let bytes = tokio::fs::read(input).await?;
+            let file_type = infer_file_type(input, None);
+            (bytes, file_type)
+        } else {
+            anyhow::bail!(
+                "unsupported Tripo3D file input: expected URL, data URI, or local file path"
+            );
+        };
+
+        let token = self.client.upload_file(&bytes, &file_type).await?;
+        Ok(json!({
+            "type": normalize_file_type(&file_type),
+            "file_token": token,
+        }))
+    }
+
+    fn model_version(&self, req: &GenerateRequest) -> String {
+        req.params
+            .get("model_version")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| req.model.clone())
+            .unwrap_or_else(|| DEFAULT_MODEL_VERSION.to_string())
+    }
+
+    fn output_metadata(task_id: &str, payload: &Value, operation: Option<&str>) -> Value {
+        let output = payload["data"]["output"].clone();
+        let rendered_image = output.get("rendered_image").cloned().unwrap_or(Value::Null);
+        let mut metadata = json!({
+            "tripo_task_id": task_id,
+            "task_id": task_id,
+            "status": payload["data"]["status"].clone(),
+            "rendered_image": rendered_image,
+            "output": output,
+        });
+
+        if let Some(operation) = operation {
+            metadata["operation"] = json!(operation);
+        }
+
+        metadata
+    }
+
     /// Extract the model download URL from the completed task response.
     /// Tripo3D response: `data.output.model` or `data.output.pbr_model` (URL strings).
-    fn extract_model_url(payload: &Value) -> Option<String> {
+    pub fn extract_model_url(payload: &Value) -> Option<String> {
         let output = &payload["data"]["output"];
-        // Prefer `model`, then `pbr_model`, then `base_model`
         output["model"]
             .as_str()
             .or_else(|| output["pbr_model"].as_str())
             .or_else(|| output["base_model"].as_str())
             .map(str::to_string)
     }
+
+    fn build_process_task_body(
+        &self,
+        tripo_task_id: &str,
+        operation: &str,
+        params: &Value,
+    ) -> anyhow::Result<Value> {
+        let params = params
+            .as_object()
+            .cloned()
+            .unwrap_or_else(Map::<String, Value>::new);
+
+        let mut body = json!({
+            "original_model_task_id": tripo_task_id,
+        });
+
+        match operation {
+            "convert" => {
+                body["type"] = json!("convert_model");
+                body["format"] = json!(required_string(&params, "format")?);
+                copy_allowed_fields(
+                    &mut body,
+                    &params,
+                    &[
+                        "quad",
+                        "face_limit",
+                        "flatten_bottom",
+                        "texture_size",
+                        "pivot_to_center_bottom",
+                        "scale_factor",
+                        "with_animation",
+                        "export_orientation",
+                        "fbx_preset",
+                    ],
+                )?;
+            }
+            "texture" => {
+                body["type"] = json!("texture_model");
+                if let Some(texture_prompt) = params.get("texture_prompt") {
+                    body["texture_prompt"] = texture_prompt.clone();
+                } else if let Some(prompt) = optional_string(&params, "prompt") {
+                    body["texture_prompt"] = json!({ "text": prompt });
+                }
+                copy_allowed_fields(
+                    &mut body,
+                    &params,
+                    &["pbr", "texture_quality", "texture_seed"],
+                )?;
+            }
+            "rig" => {
+                body["type"] = json!("animate_rig");
+                copy_allowed_fields(&mut body, &params, &["out_format", "spec", "model_version"])?;
+            }
+            "animate" => {
+                body["type"] = json!("animate_retarget");
+                copy_allowed_fields(
+                    &mut body,
+                    &params,
+                    &[
+                        "animation",
+                        "animations",
+                        "out_format",
+                        "bake_animation",
+                        "animate_in_place",
+                    ],
+                )?;
+                if body.get("animation").is_none() && body.get("animations").is_none() {
+                    anyhow::bail!("animate requires animation or animations");
+                }
+            }
+            "reduce" => {
+                body["type"] = json!("highpoly_to_lowpoly");
+                copy_allowed_fields(&mut body, &params, &["quad", "face_limit"])?;
+            }
+            "stylize" => {
+                body["type"] = json!("stylize_model");
+                body["style"] = json!(required_string(&params, "style")?);
+                copy_allowed_fields(&mut body, &params, &["block_size"])?;
+            }
+            "segment" => {
+                body["type"] = json!("mesh_segmentation");
+            }
+            "prerigcheck" => {
+                body["type"] = json!("animate_prerigcheck");
+            }
+            _ => anyhow::bail!("unsupported Tripo3D operation: {}", operation),
+        }
+
+        if let Some(face_limit) = body.get("face_limit").and_then(Value::as_u64) {
+            validate_face_limit(face_limit)?;
+        }
+
+        Ok(body)
+    }
+
+    pub async fn process3d(
+        &self,
+        tripo_task_id: &str,
+        operation: &str,
+        params: &Value,
+    ) -> anyhow::Result<Process3dResponse> {
+        let start = Instant::now();
+        let body = self.build_process_task_body(tripo_task_id, operation, params)?;
+        let timeout_secs = params
+            .get("timeout_seconds")
+            .and_then(Value::as_u64)
+            .unwrap_or(DEFAULT_TIMEOUT_SECS);
+
+        let task_id = self.client.create_task(body).await?;
+        let payload = self.client.poll_task(&task_id, timeout_secs).await?;
+
+        Ok(Process3dResponse {
+            output_url: Self::extract_model_url(&payload),
+            metadata: Self::output_metadata(&task_id, &payload, Some(operation)),
+            elapsed_ms: start.elapsed().as_millis() as u64,
+        })
+    }
 }
 
 #[async_trait::async_trait]
 impl AssetProvider for Tripo3dProvider {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn id(&self) -> &str {
         &self.id
     }
@@ -105,138 +505,269 @@ impl AssetProvider for Tripo3dProvider {
 
     async fn generate(&self, req: &GenerateRequest) -> anyhow::Result<GenerateResponse> {
         let start = Instant::now();
-        let body = Self::build_task_body(req)?;
-
-        let create_resp = self
-            .http
-            .post(format!("{}/task", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&body)
-            .send()
-            .await?;
-
-        let create_status = create_resp.status();
-        let create_text = create_resp.text().await?;
-
-        if !create_status.is_success() {
-            anyhow::bail!(
-                "Tripo3D task creation returned {}: {}",
-                create_status,
-                create_text
-            );
-        }
-
-        let create_json: Value = serde_json::from_str(&create_text)?;
-        let task_id = create_json["data"]["task_id"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("missing task_id in response"))?
-            .to_string();
-
+        let body = self.build_task_body(req).await?;
         let timeout_secs = req
             .params
             .get("timeout_seconds")
             .and_then(Value::as_u64)
-            .unwrap_or(300);
-        let deadline = Instant::now() + Duration::from_secs(timeout_secs);
-        let mut poll_interval = Duration::from_secs(2);
+            .unwrap_or(DEFAULT_TIMEOUT_SECS);
 
-        loop {
-            if Instant::now() >= deadline {
-                anyhow::bail!("Tripo3D task {} timed out after {}s", task_id, timeout_secs);
-            }
+        let task_id = self.client.create_task(body).await?;
+        let payload = self.client.poll_task(&task_id, timeout_secs).await?;
+        let model_url = Self::extract_model_url(&payload).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Tripo3D task completed without model URL. output: {}",
+                serde_json::to_string(&payload["data"]["output"]).unwrap_or_default()
+            )
+        })?;
 
-            tokio::time::sleep(poll_interval).await;
-
-            let poll_resp = self
-                .http
-                .get(format!("{}/task/{}", self.base_url, task_id))
-                .header("Authorization", format!("Bearer {}", self.api_key))
-                .send()
-                .await?;
-
-            let poll_status = poll_resp.status();
-            let poll_text = poll_resp.text().await?;
-
-            if !poll_status.is_success() {
-                if poll_status.is_server_error() || poll_status == StatusCode::TOO_MANY_REQUESTS {
-                    poll_interval = (poll_interval * 2).min(Duration::from_secs(20));
-                    continue;
-                }
-                anyhow::bail!(
-                    "Tripo3D polling returned {} for task {}: {}",
-                    poll_status,
-                    task_id,
-                    poll_text
-                );
-            }
-
-            let poll_json: Value = serde_json::from_str(&poll_text)?;
-            let task_status = poll_json["data"]["status"]
-                .as_str()
-                .unwrap_or("unknown")
-                .to_ascii_lowercase();
-
-            match task_status.as_str() {
-                "success" | "completed" | "succeeded" => {
-                    let model_url = Self::extract_model_url(&poll_json)
-                        .ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "Tripo3D task completed without model URL. output: {}",
-                                serde_json::to_string(&poll_json["data"]["output"])
-                                    .unwrap_or_default()
-                            )
-                        })?;
-
-                    let rendered_image = poll_json["data"]["output"]["rendered_image"]
-                        .as_str()
-                        .map(str::to_string);
-
-                    return Ok(GenerateResponse {
-                        provider_id: self.id.clone(),
-                        output_path: None,
-                        output_url: Some(model_url),
-                        output_data: None,
-                        metadata: json!({
-                            "task_id": task_id,
-                            "rendered_image": rendered_image,
-                        }),
-                        cost_usd: None,
-                        elapsed_ms: start.elapsed().as_millis() as u64,
-                    });
-                }
-                "failed" | "error" | "canceled" | "cancelled" => {
-                    let err = poll_json["data"]["error"]
-                        .as_str()
-                        .unwrap_or("unknown error");
-                    anyhow::bail!("Tripo3D task {} failed: {}", task_id, err);
-                }
-                _ => {
-                    poll_interval = (poll_interval * 2).min(Duration::from_secs(20));
-                }
-            }
-        }
+        Ok(GenerateResponse {
+            provider_id: self.id.clone(),
+            output_path: None,
+            output_url: Some(model_url),
+            output_data: None,
+            metadata: Self::output_metadata(&task_id, &payload, None),
+            cost_usd: Some(DEFAULT_TRIPO_COST_USD),
+            elapsed_ms: start.elapsed().as_millis() as u64,
+        })
     }
 
     async fn health_check(&self) -> anyhow::Result<HealthStatus> {
-        let start = Instant::now();
-        let resp = self
-            .http
-            .get(format!("{}/user/balance", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .send()
-            .await;
+        self.client.health_check().await
+    }
+}
 
-        match resp {
-            Ok(r) => Ok(HealthStatus {
-                healthy: r.status().is_success(),
-                latency_ms: Some(start.elapsed().as_millis() as u64),
-                message: None,
-            }),
-            Err(e) => Ok(HealthStatus {
-                healthy: false,
-                latency_ms: Some(start.elapsed().as_millis() as u64),
-                message: Some(e.to_string()),
-            }),
+fn bool_param(params: Option<&Map<String, Value>>, key: &str) -> Option<bool> {
+    params
+        .and_then(|values| values.get(key))
+        .and_then(Value::as_bool)
+}
+
+fn u64_param(params: Option<&Map<String, Value>>, key: &str) -> Option<u64> {
+    params
+        .and_then(|values| values.get(key))
+        .and_then(Value::as_u64)
+}
+
+fn copy_string_param(
+    body: &mut Value,
+    params: Option<&Map<String, Value>>,
+    key: &str,
+) -> anyhow::Result<()> {
+    if let Some(value) = params.and_then(|values| values.get(key)) {
+        if value.is_null() {
+            return Ok(());
         }
+        let Some(text) = value.as_str() else {
+            anyhow::bail!("{} must be a string", key);
+        };
+        body[key] = json!(text);
+    }
+    Ok(())
+}
+
+fn copy_bool_param(
+    body: &mut Value,
+    params: Option<&Map<String, Value>>,
+    key: &str,
+) -> anyhow::Result<()> {
+    if let Some(value) = params.and_then(|values| values.get(key)) {
+        if value.is_null() {
+            return Ok(());
+        }
+        let Some(flag) = value.as_bool() else {
+            anyhow::bail!("{} must be a boolean", key);
+        };
+        body[key] = json!(flag);
+    }
+    Ok(())
+}
+
+fn copy_allowed_fields(
+    body: &mut Value,
+    params: &Map<String, Value>,
+    keys: &[&str],
+) -> anyhow::Result<()> {
+    let body_obj = body
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("Tripo3D request body must be a JSON object"))?;
+
+    for key in keys {
+        if let Some(value) = params.get(*key) {
+            body_obj.insert((*key).to_string(), value.clone());
+        }
+    }
+
+    Ok(())
+}
+
+fn required_string(params: &Map<String, Value>, key: &str) -> anyhow::Result<String> {
+    optional_string(params, key).ok_or_else(|| anyhow::anyhow!("{} is required", key))
+}
+
+fn optional_string(params: &Map<String, Value>, key: &str) -> Option<String> {
+    params
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn validate_face_limit(face_limit: u64) -> anyhow::Result<()> {
+    if !(48..=20_000).contains(&face_limit) {
+        anyhow::bail!("face_limit must be between 48 and 20000");
+    }
+    Ok(())
+}
+
+fn extract_error_message(payload: &Value) -> String {
+    let error = &payload["data"]["error"];
+    if let Some(message) = error.as_str() {
+        return message.to_string();
+    }
+    if !error.is_null() {
+        return serde_json::to_string(error).unwrap_or_else(|_| "unknown error".to_string());
+    }
+    "unknown error".to_string()
+}
+
+fn decode_data_uri(input: &str) -> anyhow::Result<(Vec<u8>, String)> {
+    let (meta, encoded) = input
+        .split_once(',')
+        .ok_or_else(|| anyhow::anyhow!("invalid data URI"))?;
+    let mime = meta
+        .strip_prefix("data:")
+        .and_then(|value| value.split(';').next())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("image/png");
+    let bytes = STANDARD.decode(encoded)?;
+    Ok((bytes, infer_file_type("", Some(mime))))
+}
+
+fn infer_file_type(input: &str, mime_hint: Option<&str>) -> String {
+    if let Some(mime) = mime_hint {
+        if mime.contains("webp") {
+            return "webp".into();
+        }
+        if mime.contains("png") {
+            return "png".into();
+        }
+        if mime.contains("jpeg") || mime.contains("jpg") {
+            return "jpg".into();
+        }
+    }
+
+    Path::new(input)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .map(|ext| match ext.as_str() {
+            "jpeg" | "jpg" => "jpg".to_string(),
+            "png" => "png".to_string(),
+            "webp" => "webp".to_string(),
+            _ => "jpg".to_string(),
+        })
+        .unwrap_or_else(|| "jpg".to_string())
+}
+
+fn normalize_file_type(file_type: &str) -> &'static str {
+    if file_type.eq_ignore_ascii_case("png") {
+        "png"
+    } else if file_type.eq_ignore_ascii_case("webp") {
+        "webp"
+    } else {
+        "jpg"
+    }
+}
+
+fn mime_for_file_type(file_type: &str) -> &'static str {
+    match normalize_file_type(file_type) {
+        "png" => "image/png",
+        "webp" => "image/webp",
+        _ => "image/jpeg",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn build_task_body_uses_p1_defaults_and_params() {
+        let provider = Tripo3dProvider::new("test-key".into());
+        let req = GenerateRequest {
+            asset_type: AssetType::Model3d,
+            prompt: Some("a toy robot".into()),
+            model: None,
+            input_file: None,
+            params: json!({
+                "face_limit": 4096,
+                "texture_quality": "detailed",
+                "auto_size": true,
+                "negative_prompt": "blurry",
+                "style": "gold"
+            }),
+        };
+
+        let body = provider.build_task_body(&req).await.unwrap();
+
+        assert_eq!(body["type"], "text_to_model");
+        assert_eq!(body["model_version"], DEFAULT_MODEL_VERSION);
+        assert_eq!(body["face_limit"], 4096);
+        assert_eq!(body["pbr"], true);
+        assert_eq!(body["texture"], true);
+        assert_eq!(body["texture_quality"], "detailed");
+        assert_eq!(body["auto_size"], true);
+        assert_eq!(body["negative_prompt"], "blurry");
+        assert_eq!(body["style"], "gold");
+    }
+
+    #[tokio::test]
+    async fn build_task_body_uses_multiview_inputs() {
+        let provider = Tripo3dProvider::new("test-key".into());
+        let req = GenerateRequest {
+            asset_type: AssetType::Model3d,
+            prompt: None,
+            model: None,
+            input_file: None,
+            params: json!({
+                "multiview": [
+                    "https://example.com/front.jpg",
+                    "https://example.com/left.jpg",
+                    "https://example.com/back.jpg",
+                    "https://example.com/right.jpg"
+                ]
+            }),
+        };
+
+        let body = provider.build_task_body(&req).await.unwrap();
+
+        assert_eq!(body["type"], "multiview_to_model");
+        assert_eq!(body["files"].as_array().unwrap().len(), 4);
+        assert_eq!(body["files"][0]["url"], "https://example.com/front.jpg");
+        assert_eq!(body["files"][3]["url"], "https://example.com/right.jpg");
+    }
+
+    #[test]
+    fn build_process_task_body_wraps_texture_prompt() {
+        let provider = Tripo3dProvider::new("test-key".into());
+        let body = provider
+            .build_process_task_body(
+                "task-123",
+                "texture",
+                &json!({
+                    "prompt": "weathered bronze",
+                    "pbr": true,
+                    "texture_quality": "detailed"
+                }),
+            )
+            .unwrap();
+
+        assert_eq!(body["type"], "texture_model");
+        assert_eq!(body["original_model_task_id"], "task-123");
+        assert_eq!(body["texture_prompt"]["text"], "weathered bronze");
+        assert_eq!(body["pbr"], true);
+        assert_eq!(body["texture_quality"], "detailed");
     }
 }

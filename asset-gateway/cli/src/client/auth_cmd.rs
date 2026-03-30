@@ -17,7 +17,9 @@ fn resolve_token(value: Option<String>) -> anyhow::Result<String> {
             return Ok(trimmed.to_string());
         }
     }
-    Err(anyhow!("missing token: pass --token or set ASSET_GATEWAY_TOKEN"))
+    Err(anyhow!(
+        "missing token: pass --token or set ASSET_GATEWAY_TOKEN"
+    ))
 }
 
 pub async fn handle(cmd: AuthCommands, gateway_url: &str) -> anyhow::Result<()> {

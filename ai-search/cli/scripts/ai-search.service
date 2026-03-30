@@ -1,0 +1,15 @@
+[Unit]
+Description=AI Search Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=opc
+WorkingDirectory=/opt/ai-search
+ExecStart=/opt/ai-search/ai-search serve --port 6900 --config /opt/ai-search/config.toml
+Restart=always
+RestartSec=5
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target

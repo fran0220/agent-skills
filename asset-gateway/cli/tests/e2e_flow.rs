@@ -196,7 +196,15 @@ async fn e2e_server_flow_covers_required_scenarios() -> Result<()> {
     let gateway_url = format!("http://127.0.0.1:{}", gateway_port);
     let server_task = tokio::spawn({
         let database_url = test_db_url.clone();
-        async move { asset_gateway::server::run("127.0.0.1".into(), gateway_port, database_url).await }
+        async move {
+            asset_gateway::server::run(
+                "127.0.0.1".into(),
+                gateway_port,
+                database_url,
+                std::path::Path::new("config.toml"),
+            )
+            .await
+        }
     });
     let _server_guard = AbortOnDrop::new(server_task);
 

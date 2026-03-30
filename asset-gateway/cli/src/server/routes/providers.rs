@@ -71,9 +71,11 @@ async fn provider_health(
     _current_user: CurrentUser,
     Path(id): Path<String>,
 ) -> AppResult<Json<Value>> {
-    let provider = state.registry.get(&id).await.ok_or_else(|| {
-        AppError::not_found(format!("provider not loaded: {}", id))
-    })?;
+    let provider = state
+        .registry
+        .get(&id)
+        .await
+        .ok_or_else(|| AppError::not_found(format!("provider not loaded: {}", id)))?;
 
     let health = provider
         .health_check()

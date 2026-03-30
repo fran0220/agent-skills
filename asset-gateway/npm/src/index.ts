@@ -11,6 +11,8 @@ import { createAuthCommand } from "./commands/auth.js";
 import { createDescribeCommand } from "./commands/describe.js";
 import { createGenerateCommand } from "./commands/generate.js";
 import { createJobCommand } from "./commands/job.js";
+import { createProcessCommand } from "./commands/process.js";
+import { createProcess3dCommand } from "./commands/process3d.js";
 import { createProviderCommand } from "./commands/provider.js";
 import { createUploadCommand } from "./commands/upload.js";
 import { CLI_VERSION, DEFAULT_GATEWAY_URL } from "./meta.js";
@@ -29,6 +31,8 @@ const program = new Command()
 
 program.addCommand(createAuthCommand());
 program.addCommand(createGenerateCommand());
+program.addCommand(createProcessCommand());
+program.addCommand(createProcess3dCommand());
 program.addCommand(createProviderCommand());
 program.addCommand(createUploadCommand());
 program.addCommand(createJobCommand());

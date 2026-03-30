@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Context};
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use serde::{Deserialize, Serialize};
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 const CONFIG_DIR_NAME: &str = "asset-gateway";

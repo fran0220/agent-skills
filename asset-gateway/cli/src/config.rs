@@ -14,7 +14,7 @@ pub struct ConfigFile {
     #[serde(default)]
     pub tripo3d: ProviderKeySection,
     #[serde(default)]
-    pub jimeng: JimengSection,
+    pub minimax: MinimaxSection,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -35,7 +35,7 @@ pub struct ProviderKeySection {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct JimengSection {
+pub struct MinimaxSection {
     pub url: Option<String>,
     pub key: Option<String>,
 }
@@ -49,7 +49,7 @@ pub struct AppConfig {
     pub config_path: PathBuf,
     pub admin_token: String,
 
-    // Shared LLM proxy (covers llm_proxy, gpt_image, gemini_image, grok_image)
+    // Shared LLM proxy (covers llm_proxy, gemini_image, grok_image)
     pub proxy_url: String,
     pub proxy_key: String,
     pub default_model: String,
@@ -57,8 +57,10 @@ pub struct AppConfig {
     // External provider keys (empty = disabled)
     pub elevenlabs_key: String,
     pub tripo3d_key: String,
-    pub jimeng_url: String,
-    pub jimeng_key: String,
+
+    // MiniMax TTS (url + key; falls back to proxy if not set)
+    pub minimax_url: String,
+    pub minimax_key: String,
 }
 
 impl AppConfig {
@@ -101,11 +103,7 @@ impl AppConfig {
                 file_cfg.proxy.url.as_deref(),
                 "https://api.xiaomao.chat",
             ),
-            proxy_key: env_or(
-                "ASSET_GATEWAY_PROXY_KEY",
-                file_cfg.proxy.key.as_deref(),
-                "",
-            ),
+            proxy_key: env_or("ASSET_GATEWAY_PROXY_KEY", file_cfg.proxy.key.as_deref(), ""),
             default_model: env_or(
                 "ASSET_GATEWAY_DEFAULT_MODEL",
                 file_cfg.proxy.default_model.as_deref(),
@@ -122,15 +120,16 @@ impl AppConfig {
                 file_cfg.tripo3d.key.as_deref(),
                 "",
             ),
-            jimeng_url: env_or(
-                "ASSET_GATEWAY_JIMENG_URL",
-                file_cfg.jimeng.url.as_deref(),
-                "",
+
+            minimax_url: env_or(
+                "ASSET_GATEWAY_MINIMAX_URL",
+                file_cfg.minimax.url.as_deref(),
+                "", // resolved at provider build time — fallback to proxy_url
             ),
-            jimeng_key: env_or(
-                "ASSET_GATEWAY_JIMENG_KEY",
-                file_cfg.jimeng.key.as_deref(),
-                "",
+            minimax_key: env_or(
+                "ASSET_GATEWAY_MINIMAX_KEY",
+                file_cfg.minimax.key.as_deref(),
+                "", // resolved at provider build time — fallback to proxy_key
             ),
         })
     }

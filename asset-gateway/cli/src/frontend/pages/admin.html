@@ -757,11 +757,11 @@
                 <label>Type</label>
                 <select id="providerAdapter" onchange="onAdapterChange()">
                   <option value="llm_proxy">LLM Text (Claude/GPT/Gemini/Grok)</option>
-                  <option value="gpt_image">GPT Image (supports transparency)</option>
                   <option value="gemini_image">Gemini Image (cost-efficient)</option>
                   <option value="grok_image">Grok Image/Video (xAI)</option>
-                  <option value="jimeng">Jimeng Image + Video</option>
-                  <option value="elevenlabs">ElevenLabs Audio</option>
+                  
+                  <option value="minimax_tts">MiniMax TTS (Chinese/Multilingual)</option>
+                  <option value="elevenlabs">ElevenLabs Audio (BGM/SFX)</option>
                   <option value="tripo3d">Tripo 3D Model</option>
                 </select>
               </div>
@@ -1045,10 +1045,10 @@
 
   const ADAPTER_PRESETS = {
     llm_proxy:    { name: "LLM Text Proxy",     types: ["text"],          priority: 10, defaultUrl: "https://api.xiaomao.chat", showModel: true },
-    gpt_image:    { name: "GPT Image",           types: ["image"],         priority: 10, defaultUrl: "https://api.xiaomao.chat", showModel: false },
     gemini_image: { name: "Gemini Image",         types: ["image"],         priority: 5,  defaultUrl: "https://api.xiaomao.chat", showModel: false },
     grok_image:   { name: "Grok Image/Video",     types: ["image","video"], priority: 7,  defaultUrl: "https://api.xiaomao.chat", showModel: false },
-    jimeng:       { name: "Jimeng Image+Video",    types: ["image","video"], priority: 5,  defaultUrl: "https://api.jimeng.ai",   showModel: false },
+    
+    minimax_tts:  { name: "MiniMax TTS",             types: ["tts"],           priority: 10, defaultUrl: "https://api.xiaomao.chat", showModel: true },
     elevenlabs:   { name: "ElevenLabs Audio",      types: ["audio"],         priority: 10, defaultUrl: "",                         showModel: false },
     tripo3d:      { name: "Tripo 3D",              types: ["model3d"],       priority: 10, defaultUrl: "",                         showModel: false },
   };

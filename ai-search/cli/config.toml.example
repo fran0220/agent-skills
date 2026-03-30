@@ -1,0 +1,23 @@
+# AI Search Gateway configuration
+# Env vars override file values.
+
+[server]
+port = 6900
+gateway_token = ""
+
+[proxy]
+url = "https://api.xiaomao.chat"
+key = ""
+search_model = "grok-4.1-fast"
+analysis_model = "gemini-3-flash-preview"
+
+[exa]
+key = ""
+
+[tavily]
+key = ""
+
+[search]
+max_split = 10
+timeout_secs = 180
+default_mode = "fast"

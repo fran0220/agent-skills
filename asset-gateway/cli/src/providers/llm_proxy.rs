@@ -5,6 +5,18 @@ use serde_json::{json, Value};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
+fn estimate_llm_cost(model: &str) -> f64 {
+    if model.starts_with("claude-opus") {
+        0.10
+    } else if model.starts_with("claude-sonnet") || model.starts_with("claude-haiku") {
+        0.02
+    } else if model.starts_with("gpt-5.4") {
+        0.03
+    } else {
+        0.02
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum Protocol {
     OpenAi,
@@ -271,6 +283,10 @@ impl LlmProxyProvider {
 
 #[async_trait::async_trait]
 impl AssetProvider for LlmProxyProvider {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn id(&self) -> &str {
         &self.id
     }
@@ -313,7 +329,7 @@ impl AssetProvider for LlmProxyProvider {
                 "stream": stream,
                 "provider_metadata": metadata,
             }),
-            cost_usd: None,
+            cost_usd: Some(estimate_llm_cost(model)),
             elapsed_ms: start.elapsed().as_millis() as u64,
         })
     }

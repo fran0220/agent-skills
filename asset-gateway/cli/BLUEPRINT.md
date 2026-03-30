@@ -191,9 +191,8 @@ v1 provider adapters:
 1. `llm_proxy` — Claude/GPT/Gemini/Grok/GLM via proxy
 2. `gpt_image` — OpenAI image generation (transparency capable)
 3. `gemini_image` — Google image generation (cost-effective)
-4. `jimeng` — Jimeng image + Seedance video
-5. `elevenlabs` — audio generation (BGM/SFX)
-6. `tripo3d` — image/text to 3D model
+4. `elevenlabs` — audio generation (BGM/SFX)
+5. `tripo3d` — image/text to 3D model
 
 Provider architecture uses a unified `AssetProvider` trait so adapters remain swappable and independently testable.
 

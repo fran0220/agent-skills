@@ -83,9 +83,11 @@ impl FromRequestParts<Arc<ServerState>> for CurrentUser {
             return authenticate_token(&api_key, state).await;
         }
 
-        Err(AppError::unauthorized("missing authentication token").with_suggestion(
-            "Provide a Bearer token in Authorization header, or api_key query parameter.",
-        ))
+        Err(
+            AppError::unauthorized("missing authentication token").with_suggestion(
+                "Provide a Bearer token in Authorization header, or api_key query parameter.",
+            ),
+        )
     }
 }
 
@@ -178,11 +180,13 @@ async fn login(
 
         match row {
             Some(r) => {
-                let expires: Option<DateTime<Utc>> =
-                    r.try_get("api_key_expires_at").map_err(AppError::internal)?;
-                let quota: Option<i64> =
-                    r.try_get("api_key_quota").map_err(AppError::internal)?;
-                let used: i64 = r.try_get("api_key_quota_used").map_err(AppError::internal)?;
+                let expires: Option<DateTime<Utc>> = r
+                    .try_get("api_key_expires_at")
+                    .map_err(AppError::internal)?;
+                let quota: Option<i64> = r.try_get("api_key_quota").map_err(AppError::internal)?;
+                let used: i64 = r
+                    .try_get("api_key_quota_used")
+                    .map_err(AppError::internal)?;
                 (expires.map(|v| v.to_rfc3339()), quota, used)
             }
             None => (None, None, 0),

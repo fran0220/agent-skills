@@ -36,10 +36,7 @@ async fn upload(
             continue;
         }
 
-        let original_name = field
-            .file_name()
-            .unwrap_or("upload")
-            .to_string();
+        let original_name = field.file_name().unwrap_or("upload").to_string();
 
         let content_type = field
             .content_type()
@@ -94,7 +91,9 @@ async fn upload(
         })));
     }
 
-    Err(AppError::bad_request("no 'file' field found in multipart data"))
+    Err(AppError::bad_request(
+        "no 'file' field found in multipart data",
+    ))
 }
 
 async fn delete_file(

@@ -1,17 +1,32 @@
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use tokio::sync::RwLock;
 
 use super::registry::ProviderRegistry;
-use super::{AssetProvider, AssetType, GenerateRequest, GenerateResponse};
+use super::{AssetProvider, AssetType, GenerateRequest, GenerateResponse, HealthStatus};
+
+const HEALTH_CACHE_TTL: Duration = Duration::from_secs(60);
 
 /// Dispatcher routes generation requests to the best provider
 /// based on requested asset type, provider health, and routing strategy.
 pub struct Dispatcher {
     registry: Arc<ProviderRegistry>,
+    health_cache: RwLock<HashMap<String, (Instant, HealthStatus)>>,
 }
 
 impl Dispatcher {
     pub fn new(registry: Arc<ProviderRegistry>) -> Self {
-        Self { registry }
+        Self {
+            registry,
+            health_cache: RwLock::new(HashMap::new()),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub async fn invalidate_health_cache(&self) {
+        self.health_cache.write().await.clear();
     }
 
     /// Route a request to candidate providers in priority order and use fallback
@@ -108,7 +123,21 @@ impl Dispatcher {
     }
 
     async fn is_provider_healthy(&self, provider: &dyn AssetProvider) -> bool {
-        match provider.health_check().await {
+        let id = provider.id().to_string();
+
+        // Check cache (read lock)
+        {
+            let cache = self.health_cache.read().await;
+            if let Some((ts, status)) = cache.get(&id) {
+                if ts.elapsed() < HEALTH_CACHE_TTL {
+                    return status.healthy;
+                }
+            }
+        }
+
+        // Cache miss or expired — perform real health check
+        let result = provider.health_check().await;
+        let healthy = match &result {
             Ok(status) if status.healthy => true,
             Ok(status) => {
                 tracing::error!(
@@ -127,7 +156,17 @@ impl Dispatcher {
                 );
                 false
             }
+        };
+
+        // Store in cache (write lock)
+        if let Ok(status) = result {
+            self.health_cache
+                .write()
+                .await
+                .insert(id, (Instant::now(), status));
         }
+
+        healthy
     }
 
     fn provider_score(provider: &dyn AssetProvider, req: &GenerateRequest) -> i32 {
@@ -135,13 +174,9 @@ impl Dispatcher {
         let mut score = caps.priority;
 
         if req.asset_type == AssetType::Image {
-            if req.transparent() {
-                if provider.id() == "gpt_image" {
-                    score += 10_000;
-                } else if caps.supports_transparency {
-                    score += 5_000;
-                }
-            } else if provider.id() == "gemini_image" {
+            if req.transparent() && caps.supports_transparency {
+                score += 5_000;
+            } else if !req.transparent() && provider.id() == "gemini_image" {
                 score += 10_000;
             }
         }
@@ -169,6 +204,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl AssetProvider for MockProvider {
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+
         fn id(&self) -> &str {
             self.id
         }
@@ -211,7 +250,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn transparent_requests_prefer_gpt_image() {
+    async fn transparent_requests_prefer_transparency_capable_provider() {
         let registry = Arc::new(ProviderRegistry::new());
 
         registry
@@ -230,7 +269,7 @@ mod tests {
 
         registry
             .register(Arc::new(MockProvider {
-                id: "gpt_image",
+                id: "grok_image",
                 asset_types: &[AssetType::Image],
                 caps: ProviderCapabilities {
                     supports_transparency: true,
@@ -252,7 +291,7 @@ mod tests {
         };
 
         let result = dispatcher.dispatch(&req, None).await.unwrap();
-        assert_eq!(result.provider_id, "gpt_image");
+        assert_eq!(result.provider_id, "grok_image");
     }
 
     #[tokio::test]
@@ -274,7 +313,7 @@ mod tests {
 
         registry
             .register(Arc::new(MockProvider {
-                id: "gpt_image",
+                id: "grok_image",
                 asset_types: &[AssetType::Image],
                 caps: ProviderCapabilities {
                     priority: 10,
@@ -296,7 +335,7 @@ mod tests {
         };
 
         let result = dispatcher.dispatch(&req, None).await.unwrap();
-        assert_eq!(result.provider_id, "gpt_image");
+        assert_eq!(result.provider_id, "grok_image");
     }
 
     #[tokio::test]
@@ -318,7 +357,7 @@ mod tests {
 
         registry
             .register(Arc::new(MockProvider {
-                id: "gpt_image",
+                id: "grok_image",
                 asset_types: &[AssetType::Image],
                 caps: ProviderCapabilities {
                     priority: 5,
@@ -340,6 +379,6 @@ mod tests {
         };
 
         let result = dispatcher.dispatch(&req, None).await.unwrap();
-        assert_eq!(result.provider_id, "gpt_image");
+        assert_eq!(result.provider_id, "grok_image");
     }
 }

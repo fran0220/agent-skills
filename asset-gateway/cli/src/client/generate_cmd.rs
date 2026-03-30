@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 fn infer_extension(asset_type: &str) -> &'static str {
     match asset_type {
         "image" => "png",
-        "audio" => "mp3",
+        "audio" | "tts" => "mp3",
         "video" => "mp4",
         "model3d" => "glb",
         "text" => "txt",
@@ -41,6 +41,58 @@ async fn write_output(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     tokio::fs::write(path, bytes)
         .await
         .with_context(|| format!("failed to write output file {}", path.display()))
+}
+
+fn infer_input_mime(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("webp") => "image/webp",
+        _ => "image/jpeg",
+    }
+}
+
+async fn maybe_encode_local_input(input: Option<String>) -> anyhow::Result<Option<String>> {
+    let Some(input) = input else {
+        return Ok(None);
+    };
+
+    let path = Path::new(&input);
+    if !path.exists() {
+        return Ok(Some(input));
+    }
+
+    let bytes = tokio::fs::read(path)
+        .await
+        .with_context(|| format!("failed to read input file {}", path.display()))?;
+    let mime = infer_input_mime(path);
+    Ok(Some(format!(
+        "data:{};base64,{}",
+        mime,
+        STANDARD.encode(bytes)
+    )))
+}
+
+async fn maybe_encode_local_inputs(
+    inputs: Option<Vec<String>>,
+) -> anyhow::Result<Option<Vec<String>>> {
+    let Some(inputs) = inputs else {
+        return Ok(None);
+    };
+
+    let mut encoded = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        encoded.push(
+            maybe_encode_local_input(Some(input))
+                .await?
+                .unwrap_or_default(),
+        );
+    }
+    Ok(Some(encoded))
 }
 
 fn decode_output_data(asset_type: &str, output_data: &str) -> anyhow::Result<Vec<u8>> {
@@ -138,7 +190,10 @@ fn response_snippet(body: &str) -> String {
 
 async fn parse_generate_response(resp: reqwest::Response) -> anyhow::Result<Value> {
     let status = resp.status();
-    let body = resp.text().await.context("failed to read generate response body")?;
+    let body = resp
+        .text()
+        .await
+        .context("failed to read generate response body")?;
 
     match serde_json::from_str::<Value>(&body) {
         Ok(json) if status.is_success() => Ok(json),
@@ -170,6 +225,7 @@ pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<
             transparent,
             model,
             size,
+            input,
             output_dir,
         } => (
             "image",
@@ -178,6 +234,7 @@ pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<
                 "prompt": prompt,
                 "provider": provider,
                 "model": model,
+                "input_file": input,
                 "params": { "size": size, "transparent": transparent },
             }),
             output_dir,
@@ -209,19 +266,84 @@ pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<
             }),
             output_dir,
         ),
+        GenerateCommands::Tts {
+            prompt,
+            voice_id,
+            model,
+            speed,
+            language_boost,
+            provider,
+            output_dir,
+        } => {
+            let mut params = serde_json::json!({});
+            if let Some(v) = &voice_id {
+                params["voice_id"] = serde_json::json!(v);
+            }
+            if let Some(s) = speed {
+                params["speed"] = serde_json::json!(s);
+            }
+            if let Some(lb) = &language_boost {
+                params["language_boost"] = serde_json::json!(lb);
+            }
+            (
+                "tts",
+                serde_json::json!({
+                    "asset_type": "tts",
+                    "prompt": prompt,
+                    "model": model,
+                    "provider": provider,
+                    "params": params,
+                }),
+                output_dir,
+            )
+        }
         GenerateCommands::Model {
             image,
             prompt,
+            model_version,
+            face_limit,
+            pbr,
+            texture_quality,
+            auto_size,
+            negative_prompt,
+            multiview,
             output_dir,
-        } => (
-            "model3d",
-            serde_json::json!({
-                "asset_type": "model3d",
-                "prompt": prompt,
-                "input_file": image,
-            }),
-            output_dir,
-        ),
+        } => {
+            let image = maybe_encode_local_input(image).await?;
+            let multiview = maybe_encode_local_inputs(multiview).await?;
+            let mut params = serde_json::json!({});
+            if let Some(model_version) = model_version {
+                params["model_version"] = serde_json::json!(model_version);
+            }
+            if let Some(face_limit) = face_limit {
+                params["face_limit"] = serde_json::json!(face_limit);
+            }
+            if pbr {
+                params["pbr"] = serde_json::json!(true);
+            }
+            if let Some(texture_quality) = texture_quality {
+                params["texture_quality"] = serde_json::json!(texture_quality);
+            }
+            if auto_size {
+                params["auto_size"] = serde_json::json!(true);
+            }
+            if let Some(negative_prompt) = negative_prompt {
+                params["negative_prompt"] = serde_json::json!(negative_prompt);
+            }
+            if let Some(multiview) = multiview {
+                params["multiview"] = serde_json::json!(multiview);
+            }
+            (
+                "model3d",
+                serde_json::json!({
+                    "asset_type": "model3d",
+                    "prompt": prompt,
+                    "input_file": image,
+                    "params": params,
+                }),
+                output_dir,
+            )
+        }
         GenerateCommands::Text {
             prompt,
             model,

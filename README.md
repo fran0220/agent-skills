@@ -13,6 +13,7 @@
 | [`jimeng-gateway`](./jimeng-gateway/) | Skill + CLI + Web | 即梦/Seedance 视频生成网关 |
 | [`openclaw`](./openclaw/) | Skill | OpenClaw 网关最佳实践 |
 | [`pi-sdk-practices`](./pi-sdk-practices/) | Skill | Pi Agent SDK 开发最佳实践 |
+| [`ai-search`](./ai-search/) | Skill + CLI + npm | AI 驱动的 Web 搜索网关（多源 + MCP） |
 | [`slide-deck`](./slide-deck/) | Skill | AI 幻灯片生成 |
 
 ## 结构
@@ -23,6 +24,7 @@
 <project>/
 ├── skill/    # Agent 技能（SKILL.md + reference/ + knowledge/）
 ├── cli/      # 命令行工具（TypeScript 或 Rust）
+├── npm/      # 可选：TypeScript / npm 客户端包
 └── README.md
 ```
 
@@ -38,8 +40,8 @@ ln -s /path/to/agent-skills/<project>/skill ~/.config/amp/skills/<project>
 ### 安装 CLI
 
 ```bash
-# TypeScript CLI
-cd <project>/cli && npm install -g .
+# 如果项目提供 npm/ 客户端包
+cd <project>/npm && npm install -g .
 
 # Rust CLI
 cd <project>/cli && cargo install --path .

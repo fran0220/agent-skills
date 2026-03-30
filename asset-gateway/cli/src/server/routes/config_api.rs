@@ -1,8 +1,4 @@
-use axum::{
-    extract::State,
-    routing::{get, put},
-    Json, Router,
-};
+use axum::{extract::State, routing::get, Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -82,6 +78,5 @@ async fn update_config(
 }
 
 pub fn router() -> Router<Arc<ServerState>> {
-    Router::new()
-        .route("/config", get(get_config).put(update_config))
+    Router::new().route("/config", get(get_config).put(update_config))
 }

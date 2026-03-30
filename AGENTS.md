@@ -34,6 +34,10 @@ agent-skills/
 │   └── skill/             #   知识库
 ├── pi-sdk-practices/      # Pi SDK Practices — SDK 开发最佳实践
 │   └── skill/             #   知识库
+├── ai-search/             # AI Search — AI 驱动的 Web 搜索网关
+│   ├── skill/             #   Agent 技能
+│   ├── cli/               #   Rust CLI + 搜索网关
+│   └── npm/               #   npm 客户端包
 ├── slide-deck/            # Slide Deck — AI 幻灯片生成
 │   └── skill/             #   Agent 技能
 │
@@ -53,6 +57,7 @@ agent-skills/
 |--------|------|---------|
 | `skill/` | Agent 技能 | SKILL.md + reference/ + knowledge/ |
 | `cli/` | 命令行工具 | package.json/Cargo.toml + src/ + tests/ |
+| `npm/` | npm 客户端包 | package.json + src/ + README.md |
 | `web/` | Web 前端 | package.json + src/ (React/Vue 等) |
 | `api/` | API 服务 | （未来扩展） |
 
@@ -70,6 +75,7 @@ mkdir <project-name>
 # 按需添加组件：
 mkdir <project-name>/skill   # 如果有 Agent 技能
 mkdir <project-name>/cli     # 如果有 CLI
+mkdir <project-name>/npm     # 如果有 npm 客户端包
 ```
 
 每个项目必须有 `README.md`，推荐有 `AGENTS.md`。
@@ -90,6 +96,8 @@ AGENTS.md                              # 本文件 — 仓库总览
 │   ├── skill/AGENTS.md                # Skill 开发指令
 │   └── cli/AGENTS.md                  # CLI 开发指令
 ├── asset-gateway/
+│   └── cli/AGENTS.md
+├── ai-search/
 │   └── cli/AGENTS.md
 ├── cognee-admin/
 │   └── cli/AGENTS.md

@@ -21,6 +21,7 @@ impl ProviderRegistry {
         self.providers.write().await.insert(id, provider);
     }
 
+    #[allow(dead_code)]
     pub async fn unregister(&self, id: &str) -> bool {
         self.providers.write().await.remove(id).is_some()
     }

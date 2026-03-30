@@ -4,7 +4,7 @@ import { Command } from "commander";
 import { createContext, printError, printSuccess } from "./common.js";
 
 function inferExtension(assetType: string): string {
-  const map: Record<string, string> = { image: "png", audio: "mp3", video: "mp4", model3d: "glb", text: "txt" };
+  const map: Record<string, string> = { image: "png", audio: "mp3", tts: "mp3", video: "mp4", model3d: "glb", text: "txt" };
   return map[assetType] ?? "bin";
 }
 
@@ -59,6 +59,7 @@ export function createGenerateCommand(): Command {
       .option("--transparent", "Request transparent background")
       .option("--model <model>", "Model to use")
       .option("--size <size>", "Image size (e.g. 1024x1024)")
+      .option("--input <url>", "Input image URL for editing (Gemini/Grok)")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
@@ -71,6 +72,7 @@ export function createGenerateCommand(): Command {
           if (options.transparent) body.transparent = true;
           if (options.model) body.model = options.model;
           if (options.size) body.size = options.size;
+          if (options.input) body.input_file = options.input;
 
           const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
           const localPath = await saveOutput(data, "image", options.outputDir);
@@ -135,10 +137,55 @@ export function createGenerateCommand(): Command {
   );
 
   command.addCommand(
+    new Command("tts")
+      .description("Text-to-speech synthesis (Chinese/multilingual)")
+      .requiredOption("--prompt <text>", "Text to synthesize")
+      .option("--voice-id <id>", "Voice ID (e.g. 'Chinese (Mandarin)_Lyrical_Voice')")
+      .option("--model <model>", "TTS model (speech-2.6-hd, speech-2.6-turbo)")
+      .option("--speed <n>", "Speech speed [0.5, 2.0]")
+      .option("--language-boost <lang>", "Language hint: auto, Chinese, English, etc.")
+      .option("--emotion <emotion>", "Emotion: happy, sad, angry, calm, etc.")
+      .option("--provider <id>", "Provider to use")
+      .option("--output-dir <dir>", "Directory to save output", ".")
+      .action(async function (options) {
+        try {
+          const ctx = createContext(this);
+          const params: Record<string, unknown> = {};
+          if (options.voiceId) params.voice_id = options.voiceId;
+          if (options.speed) params.speed = Number(options.speed);
+          if (options.languageBoost) params.language_boost = options.languageBoost;
+          if (options.emotion) params.emotion = options.emotion;
+
+          const body: Record<string, unknown> = {
+            asset_type: "tts",
+            prompt: options.prompt,
+            params,
+          };
+          if (options.model) body.model = options.model;
+          if (options.provider) body.provider = options.provider;
+
+          const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
+          const localPath = await saveOutput(data, "tts", options.outputDir);
+          if (localPath) data.local_path = localPath;
+          printSuccess("generate.tts", data, ctx);
+        } catch (error) {
+          printError("generate.tts", error);
+        }
+      })
+  );
+
+  command.addCommand(
     new Command("model")
       .description("Generate a 3D model")
       .option("--image <url>", "Reference image URL")
       .option("--prompt <text>", "Model description prompt")
+      .option("--model-version <v>", "Tripo model version (e.g. P1-20260311)")
+      .option("--face-limit <n>", "Max face count (48-20000)")
+      .option("--pbr", "Enable PBR textures")
+      .option("--texture-quality <q>", "Texture quality: standard or detailed")
+      .option("--auto-size", "Auto-scale to real-world dimensions")
+      .option("--negative-prompt <text>", "Negative prompt")
+      .option("--multiview <urls>", "4 image URLs comma-separated: front,left,back,right")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
@@ -146,8 +193,22 @@ export function createGenerateCommand(): Command {
           const body: Record<string, unknown> = {
             asset_type: "model3d",
           };
+          const params: Record<string, unknown> = {};
           if (options.image) body.input_file = options.image;
           if (options.prompt) body.prompt = options.prompt;
+          if (options.modelVersion) params.model_version = options.modelVersion;
+          if (options.faceLimit) params.face_limit = Number(options.faceLimit);
+          if (options.pbr) params.pbr = true;
+          if (options.textureQuality) params.texture_quality = options.textureQuality;
+          if (options.autoSize) params.auto_size = true;
+          if (options.negativePrompt) params.negative_prompt = options.negativePrompt;
+          if (options.multiview) {
+            params.multiview = String(options.multiview)
+              .split(",")
+              .map((value) => value.trim())
+              .filter(Boolean);
+          }
+          if (Object.keys(params).length > 0) body.params = params;
 
           const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
           const localPath = await saveOutput(data, "model3d", options.outputDir);
