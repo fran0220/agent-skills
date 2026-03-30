@@ -6,8 +6,9 @@ pub mod job_cmd;
 pub mod process3d_cmd;
 pub mod process_cmd;
 pub mod provider_cmd;
+pub mod voice_cmd;
 
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use serde_json::{json, Value};
 
 // ── Auth commands ──
@@ -80,23 +81,23 @@ pub enum GenerateCommands {
         #[arg(long, default_value = ".")]
         output_dir: String,
     },
-    /// Text-to-speech synthesis (Chinese/multilingual)
+    /// Text-to-speech synthesis via Qwen3-TTS
     Tts {
         /// Text to synthesize
         #[arg(long)]
         prompt: String,
-        /// Voice ID (e.g. "Chinese (Mandarin)_Lyrical_Voice")
+        /// Voice name or custom voice ID (default: Cherry)
         #[arg(long)]
-        voice_id: Option<String>,
-        /// Model: speech-2.8-hd (default), speech-2.8-turbo, etc.
+        voice: Option<String>,
+        /// Qwen3-TTS model (default: qwen3-tts-flash)
         #[arg(long)]
         model: Option<String>,
-        /// Speech speed [0.5, 2.0]
+        /// Language hint: Auto, Chinese, English, Japanese, etc.
         #[arg(long)]
-        speed: Option<f64>,
-        /// Language boost: auto, Chinese, English, etc.
+        language: Option<String>,
+        /// Natural language speaking instructions (requires qwen3-tts-instruct-flash)
         #[arg(long)]
-        language_boost: Option<String>,
+        instructions: Option<String>,
         /// Specific provider
         #[arg(long)]
         provider: Option<String>,
@@ -161,6 +162,80 @@ pub enum ProviderCommands {
     Health {
         /// Provider ID (omit for all)
         name: Option<String>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum VoiceType {
+    Vc,
+    Vd,
+}
+
+impl VoiceType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Vc => "vc",
+            Self::Vd => "vd",
+        }
+    }
+}
+
+// ── Voice commands ──
+
+#[derive(Subcommand)]
+pub enum VoiceCommands {
+    /// Clone a custom voice from a local audio sample
+    Clone {
+        /// Input audio file path
+        #[arg(long)]
+        audio: String,
+        /// Preferred voice name
+        #[arg(long)]
+        name: String,
+        /// Target Qwen VC model override
+        #[arg(long)]
+        target_model: Option<String>,
+        /// Explicit audio MIME type override
+        #[arg(long)]
+        mime: Option<String>,
+    },
+    /// Design a custom voice from a text description
+    Design {
+        /// Voice description prompt
+        #[arg(long)]
+        prompt: String,
+        /// Text used for the preview sample
+        #[arg(long)]
+        preview_text: String,
+        /// Preferred voice name
+        #[arg(long)]
+        name: String,
+        /// Target Qwen VD model override
+        #[arg(long)]
+        target_model: Option<String>,
+        /// Language hint (e.g. zh, en)
+        #[arg(long)]
+        language: Option<String>,
+    },
+    /// List custom voices
+    List {
+        /// Voice type: vc (clone) or vd (design)
+        #[arg(long = "type", value_enum, default_value_t = VoiceType::Vc)]
+        r#type: VoiceType,
+        /// Zero-based page index
+        #[arg(long, default_value_t = 0)]
+        page: u32,
+        /// Page size
+        #[arg(long, default_value_t = 20)]
+        page_size: u32,
+    },
+    /// Delete a custom voice
+    Delete {
+        /// Voice ID to delete
+        voice_id: String,
+        /// Voice type: vc (clone) or vd (design)
+        #[arg(long = "type", value_enum, default_value_t = VoiceType::Vc)]
+        r#type: VoiceType,
     },
 }
 
@@ -336,6 +411,10 @@ pub async fn handle_provider(cmd: ProviderCommands, gateway_url: &str) -> anyhow
     provider_cmd::handle(cmd, gateway_url).await
 }
 
+pub async fn handle_voice(cmd: VoiceCommands, gateway_url: &str) -> anyhow::Result<()> {
+    voice_cmd::handle(cmd, gateway_url).await
+}
+
 pub async fn handle_job(cmd: JobCommands, gateway_url: &str) -> anyhow::Result<()> {
     job_cmd::handle(cmd, gateway_url).await
 }
@@ -493,10 +572,10 @@ fn describe_schemas() -> Value {
                 "required": ["prompt"],
                 "properties": {
                     "prompt": { "type": "string", "description": "Text to synthesize into speech" },
-                    "voice_id": { "type": "string", "description": "Voice ID, e.g. 'Chinese (Mandarin)_Lyrical_Voice'. See MiniMax system voice list" },
-                    "model": { "type": "string", "description": "TTS model: speech-2.8-hd (default), speech-2.8-turbo, speech-2.6-hd, speech-2.6-turbo" },
-                    "speed": { "type": "number", "description": "Speech speed [0.5, 2.0], default 1.0" },
-                    "language_boost": { "type": "string", "description": "Language hint: auto (default), Chinese, English, Japanese, etc." },
+                    "voice": { "type": "string", "description": "System voice name (Cherry, Serena, Ethan, Chelsie) or custom voice ID" },
+                    "model": { "type": "string", "description": "TTS model: qwen3-tts-flash (default) or qwen3-tts-instruct-flash" },
+                    "language": { "type": "string", "description": "Language hint: Auto, Chinese, English, Japanese, Korean, etc." },
+                    "instructions": { "type": "string", "description": "Natural language speaking instructions (requires qwen3-tts-instruct-flash)" },
                     "provider": { "type": "string", "description": "Optional provider override" },
                     "output_dir": { "type": "string", "default": ".", "description": "Directory to save generated files" }
                 }

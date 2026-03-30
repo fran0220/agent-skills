@@ -79,6 +79,10 @@ enum Commands {
     #[command(subcommand)]
     Provider(client::ProviderCommands),
 
+    /// Manage Qwen3-TTS custom voices
+    #[command(subcommand)]
+    Voice(client::VoiceCommands),
+
     /// Manage jobs
     #[command(subcommand)]
     Job(client::JobCommands),
@@ -125,6 +129,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Provider(cmd) => {
             client::handle_provider(cmd, &cli.gateway_url).await?;
+        }
+        Commands::Voice(cmd) => {
+            client::handle_voice(cmd, &cli.gateway_url).await?;
         }
         Commands::Job(cmd) => {
             client::handle_job(cmd, &cli.gateway_url).await?;

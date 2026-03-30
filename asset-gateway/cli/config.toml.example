@@ -15,7 +15,7 @@ key = ""
 [tripo3d]
 key = ""
 
-# MiniMax TTS — falls back to [proxy] url/key if not set
-[minimax]
-url = ""
+# DashScope (Qwen3-TTS) — International Singapore region
+[dashscope]
+url = "https://dashscope-intl.aliyuncs.com"
 key = ""

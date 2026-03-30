@@ -285,24 +285,7 @@ asset-gateway generate audio --prompt "ambient medieval tavern" --type bgm --dur
 
 ### Text-to-Speech (TTS)
 
-```bash
-# Chinese TTS (default voice: Chinese Mandarin Lyrical Voice)
-asset-gateway generate tts --prompt "你好，欢迎来到我们的世界" --output-dir ./assets
-
-# Specify voice and speed
-asset-gateway generate tts --prompt "Hello world" --voice-id English_radiant_girl --speed 1.2 --output-dir ./assets
-
-# Use turbo model for faster generation
-asset-gateway generate tts --prompt "快速生成语音" --model speech-2.6-turbo --output-dir ./assets
-
-# Language boost for better multilingual handling
-asset-gateway generate tts --prompt "Bonjour le monde" --language-boost French --output-dir ./assets
-```
-
-**Models:** `speech-2.6-hd` (default, high quality), `speech-2.6-turbo` (faster), `speech-02-hd`, `speech-02-turbo`
-**Common Chinese voices:** `Chinese (Mandarin)_Lyrical_Voice`, `Chinese (Mandarin)_News_Anchor`, `Chinese (Mandarin)_Warm_Girl`, `Chinese (Mandarin)_Male_Announcer`
-**Common English voices:** `English_radiant_girl`, `English_expressive_narrator`, `English_Trustworth_Man`
-**Emotions:** `happy`, `sad`, `angry`, `fearful`, `disgusted`, `surprised`, `calm`, `fluent`
+See the dedicated **Qwen3-TTS** section below for full details, models, and voice management.
 
 ### Video Generation
 
@@ -340,7 +323,7 @@ Only proceed if the required provider type shows `healthy: true`.
 |----|------------|-------|-------|
 | `gemini_image` | image | ~15s | Default for images, supports editing via `--input`, ~$0.04/gen |
 | `grok_image` | image, video | varies | Grok imagine, supports editing, ~$0.07/img, ~$0.10/video |
-| `minimax_tts` | tts | ~1-3s | Chinese/multilingual TTS, 300+ voices, ~$0.005/call |
+| `qwen_tts` | tts | ~97ms first packet | Qwen3-TTS via DashScope Intl, 49+ system voices, VC + VD workflows, ~$0.115/10K chars |
 | `elevenlabs` | audio | ~2s | BGM/SFX sound generation, ~$0.05/call |
 | `tripo3d` | model3d | ~30-90s | text/image/multiview → 3D, plus rig, animate, texture, convert, stylize, reduce; full chain typically tops out around ~$1.00 |
 | `llm_proxy` | text | ~1-3s | Claude/GPT/Gemini/Grok, ~$0.02-0.10/call |

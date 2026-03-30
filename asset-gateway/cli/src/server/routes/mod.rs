@@ -8,6 +8,7 @@ pub mod process;
 pub mod process3d;
 pub mod providers;
 pub mod users;
+pub mod voice;
 
 use crate::server::ServerState;
 use axum::{routing::get, Router};
@@ -20,6 +21,7 @@ pub fn api_router() -> Router<Arc<ServerState>> {
         .merge(generate::router())
         .merge(process::router())
         .merge(process3d::router())
+        .merge(voice::router())
         .merge(providers::router())
         .merge(jobs::router())
         .merge(users::router())

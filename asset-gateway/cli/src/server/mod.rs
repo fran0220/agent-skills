@@ -64,24 +64,13 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         providers.push(Arc::new(tripo));
     }
 
-    // MiniMax TTS — own config or fallback to shared proxy
-    {
-        let mm_url = if config.minimax_url.is_empty() {
-            &config.proxy_url
-        } else {
-            &config.minimax_url
-        };
-        let mm_key = if config.minimax_key.is_empty() {
-            &config.proxy_key
-        } else {
-            &config.minimax_key
-        };
-        if !mm_key.is_empty() {
-            let mut minimax =
-                crate::providers::minimax::MinimaxTtsProvider::new(mm_url.clone(), mm_key.clone());
-            minimax.id = "minimax_tts".into();
-            providers.push(Arc::new(minimax));
-        }
+    if !config.dashscope_key.is_empty() {
+        let mut qwen = crate::providers::qwen_tts::QwenTtsProvider::new(
+            config.dashscope_url.clone(),
+            config.dashscope_key.clone(),
+        );
+        qwen.id = "qwen_tts".into();
+        providers.push(Arc::new(qwen));
     }
 
     providers

@@ -138,30 +138,29 @@ export function createGenerateCommand(): Command {
 
   command.addCommand(
     new Command("tts")
-      .description("Text-to-speech synthesis (Chinese/multilingual)")
+      .description("Text-to-speech synthesis via Qwen3-TTS")
       .requiredOption("--prompt <text>", "Text to synthesize")
-      .option("--voice-id <id>", "Voice ID (e.g. 'Chinese (Mandarin)_Lyrical_Voice')")
-      .option("--model <model>", "TTS model (speech-2.6-hd, speech-2.6-turbo)")
-      .option("--speed <n>", "Speech speed [0.5, 2.0]")
-      .option("--language-boost <lang>", "Language hint: auto, Chinese, English, etc.")
-      .option("--emotion <emotion>", "Emotion: happy, sad, angry, calm, etc.")
+      .option("--voice <name>", "Voice name or custom voice ID", "Cherry")
+      .option("--language <lang>", "Language hint: Auto, Chinese, English, Japanese, etc.", "Auto")
+      .option("--model <model>", "Qwen3-TTS model", "qwen3-tts-flash")
+      .option("--instructions <text>", "Natural language speaking instructions (for instruct models)")
       .option("--provider <id>", "Provider to use")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
           const ctx = createContext(this);
-          const params: Record<string, unknown> = {};
-          if (options.voiceId) params.voice_id = options.voiceId;
-          if (options.speed) params.speed = Number(options.speed);
-          if (options.languageBoost) params.language_boost = options.languageBoost;
-          if (options.emotion) params.emotion = options.emotion;
+          const params: Record<string, unknown> = {
+            voice: options.voice,
+            language_type: options.language,
+          };
+          if (options.instructions) params.instructions = options.instructions;
 
           const body: Record<string, unknown> = {
             asset_type: "tts",
             prompt: options.prompt,
+            model: options.model,
             params,
           };
-          if (options.model) body.model = options.model;
           if (options.provider) body.provider = options.provider;
 
           const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;

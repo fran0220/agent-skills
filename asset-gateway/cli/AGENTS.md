@@ -75,9 +75,9 @@ key = "..."
 [tripo3d]
 key = "..."
 
-[minimax]
-url = "https://api.bltcy.ai"   # MiniMax 中转站（独立于 LLM proxy）
-key = "..."                     # 留空则 fallback 到 [proxy].key
+[dashscope]
+url = "https://dashscope-intl.aliyuncs.com"  # Singapore / Intl endpoint
+key = "..."
 ```
 
 ### 部署流程
@@ -154,11 +154,11 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | `llm_proxy` | Text | 双协议（Anthropic + OpenAI 自动选择），SSE streaming | ✅ 1.3s |
 | `gemini_image` | Image | Google generateContent，gemini-3.1-flash-image-preview，支持 text-to-image + image editing (inlineData) | ✅ 15s |
 | `grok_image` | Image/Video | Grok 图片生成/编辑 + 视频生成（OpenAI 兼容格式） | ⚠️ 502 upstream |
-| `minimax_tts` | Tts | MiniMax 中文/多语种 TTS，同步 API（api.bltcy.ai 中转） | ✅ 1.5s |
+| `qwen_tts` | Tts/Voice | Qwen3-TTS via DashScope Intl：49+ 系统音色、指令控制、VC/VD | ✅ ~97ms 首包 |
 | `elevenlabs` | Audio | sound-generation (BGM/SFX) | ✅ 1.5s |
 | `tripo3d` | Model3d | 完整 3D 管线：text/image/multiview → model, texture, rig, animate, convert, reduce, stylize, segment, prerigcheck | ✅ |
 
-> 所有 provider 通过 LLM proxy（api.xiaomao.chat）统一接入，minimax_tts 通过独立中转站（api.bltcy.ai）。
+> `llm_proxy` / `gemini_image` / `grok_image` 继续通过 LLM proxy（api.xiaomao.chat）接入；`qwen_tts` 使用独立 DashScope 国际站 `https://dashscope-intl.aliyuncs.com`。
 
 ### 后处理管线（本地工具）
 
@@ -293,7 +293,7 @@ src/
 │   ├── llm_proxy.rs  (343)  LLM 双协议 + streaming
 │   ├── gemini_image.rs(152) Google 图像
 │   ├── grok_image.rs (409)  Grok 图片生成/编辑 + 视频（OpenAI 兼容）+ URL 提取 11 测试
-│   ├── minimax.rs    (230)  MiniMax TTS 中文/多语种（同步 API + hex/url 输出）
+│   ├── qwen_tts.rs   (548)  Qwen3-TTS：标准合成 + instruct + Voice Clone + Voice Design
 │   ├── elevenlabs.rs (202)  音频 (BGM/SFX)
 │   └── tripo3d.rs    (773)  TripoClient + 全链路 3D 管线（14 task types）+ 3 测试
 │
@@ -357,6 +357,6 @@ src/
 1. **Dispatcher 健康检查缓存** — `RwLock<HashMap>` + 60s TTL，避免每次 generate 请求都做真实 HTTP 健康检查。`invalidate_health_cache()` 在 provider reload 时清缓存
 2. **Gemini Image 编辑支持** — `input_file` 存在时，下载图片并以 `inlineData` 传入 Gemini API contents 数组，支持图片编辑
 3. **Grok URL 提取加固** — 替换了 `split_whitespace` 和 `find("src=\"")` 为多策略提取：Markdown `![](url)` → HTML `<img src>` / `<a href>` → `<video>` / `<source>` tag → 裸 URL 扫描。11 个测试覆盖
-4. **cost_usd 成本估算** — 所有 6 个 provider 均返回估算成本：gemini $0.04-0.08, grok $0.07-0.10, llm $0.02-0.10, minimax $0.005, elevenlabs $0.05, tripo3d $0.20
+4. **cost_usd 成本估算** — 所有 6 个 provider 均返回估算成本：gemini $0.04-0.08, grok $0.07-0.10, llm $0.02-0.10, qwen3-tts ~$0.115/10K chars, elevenlabs $0.05, tripo3d $0.20
 5. **Image 编辑 CLI 支持** — Rust CLI 和 npm CLI 均新增 `--input` 参数，用于传入待编辑图片 URL
 6. **Tripo 3D 全管线接入** — 从 2/14 task type 扩展到全部 14 个：multiview 生成、P1 参数增强、convert/texture/rig/animate/reduce/stylize/segment/prerigcheck。完整的 text → model → rig → animate → export 链路

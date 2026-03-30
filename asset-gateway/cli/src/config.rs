@@ -14,7 +14,7 @@ pub struct ConfigFile {
     #[serde(default)]
     pub tripo3d: ProviderKeySection,
     #[serde(default)]
-    pub minimax: MinimaxSection,
+    pub dashscope: DashscopeSection,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -35,7 +35,7 @@ pub struct ProviderKeySection {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct MinimaxSection {
+pub struct DashscopeSection {
     pub url: Option<String>,
     pub key: Option<String>,
 }
@@ -58,9 +58,9 @@ pub struct AppConfig {
     pub elevenlabs_key: String,
     pub tripo3d_key: String,
 
-    // MiniMax TTS (url + key; falls back to proxy if not set)
-    pub minimax_url: String,
-    pub minimax_key: String,
+    // DashScope Qwen3-TTS (International Singapore region)
+    pub dashscope_url: String,
+    pub dashscope_key: String,
 }
 
 impl AppConfig {
@@ -121,15 +121,15 @@ impl AppConfig {
                 "",
             ),
 
-            minimax_url: env_or(
-                "ASSET_GATEWAY_MINIMAX_URL",
-                file_cfg.minimax.url.as_deref(),
-                "", // resolved at provider build time — fallback to proxy_url
+            dashscope_url: env_or(
+                "ASSET_GATEWAY_DASHSCOPE_URL",
+                file_cfg.dashscope.url.as_deref(),
+                "https://dashscope-intl.aliyuncs.com",
             ),
-            minimax_key: env_or(
-                "ASSET_GATEWAY_MINIMAX_KEY",
-                file_cfg.minimax.key.as_deref(),
-                "", // resolved at provider build time — fallback to proxy_key
+            dashscope_key: env_or(
+                "ASSET_GATEWAY_DASHSCOPE_KEY",
+                file_cfg.dashscope.key.as_deref(),
+                "",
             ),
         })
     }

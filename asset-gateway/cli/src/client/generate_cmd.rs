@@ -268,22 +268,22 @@ pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<
         ),
         GenerateCommands::Tts {
             prompt,
-            voice_id,
+            voice,
             model,
-            speed,
-            language_boost,
+            language,
+            instructions,
             provider,
             output_dir,
         } => {
             let mut params = serde_json::json!({});
-            if let Some(v) = &voice_id {
-                params["voice_id"] = serde_json::json!(v);
+            if let Some(v) = &voice {
+                params["voice"] = serde_json::json!(v);
             }
-            if let Some(s) = speed {
-                params["speed"] = serde_json::json!(s);
+            if let Some(lang) = &language {
+                params["language_type"] = serde_json::json!(lang);
             }
-            if let Some(lb) = &language_boost {
-                params["language_boost"] = serde_json::json!(lb);
+            if let Some(instr) = &instructions {
+                params["instructions"] = serde_json::json!(instr);
             }
             (
                 "tts",
