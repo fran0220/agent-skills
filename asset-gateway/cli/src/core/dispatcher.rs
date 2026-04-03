@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use super::registry::ProviderRegistry;
-use super::{AssetProvider, AssetType, GenerateRequest, GenerateResponse, HealthStatus};
+use super::{AssetProvider, GenerateRequest, GenerateResponse, HealthStatus};
 
 const HEALTH_CACHE_TTL: Duration = Duration::from_secs(60);
 
@@ -169,19 +169,8 @@ impl Dispatcher {
         healthy
     }
 
-    fn provider_score(provider: &dyn AssetProvider, req: &GenerateRequest) -> i32 {
-        let caps = provider.capabilities();
-        let mut score = caps.priority;
-
-        if req.asset_type == AssetType::Image {
-            if req.transparent() && caps.supports_transparency {
-                score += 5_000;
-            } else if !req.transparent() && provider.id() == "gemini_image" {
-                score += 10_000;
-            }
-        }
-
-        score
+    fn provider_score(provider: &dyn AssetProvider, _req: &GenerateRequest) -> i32 {
+        provider.capabilities().priority
     }
 }
 
@@ -192,7 +181,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::core::{GenerateRequest, HealthStatus, ProviderCapabilities};
+    use crate::core::{AssetType, GenerateRequest, HealthStatus, ProviderCapabilities};
 
     struct MockProvider {
         id: &'static str,
@@ -250,7 +239,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn transparent_requests_prefer_transparency_capable_provider() {
+    async fn image_routes_to_gemini() {
         let registry = Arc::new(ProviderRegistry::new());
 
         registry
@@ -258,8 +247,7 @@ mod tests {
                 id: "gemini_image",
                 asset_types: &[AssetType::Image],
                 caps: ProviderCapabilities {
-                    supports_transparency: false,
-                    priority: 500,
+                    priority: 100,
                     ..Default::default()
                 },
                 healthy: true,
@@ -270,10 +258,9 @@ mod tests {
         registry
             .register(Arc::new(MockProvider {
                 id: "grok_image",
-                asset_types: &[AssetType::Image],
+                asset_types: &[AssetType::Video],
                 caps: ProviderCapabilities {
-                    supports_transparency: true,
-                    priority: 1,
+                    priority: 100,
                     ..Default::default()
                 },
                 healthy: true,
@@ -287,15 +274,15 @@ mod tests {
             prompt: Some("hero image".to_string()),
             model: None,
             input_file: None,
-            params: json!({"transparent": true}),
+            params: json!({}),
         };
 
         let result = dispatcher.dispatch(&req, None).await.unwrap();
-        assert_eq!(result.provider_id, "grok_image");
+        assert_eq!(result.provider_id, "gemini_image");
     }
 
     #[tokio::test]
-    async fn falls_back_to_next_healthy_provider_when_primary_fails() {
+    async fn video_routes_to_grok() {
         let registry = Arc::new(ProviderRegistry::new());
 
         registry
@@ -307,17 +294,16 @@ mod tests {
                     ..Default::default()
                 },
                 healthy: true,
-                fail_generate: true,
+                fail_generate: false,
             }))
             .await;
 
         registry
             .register(Arc::new(MockProvider {
                 id: "grok_image",
-                asset_types: &[AssetType::Image],
+                asset_types: &[AssetType::Video],
                 caps: ProviderCapabilities {
-                    priority: 10,
-                    supports_transparency: true,
+                    priority: 100,
                     ..Default::default()
                 },
                 healthy: true,
@@ -327,11 +313,11 @@ mod tests {
 
         let dispatcher = Dispatcher::new(registry);
         let req = GenerateRequest {
-            asset_type: AssetType::Image,
-            prompt: Some("landscape".to_string()),
+            asset_type: AssetType::Video,
+            prompt: Some("a running cat".to_string()),
             model: None,
             input_file: None,
-            params: json!({"transparent": false}),
+            params: json!({}),
         };
 
         let result = dispatcher.dispatch(&req, None).await.unwrap();
@@ -344,7 +330,7 @@ mod tests {
 
         registry
             .register(Arc::new(MockProvider {
-                id: "gemini_image",
+                id: "primary",
                 asset_types: &[AssetType::Image],
                 caps: ProviderCapabilities {
                     priority: 100,
@@ -357,11 +343,10 @@ mod tests {
 
         registry
             .register(Arc::new(MockProvider {
-                id: "grok_image",
+                id: "fallback",
                 asset_types: &[AssetType::Image],
                 caps: ProviderCapabilities {
                     priority: 5,
-                    supports_transparency: true,
                     ..Default::default()
                 },
                 healthy: true,
@@ -379,6 +364,6 @@ mod tests {
         };
 
         let result = dispatcher.dispatch(&req, None).await.unwrap();
-        assert_eq!(result.provider_id, "grok_image");
+        assert_eq!(result.provider_id, "fallback");
     }
 }

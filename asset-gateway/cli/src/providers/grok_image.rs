@@ -42,13 +42,13 @@ impl AssetProvider for GrokImageProvider {
     }
 
     fn asset_types(&self) -> &[AssetType] {
-        &[AssetType::Image, AssetType::Video]
+        &[AssetType::Video]
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
             supports_transparency: false,
-            priority: 70,
+            priority: 100,
             ..Default::default()
         }
     }

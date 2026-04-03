@@ -15,7 +15,7 @@ asset-gateway auth set <token>       # one-time, persisted to ~/.config/asset-ga
 asset-gateway auth status            # verify
 ```
 
-Default gateway: `https://assets.xiaomao.chat`. Override with `--gateway-url` or `ASSET_GATEWAY_URL`.
+Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or `ASSET_GATEWAY_URL`.
 
 ## Decision Guide: Which Command?
 
@@ -37,6 +37,8 @@ Default gateway: `https://assets.xiaomao.chat`. Override with `--gateway-url` or
 | Stylize to voxel/lego | `process3d stylize` | `--task-id`, `--style lego` |
 | Segment a mesh into parts | `process3d segment` | `--task-id` |
 | Check whether a mesh is riggable | `process3d prerigcheck` | `--task-id` |
+| Refine a draft model to higher quality | `process3d refine` | `--task-id` |
+| Import an external 3D model for post-processing | `process3d import` | `--file-url` or `--file-path` |
 | LLM text completion | `generate text` | `--prompt`, `--model`, `--max-tokens` |
 | Remove image background | `process remove-bg` | `--input`, `--smart-crop` |
 | Crop to power-of-2 | `process crop` | `--input`, `--mode power_of2` |
@@ -56,20 +58,16 @@ asset-gateway generate image --prompt "isometric village, clean lighting" --outp
 # With specific size
 asset-gateway generate image --prompt "banner" --size 1792x1024 --output-dir ./assets
 
-# Force specific provider
-asset-gateway generate image --prompt "anime forest" --provider grok_image --output-dir ./assets
-
 # Image editing: modify an existing image with a prompt
 asset-gateway generate image --prompt "make the background a sunset" --input "https://example.com/photo.png" --output-dir ./assets
 
-# Image editing with specific provider
-asset-gateway generate image --prompt "add a hat to the character" --input "https://example.com/char.png" --provider grok_image --output-dir ./assets
+# Image editing with model override
+asset-gateway generate image --prompt "add a hat to the character" --input "https://example.com/char.png" --output-dir ./assets
 ```
 
-**Provider choice guide for images:**
-- **Fast & default** → `gemini_image` (~15s, also supports editing via `--input`)
-- **Grok style** → `--provider grok_image` (supports editing and video)
-- **Image editing** → both `gemini_image` and `grok_image` support `--input` for editing
+**Provider choice guide:**
+- **Images** → `gemini_image` (default, ~15s, supports editing via `--input`, ~$0.04/gen)
+- **Video** → `grok_image` (auto-routed, ~$0.10/gen)
 
 ### 3D Model Generation
 
@@ -90,7 +88,7 @@ asset-gateway generate model \
 
 # Image-to-3D from a public reference image
 asset-gateway generate model \
-  --image "https://assets.xiaomao.chat/uploads/character-concept.png" \
+  --image "https://upload.xiaomao.chat/uploads/character-concept.png" \
   --model-version P1-20260311 \
   --face-limit 8000 \
   --pbr \
@@ -137,6 +135,13 @@ asset-gateway process3d stylize --task-id abc-123 --style voxel --output-dir ./a
 # Segment parts or validate riggability
 asset-gateway process3d segment --task-id abc-123 --output-dir ./assets
 asset-gateway process3d prerigcheck --task-id abc-123 --output-dir ./assets
+
+# Refine a draft model to higher quality geometry
+asset-gateway process3d refine --task-id abc-123 --output-dir ./assets
+
+# Import an external 3D model (GLB/FBX) for post-processing (rig, animate, texture, convert, etc.)
+asset-gateway process3d import --file-url "https://example.com/model.glb" --output-dir ./assets
+asset-gateway process3d import --file-path ./my-model.glb --output-dir ./assets
 ```
 
 **What each `process3d` command does:**
@@ -148,6 +153,8 @@ asset-gateway process3d prerigcheck --task-id abc-123 --output-dir ./assets
 - `stylize` → generate themed variants like `lego`, `voxel`, `voronoi`, or `minecraft`
 - `segment` → split the mesh into semantic parts for downstream editing
 - `prerigcheck` → validate whether the mesh is suitable for auto-rigging
+- `refine` → enhance a draft model with higher quality geometry and details
+- `import` → import an external 3D model (GLB/FBX) so it can use all post-processing operations
 
 ### 3D Workflows
 
@@ -186,7 +193,7 @@ asset-gateway process3d convert --task-id <id> --format FBX --quad --output-dir 
 # Upload reference images first if they are local
 asset-gateway upload file ./character-concept.png
 
-asset-gateway generate model --image "https://assets.xiaomao.chat/uploads/<uploaded-file>.png" \
+asset-gateway generate model --image "https://upload.xiaomao.chat/uploads/<uploaded-file>.png" \
   --model-version P1-20260311 --face-limit 8000 --pbr --output-dir ./assets
 ```
 
@@ -203,6 +210,22 @@ asset-gateway generate model \
 ```bash
 asset-gateway process3d reduce --task-id <id> --face-limit 2000 --quad --output-dir ./assets
 asset-gateway process3d texture --task-id <id> --prompt "cartoon style, bright colors" --pbr --quality detailed --output-dir ./assets
+```
+
+**Import external model + process:**
+
+```bash
+# Import your own GLB/FBX into Tripo pipeline, then rig & animate it
+asset-gateway process3d import --file-url "https://example.com/character.glb" --output-dir ./assets
+# Response returns tripo_task_id → use for subsequent operations
+asset-gateway process3d rig --task-id <import-task-id> --spec mixamo --output-dir ./assets
+asset-gateway process3d animate --task-id <rig-task-id> --animation preset:walk --output-dir ./assets
+```
+
+**Refine draft model:**
+
+```bash
+asset-gateway process3d refine --task-id <id> --output-dir ./assets
 ```
 
 **Stylization:**
@@ -229,6 +252,8 @@ Use `process3d animate --animation preset:<name>` with Tripo's preset library. C
 | `convert_model` | 5-10 | $0.05-0.10 |
 | `highpoly_to_lowpoly` | ~30 | $0.30 |
 | `stylize_model` | ~5 | $0.05 |
+| `refine_model` | 20-30 | $0.20-0.30 |
+| `import_model` | 0 | free |
 
 ### Post-Processing Pipeline
 
@@ -261,7 +286,7 @@ asset-gateway process upscale --input ./low_res.png --scale 4 --output-dir ./out
 
 Operations can also be chained via the API:
 ```bash
-curl -X POST https://assets.xiaomao.chat/api/process \
+curl -X POST https://upload.xiaomao.chat/api/process \
   -H "Authorization: Bearer <token>" \
   -d '{
     "input": "https://example.com/raw.png",
@@ -322,7 +347,7 @@ Only proceed if the required provider type shows `healthy: true`.
 | ID | Asset Types | Speed | Notes |
 |----|------------|-------|-------|
 | `gemini_image` | image | ~15s | Default for images, supports editing via `--input`, ~$0.04/gen |
-| `grok_image` | image, video | varies | Grok imagine, supports editing, ~$0.07/img, ~$0.10/video |
+| `grok_image` | video | varies | Grok imagine video, ~$0.10/video |
 | `qwen_tts` | tts | ~97ms first packet | Qwen3-TTS via DashScope Intl, 49+ system voices, VC + VD workflows, ~$0.115/10K chars |
 | `elevenlabs` | audio | ~2s | BGM/SFX sound generation, ~$0.05/call |
 | `tripo3d` | model3d | ~30-90s | text/image/multiview → 3D, plus rig, animate, texture, convert, stylize, reduce; full chain typically tops out around ~$1.00 |
@@ -373,7 +398,7 @@ Process3d commands return:
     "job_id": "uuid",
     "operation": "convert",
     "tripo_task_id": "tripo-task-456",
-    "output_url": "https://assets.xiaomao.chat/uploads/model_123.fbx",
+    "output_url": "https://upload.xiaomao.chat/uploads/model_123.fbx",
     "local_path": "./assets/model_123.fbx",
     "metadata": {
       "source_task_id": "tripo-task-123",
@@ -430,10 +455,10 @@ asset-gateway upload file ./reference.png
 # Returns: { "url": "/uploads/uuid.png", "filename": "uuid.png" }
 
 # Use the URL for image-to-3D
-asset-gateway generate model --image "https://assets.xiaomao.chat/uploads/uuid.png" --output-dir ./out
+asset-gateway generate model --image "https://upload.xiaomao.chat/uploads/uuid.png" --output-dir ./out
 
 # Use uploaded URL as process input
-asset-gateway process remove-bg --input "https://assets.xiaomao.chat/uploads/uuid.png" --output-dir ./sprites
+asset-gateway process remove-bg --input "https://upload.xiaomao.chat/uploads/uuid.png" --output-dir ./sprites
 ```
 
 ```bash
@@ -444,7 +469,7 @@ asset-gateway upload list
 asset-gateway upload delete <filename>
 ```
 
-Uploaded files are accessible at `https://assets.xiaomao.chat/uploads/<filename>` without authentication.
+Uploaded files are accessible at `https://upload.xiaomao.chat/uploads/<filename>` without authentication.
 
 ## Anti-Patterns
 
