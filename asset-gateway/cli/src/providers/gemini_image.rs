@@ -175,8 +175,6 @@ impl AssetProvider for GeminiImageProvider {
             "generationConfig": gen_config,
         });
 
-        tracing::debug!(body = %serde_json::to_string(&body).unwrap_or_default(), "gemini image request body");
-
         let resp = self
             .http
             .post(format!(
