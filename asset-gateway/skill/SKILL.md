@@ -65,8 +65,20 @@ asset-gateway generate image --prompt "make the background a sunset" --input "ht
 asset-gateway generate image --prompt "add a hat to the character" --input "https://example.com/char.png" --output-dir ./assets
 ```
 
+**Image size control** (`--size WxH`): The `--size` flag maps to Gemini's `imageConfig`:
+
+| `--size` example | imageSize tier | aspectRatio | Typical output |
+|-----------------|---------------|-------------|----------------|
+| `512x512` | 512 | 1:1 | 512×512 |
+| `1024x1024` | 1K | 1:1 | 1024×1024 |
+| `1792x1024` | 2K | 16:9 | 2752×1536 |
+| `1024x1792` | 2K | 9:16 | 1536×2752 |
+| `4096x2304` | 4K | 16:9 | ~4K wide |
+
+Supported aspect ratios: `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3` (auto-matched to nearest). Gemini chooses the exact output resolution within the tier.
+
 **Provider choice guide:**
-- **Images** → `gemini_image` (default, ~15s, supports editing via `--input`, ~$0.04/gen)
+- **Images** → `gemini_image` (default, ~15s, supports editing via `--input` and `--size`, ~$0.04/gen)
 - **Video** → `grok_image` (auto-routed, ~$0.10/gen)
 
 ### 3D Model Generation
@@ -471,6 +483,71 @@ asset-gateway upload delete <filename>
 
 Uploaded files are accessible at `https://upload.xiaomao.chat/uploads/<filename>` without authentication.
 
+## Post-Generation Quality Validation (MANDATORY)
+
+<HARD-GATE>
+After EVERY asset generation call, you MUST validate the output before considering it done.
+Never use `sips`, `convert`, or any tool to "fix" a failed generation into a placeholder.
+A small/abstract/gradient file is a FAILURE, not a success that needs upscaling.
+</HARD-GATE>
+
+### Image Validation
+
+After each `generate image` call, run this validation sequence:
+
+```bash
+# 1. Check file actually exists and has real content
+SIZE=$(stat -f%z "$OUTPUT_FILE" 2>/dev/null || stat -c%s "$OUTPUT_FILE" 2>/dev/null)
+if [ "$SIZE" -lt 200000 ]; then
+  echo "FAIL: $OUTPUT_FILE is only ${SIZE} bytes — likely a placeholder or failed generation"
+  # DO NOT upscale or convert. Retry with asset-gateway instead.
+fi
+
+# 2. Check format matches extension
+file "$OUTPUT_FILE" | grep -q "PNG image data" || echo "FAIL: not actually PNG"
+
+# 3. Check resolution matches request
+DIMS=$(file "$OUTPUT_FILE" | grep -oE '[0-9]+ x [0-9]+')
+echo "Actual dimensions: $DIMS"
+```
+
+### Quality Thresholds
+
+| Asset Type | Minimum File Size | Expected Size | If Below Threshold |
+|-----------|-------------------|---------------|-------------------|
+| Scene/Background (1920×1080) | 500 KB | 2-4 MB | FAIL → retry generation |
+| Character sprite (1024×2048) | 200 KB | 600 KB-1 MB | FAIL → retry generation |
+| CG illustration (1920×1080) | 1 MB | 2-4 MB | FAIL → retry generation |
+| Title background | 500 KB | 2-4 MB | FAIL → retry generation |
+
+### What To Do On Failure
+
+1. **Do NOT** use `sips -s format png` to "convert" a JPEG placeholder to PNG
+2. **Do NOT** use `sips --resampleHeightWidth` to upscale a tiny image
+3. **Do NOT** use `ffmpeg` to create synthetic placeholder content
+4. **DO** retry the `asset-gateway generate image` command (up to 3 times)
+5. **DO** try a different `--provider` if the default keeps failing
+6. **DO** report the failure honestly instead of masking it with post-processing
+
+### Audio Validation
+
+```bash
+file "$OUTPUT_FILE" | grep -q "Ogg data" || echo "FAIL: not OGG format"
+# If MP3, convert properly:
+ffmpeg -i "$FILE" -acodec libvorbis -y "${FILE%.mp3}.ogg"
+```
+
+### Video Validation
+
+```bash
+DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$OUTPUT_FILE")
+SIZE=$(stat -f%z "$OUTPUT_FILE" 2>/dev/null)
+# A real AI-generated video should be > 500KB for even a few seconds
+if [ "$SIZE" -lt 500000 ]; then
+  echo "FAIL: video is only ${SIZE} bytes — likely placeholder"
+fi
+```
+
 ## Anti-Patterns
 
 - **Don't call provider APIs directly** — always go through `asset-gateway`. It handles auth, routing, health checks, and fallback.
@@ -479,6 +556,8 @@ Uploaded files are accessible at `https://upload.xiaomao.chat/uploads/<filename>
 - **Don't retry blindly on PROVIDER_ERROR** — check `provider health` first to avoid wasting time on a down provider.
 - **Don't use `generate text` for complex multi-turn conversations** — it's for single-shot completions only.
 - **Don't manually remove backgrounds** — use `process remove-bg` for AI-powered removal with BiRefNet.
+- **NEVER mask a failed generation by upscaling/converting a placeholder** — a 48KB abstract gradient upscaled to 1920×1080 is still garbage. Retry or report failure.
+- **NEVER use `sips` to "fix" format mismatches from the gateway** — if gemini returns JPEG instead of PNG, that's a provider quirk to handle with proper conversion, not a signal to accept bad output.
 
 ## Schema Introspection
 
