@@ -57,6 +57,50 @@ impl GeminiImageProvider {
         }
     }
 
+    /// Parse a "WxH" size string into Gemini `imageConfig` fields.
+    ///
+    /// Returns `(imageSize, aspectRatio)` — e.g. `("2K", "16:9")`.
+    fn parse_size(size: &str) -> Option<(String, String)> {
+        let (w, h) = size.split_once('x').or_else(|| size.split_once('X'))?;
+        let w: u32 = w.trim().parse().ok()?;
+        let h: u32 = h.trim().parse().ok()?;
+        if w == 0 || h == 0 {
+            return None;
+        }
+
+        let max_dim = w.max(h);
+        let image_size = match max_dim {
+            0..=512 => "512",
+            513..=1024 => "1K",
+            1025..=2048 => "2K",
+            _ => "4K",
+        };
+
+        // Find closest standard aspect ratio
+        let ratio = w as f64 / h as f64;
+        let candidates: &[(&str, f64)] = &[
+            ("1:1", 1.0),
+            ("16:9", 16.0 / 9.0),
+            ("9:16", 9.0 / 16.0),
+            ("4:3", 4.0 / 3.0),
+            ("3:4", 3.0 / 4.0),
+            ("3:2", 3.0 / 2.0),
+            ("2:3", 2.0 / 3.0),
+        ];
+        let aspect_ratio = candidates
+            .iter()
+            .min_by(|a, b| {
+                (a.1 - ratio)
+                    .abs()
+                    .partial_cmp(&(b.1 - ratio).abs())
+                    .unwrap()
+            })
+            .map(|(name, _)| *name)
+            .unwrap_or("1:1");
+
+        Some((image_size.to_string(), aspect_ratio.to_string()))
+    }
+
     fn extract_inline_image(payload: &Value) -> Option<(String, Option<String>)> {
         let parts = payload["candidates"][0]["content"]["parts"].as_array()?;
 
@@ -113,12 +157,25 @@ impl AssetProvider for GeminiImageProvider {
             json!([{"text": prompt}])
         };
 
+        let mut gen_config = json!({
+            "responseModalities": ["IMAGE"],
+        });
+
+        if let Some(size_str) = req.params.get("size").and_then(|v| v.as_str()) {
+            if let Some((image_size, aspect_ratio)) = Self::parse_size(size_str) {
+                gen_config["imageConfig"] = json!({
+                    "imageSize": image_size,
+                    "aspectRatio": aspect_ratio,
+                });
+            }
+        }
+
         let body = json!({
             "contents": [{"parts": parts}],
-            "generationConfig": {
-                "responseModalities": ["IMAGE"],
-            }
+            "generationConfig": gen_config,
         });
+
+        tracing::debug!(body = %serde_json::to_string(&body).unwrap_or_default(), "gemini image request body");
 
         let resp = self
             .http
@@ -153,6 +210,7 @@ impl AssetProvider for GeminiImageProvider {
                 "quality": req.quality().map(|q| q.as_str()),
                 "style": req.style(),
                 "editing": req.input_file.is_some(),
+                "size": req.params.get("size"),
             }),
             cost_usd: Some(if req.input_file.is_some() { 0.08 } else { 0.04 }),
             elapsed_ms: start.elapsed().as_millis() as u64,
@@ -180,5 +238,37 @@ impl AssetProvider for GeminiImageProvider {
                 message: Some(e.to_string()),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_size_standard_cases() {
+        let cases = vec![
+            ("1024x1024", "1K", "1:1"),
+            ("512x512", "512", "1:1"),
+            ("1792x1024", "2K", "16:9"),
+            ("1024x1792", "2K", "9:16"),
+            ("2048x2048", "2K", "1:1"),
+            ("4096x2304", "4K", "16:9"),
+            ("1024x768", "1K", "4:3"),
+            ("1536x1024", "2K", "3:2"),
+        ];
+        for (input, expected_size, expected_ratio) in cases {
+            let (size, ratio) = GeminiImageProvider::parse_size(input)
+                .unwrap_or_else(|| panic!("parse_size({input}) returned None"));
+            assert_eq!(size, expected_size, "size mismatch for {input}");
+            assert_eq!(ratio, expected_ratio, "ratio mismatch for {input}");
+        }
+    }
+
+    #[test]
+    fn parse_size_invalid() {
+        assert!(GeminiImageProvider::parse_size("abc").is_none());
+        assert!(GeminiImageProvider::parse_size("0x0").is_none());
+        assert!(GeminiImageProvider::parse_size("1024").is_none());
     }
 }
