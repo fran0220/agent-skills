@@ -2,16 +2,16 @@
 set -euo pipefail
 
 # Usage: ./scripts/deploy.sh
-# 1) Cross-compile ARM64 release binary
-# 2) Upload to Oracle host
+# 1) Cross-compile x86_64 release binary
+# 2) Upload to jpdata host
 # 3) Restart asset-gateway systemd service
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-TARGET="${TARGET:-aarch64-unknown-linux-gnu}"
+TARGET="${TARGET:-x86_64-unknown-linux-gnu}"
 BINARY_NAME="asset-gateway"
-REMOTE_HOST="${REMOTE_HOST:-oracle}"
+REMOTE_HOST="${REMOTE_HOST:-jpdata}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/asset-gateway}"
 
 build_binary() {
