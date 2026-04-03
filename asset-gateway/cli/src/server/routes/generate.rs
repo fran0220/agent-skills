@@ -17,6 +17,10 @@ pub struct GenerateReq {
     pub model: Option<String>,
     pub input_file: Option<String>,
     pub provider: Option<String>,
+    /// Top-level size field sent by the npm CLI (e.g. "1792x1024").
+    pub size: Option<String>,
+    /// Top-level transparent field sent by the npm CLI.
+    pub transparent: Option<bool>,
     #[serde(default)]
     pub params: serde_json::Value,
 }
@@ -55,12 +59,28 @@ async fn generate(
     let job_id = Uuid::new_v4().to_string();
     let provider_hint = req.provider.clone().unwrap_or_else(|| "auto".into());
 
+    // Merge top-level fields (from npm CLI) into params so providers can read them.
+    let mut params = match req.params {
+        Value::Object(map) => Value::Object(map),
+        _ => Value::Object(serde_json::Map::new()),
+    };
+    if let Some(size) = &req.size {
+        if params.get("size").is_none() {
+            params["size"] = Value::String(size.clone());
+        }
+    }
+    if let Some(true) = req.transparent {
+        if params.get("transparent").is_none() {
+            params["transparent"] = Value::Bool(true);
+        }
+    }
+
     let gen_req = GenerateRequest {
         asset_type: req.asset_type,
         prompt: req.prompt,
         model: req.model,
         input_file: req.input_file,
-        params: req.params,
+        params,
     };
 
     let request_payload = serde_json::to_string(&gen_req).map_err(AppError::internal)?;
