@@ -18,6 +18,7 @@ pub enum AssetType {
     Image,
     Video,
     Audio,
+    Music,
     Tts,
     Model3d,
 }
@@ -29,6 +30,7 @@ impl AssetType {
             Self::Image => "image",
             Self::Video => "video",
             Self::Audio => "audio",
+            Self::Music => "music",
             Self::Tts => "tts",
             Self::Model3d => "model3d",
         }
@@ -42,12 +44,12 @@ impl std::fmt::Display for AssetType {
 }
 
 impl AssetType {
-    /// Map TTS extension to mp3 like audio.
+    /// Map audio-like assets to mp3.
     #[allow(dead_code)]
     pub fn file_extension(&self) -> &'static str {
         match self {
             Self::Image => "png",
-            Self::Audio | Self::Tts => "mp3",
+            Self::Audio | Self::Music | Self::Tts => "mp3",
             Self::Video => "mp4",
             Self::Model3d => "glb",
             Self::Text => "txt",

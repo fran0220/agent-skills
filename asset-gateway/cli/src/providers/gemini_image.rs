@@ -41,6 +41,27 @@ impl GeminiImageProvider {
         prompt
     }
 
+    fn apply_edit_mode(prompt: &str, edit_mode: Option<ImageEditMode>, has_input: bool) -> String {
+        match edit_mode {
+            Some(ImageEditMode::Inpaint) if has_input => format!(
+                "Using the provided image, change only the specific element described below. \
+Keep everything else in the image exactly the same, preserving the original \
+style, lighting, and composition.\n\nEdit: {prompt}"
+            ),
+            Some(ImageEditMode::Restyle) if has_input => format!(
+                "Transform the provided image into a new artistic style as described below. \
+Preserve the original composition and subject matter but render it with the \
+new style.\n\nStyle: {prompt}"
+            ),
+            Some(ImageEditMode::Expand) if has_input => format!(
+                "Expand the provided image outward, extending the scene naturally beyond \
+its current borders while maintaining visual consistency.\n\nDirection: {prompt}"
+            ),
+            Some(ImageEditMode::Edit) if has_input => prompt.to_string(),
+            _ => prompt.to_string(),
+        }
+    }
+
     /// Fetch image and return as a Gemini inlineData part with correct MIME type.
     async fn fetch_image_part(&self, input: &str) -> anyhow::Result<Value> {
         if input.starts_with("data:") {
@@ -173,11 +194,12 @@ impl AssetProvider for GeminiImageProvider {
 
     async fn generate(&self, req: &GenerateRequest) -> anyhow::Result<GenerateResponse> {
         let model = req.model.as_deref().unwrap_or(DEFAULT_MODEL);
-        let prompt = self.build_prompt(req);
         let start = Instant::now();
 
         // Build image parts from all inputs
         let image_inputs = req.image_inputs();
+        let raw_prompt = self.build_prompt(req);
+        let prompt = Self::apply_edit_mode(&raw_prompt, req.edit_mode, !image_inputs.is_empty());
         let mut image_parts = Vec::new();
         for input in &image_inputs {
             image_parts.push(self.fetch_image_part(input).await?);
@@ -332,5 +354,25 @@ mod tests {
         assert!(GeminiImageProvider::parse_size("abc").is_none());
         assert!(GeminiImageProvider::parse_size("0x0").is_none());
         assert!(GeminiImageProvider::parse_size("1024").is_none());
+    }
+
+    #[test]
+    fn apply_edit_mode_prefixes_only_when_input_is_present() {
+        let prompt = "replace the sky with a sunset";
+
+        let inpaint = GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Inpaint), true);
+        assert!(inpaint.starts_with("Using the provided image, change only the specific element described below."));
+        assert!(inpaint.ends_with(prompt));
+
+        let restyle = GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Restyle), true);
+        assert!(restyle.starts_with("Transform the provided image into a new artistic style as described below."));
+        assert!(restyle.ends_with(prompt));
+
+        let expand = GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Expand), true);
+        assert!(expand.starts_with("Expand the provided image outward, extending the scene naturally beyond its current borders while maintaining visual consistency."));
+        assert!(expand.ends_with(prompt));
+
+        let unchanged = GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Inpaint), false);
+        assert_eq!(unchanged, prompt);
     }
 }

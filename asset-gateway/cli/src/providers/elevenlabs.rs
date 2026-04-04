@@ -96,6 +96,38 @@ impl ElevenLabsProvider {
         Ok((bytes, content_type, "sound_generation"))
     }
 
+    async fn generate_music(
+        &self,
+        req: &GenerateRequest,
+        prompt: &str,
+    ) -> anyhow::Result<(Vec<u8>, Option<String>, &'static str)> {
+        let mut body = json!({
+            "prompt": prompt,
+        });
+
+        if let Some(duration) = req.params.get("duration_seconds").and_then(Value::as_f64) {
+            body["duration_seconds"] = json!(duration);
+        }
+
+        let model = req
+            .model
+            .as_deref()
+            .or_else(|| req.params.get("model_id").and_then(Value::as_str));
+        if let Some(model) = model {
+            body["model_id"] = json!(model);
+        }
+
+        let endpoint = format!("{}/v1/music-generation", self.base_url);
+        let request = self
+            .http
+            .post(endpoint)
+            .header("xi-api-key", &self.api_key)
+            .json(&body);
+
+        let (bytes, content_type) = self.send_audio_request(request, "music-generation").await?;
+        Ok((bytes, content_type, "music_generation"))
+    }
+
     async fn generate_tts(
         &self,
         req: &GenerateRequest,
@@ -140,11 +172,11 @@ impl AssetProvider for ElevenLabsProvider {
     }
 
     fn display_name(&self) -> &str {
-        "ElevenLabs (Audio BGM/SFX/TTS)"
+        "ElevenLabs (Audio BGM/SFX/Music/TTS)"
     }
 
     fn asset_types(&self) -> &[AssetType] {
-        &[AssetType::Audio]
+        &[AssetType::Audio, AssetType::Music]
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
@@ -166,6 +198,8 @@ impl AssetProvider for ElevenLabsProvider {
         let (bytes, content_type, route) =
             if let Some(voice_id) = req.params.get("voice_id").and_then(Value::as_str) {
                 self.generate_tts(req, prompt, voice_id).await?
+            } else if req.asset_type == AssetType::Music {
+                self.generate_music(req, prompt).await?
             } else {
                 self.generate_sound(req, prompt).await?
             };

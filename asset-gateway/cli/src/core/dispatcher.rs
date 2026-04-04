@@ -331,6 +331,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn music_routes_to_elevenlabs() {
+        let registry = Arc::new(ProviderRegistry::new());
+
+        registry
+            .register(Arc::new(MockProvider {
+                id: "elevenlabs",
+                asset_types: &[AssetType::Audio, AssetType::Music],
+                caps: ProviderCapabilities {
+                    priority: 100,
+                    ..Default::default()
+                },
+                healthy: true,
+                fail_generate: false,
+            }))
+            .await;
+
+        let dispatcher = Dispatcher::new(registry);
+        let req = GenerateRequest {
+            asset_type: AssetType::Music,
+            prompt: Some("warm ambient synth with slow build".to_string()),
+            model: None,
+            input_file: None,
+            reference_images: vec![],
+            edit_mode: None,
+            session_id: None,
+            params: json!({}),
+        };
+
+        let result = dispatcher.dispatch(&req, None).await.unwrap();
+        assert_eq!(result.provider_id, "elevenlabs");
+    }
+
+    #[tokio::test]
     async fn skips_unhealthy_provider() {
         let registry = Arc::new(ProviderRegistry::new());
 

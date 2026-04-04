@@ -4,7 +4,7 @@ import { Command } from "commander";
 import { createContext, printError, printSuccess } from "./common.js";
 
 function inferExtension(assetType: string): string {
-  const map: Record<string, string> = { image: "png", audio: "mp3", tts: "mp3", video: "mp4", model3d: "glb", text: "txt" };
+  const map: Record<string, string> = { image: "png", audio: "mp3", music: "mp3", tts: "mp3", video: "mp4", model3d: "glb", text: "txt" };
   return map[assetType] ?? "bin";
 }
 
@@ -129,8 +129,10 @@ export function createGenerateCommand(): Command {
             asset_type: "audio",
             prompt: options.prompt,
           };
-          if (options.type) body.audio_type = options.type;
-          if (options.duration) body.duration = Number(options.duration);
+          const params: Record<string, unknown> = {};
+          if (options.type) params.audio_type = options.type;
+          if (options.duration) params.duration_seconds = Number(options.duration);
+          if (Object.keys(params).length > 0) body.params = params;
 
           const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
           const localPath = await saveOutput(data, "audio", options.outputDir);
@@ -138,6 +140,33 @@ export function createGenerateCommand(): Command {
           printSuccess("generate.audio", data, ctx);
         } catch (error) {
           printError("generate.audio", error);
+        }
+      })
+  );
+
+  command.addCommand(
+    new Command("music")
+      .description("Generate music from a text prompt")
+      .requiredOption("--prompt <text>", "Music description prompt")
+      .option("--duration <seconds>", "Duration in seconds")
+      .option("--output-dir <dir>", "Directory to save output", ".")
+      .action(async function (options) {
+        try {
+          const ctx = createContext(this);
+          const body: Record<string, unknown> = {
+            asset_type: "music",
+            prompt: options.prompt,
+          };
+          if (options.duration) {
+            body.params = { duration_seconds: Number(options.duration) };
+          }
+
+          const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
+          const localPath = await saveOutput(data, "music", options.outputDir);
+          if (localPath) data.local_path = localPath;
+          printSuccess("generate.music", data, ctx);
+        } catch (error) {
+          printError("generate.music", error);
         }
       })
   );

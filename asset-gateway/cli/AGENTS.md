@@ -21,6 +21,22 @@
 5. **Provider 可插拔**：通过统一 `AssetProvider` trait 适配不同服务。
 6. **策略路由优先**：显式 provider 覆盖 > 能力匹配 > 健康过滤 > 优先级排序 > 自动 fallback。
 
+## 品类固定映射（产品语义）
+
+对 Agent 文档和能力设计而言，`asset-gateway` 以“品类 → 固定后端 → 固定命令”的方式工作。Agent 只应该按命令选能力，不应该思考 provider 选择。
+
+| 品类 | 固定 Provider（内部） | Agent 命令 |
+|------|----------------------|------------|
+| 图片（生成 + 编辑 + 蒙版 + 风格） | Gemini | `generate image` |
+| 视频 | Grok | `generate video` |
+| 音效 / BGM | ElevenLabs | `generate audio` |
+| 音乐 | ElevenLabs | `generate music` |
+| 语音合成 | Qwen / DashScope | `generate tts` |
+| 语音克隆 / 语音设计 | Qwen / DashScope | `voice clone` / `voice design` |
+| 3D 模型 | Tripo3D | `generate model` + `process3d` |
+| 文本 | LLM Proxy | `generate text` |
+| 图片后处理 | 内置管线 | `process remove-bg` / `crop` / `resize` / `upscale` |
+
 ## 技术栈选择
 
 本项目使用 **Rust**（非 TypeScript），原因：
@@ -99,9 +115,10 @@ asset-gateway auth set <token>
 | 命令组 | 子命令 |
 |--------|--------|
 | `auth` | `set`, `status`, `clear` |
-| `generate` | `image`, `video`, `audio`, `tts`, `model`, `text` |
+| `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text` |
 | `process` | `remove-bg`, `crop`, `resize`, `upscale` |
-| `process3d` | `convert`, `texture`, `rig`, `animate`, `reduce`, `stylize`, `segment`, `prerigcheck` |
+| `process3d` | `convert`, `texture`, `rig`, `animate`, `reduce`, `stylize`, `segment`, `prerigcheck`, `refine`, `import` |
+| `voice` | `clone`, `design`, `list`, `delete` |
 | `upload` | `file`, `list`, `delete` |
 | `provider` | `list`, `health` |
 | `job` | `list`, `status`, `cancel` |
@@ -111,15 +128,16 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 
 ## 当前实现状态 — ~6860 行 Rust, 18 测试通过
 
-### 命令面（8 组 30 个子命令）
+### 命令面（当前能力覆盖）
 
 | 命令组 | 子命令 | 说明 | 实现状态 |
 |--------|--------|------|:--------:|
 | `serve` | `--host --port --db --config` | 启动网关服务 | ✅ 完整 |
 | `auth` | `login`, `logout`, `whoami` | 认证入口 | ✅ 完整 |
-| `generate` | `image`, `video`, `audio`, `tts`, `model`, `text` | 资产生成 | ✅ 完整 |
+| `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text` | 资产生成 | ✅ 完整 |
 | `process` | `remove-bg`, `crop`, `resize`, `upscale` | 图像后处理 | ✅ 完整 |
-| `process3d` | `convert`, `texture`, `rig`, `animate`, `reduce`, `stylize`, `segment`, `prerigcheck` | 3D 后处理管线 | ✅ 完整 |
+| `process3d` | `convert`, `texture`, `rig`, `animate`, `reduce`, `stylize`, `segment`, `prerigcheck`, `refine`, `import` | 3D 后处理管线 | ✅ 完整 |
+| `voice` | `clone`, `design`, `list`, `delete` | 自定义语音管理 | ✅ 完整 |
 | `provider` | `list`, `health` | Provider 发现与健康检查 | ✅ 完整 |
 | `job` | `list`, `status`, `cancel` | 任务管理 | ✅ 完整 |
 | `describe` | `[command]` | 命令自省 | ✅ 完整 |
@@ -149,11 +167,11 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | Provider ID | 类型 | 关键能力 | 测试状态 |
 |-------------|------|---------|:--------:|
 | `llm_proxy` | Text | 双协议（Anthropic + OpenAI 自动选择），SSE streaming | ✅ 1.3s |
-| `gemini_image` | Image | Google generateContent，gemini-3.1-flash-image-preview，支持 text-to-image + image editing (inlineData) + 多图参考(≤14) + 多轮 session 编辑 + edit_mode (inpaint/restyle/expand) | ✅ 15s |
-| `grok_image` | Image/Video | Grok 图片生成/编辑 + 视频生成（OpenAI 兼容格式） | ⚠️ 502 upstream |
+| `gemini_image` | Image | 图片生成与编辑统一入口；支持多图参考(≤14)、多轮 session 编辑，且 `edit_mode` 会实际影响编辑语义（`inpaint` / `restyle` / `expand`） | ✅ 15s |
+| `grok_image` | Video | 视频生成（底层支持 text-to-video / image-to-video） | ⚠️ 502 upstream |
 | `qwen_tts` | Tts/Voice | Qwen3-TTS via DashScope Intl：49+ 系统音色、指令控制、VC/VD | ✅ ~97ms 首包 |
-| `elevenlabs` | Audio | sound-generation (BGM/SFX) | ✅ 1.5s |
-| `tripo3d` | Model3d | 完整 3D 管线：text/image/multiview → model, texture, rig, animate, convert, reduce, stylize, segment, prerigcheck | ✅ |
+| `elevenlabs` | Audio/Music | sound-generation（BGM/SFX）+ music-generation | ✅ 1.5s |
+| `tripo3d` | Model3d | 完整 3D 管线：text/image/multiview → model, texture, rig, animate, convert, reduce, stylize, segment, prerigcheck, refine, import | ✅ |
 
 > `llm_proxy` / `gemini_image` / `grok_image` 继续通过 LLM proxy（api.xiaomao.chat）接入；`qwen_tts` 使用独立 DashScope 国际站 `https://dashscope-intl.aliyuncs.com`。
 
@@ -199,16 +217,17 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 
 ## 路由策略
 
-Dispatcher 选择链：
-1. 显式 `--provider` → 直接路由，不做 fallback
-2. 按 `asset_type` 过滤候选 Provider
-3. 透明图（`params.transparent == true`）→ 优先 `supports_transparency` 的 Provider
-4. 非透明图 → 优先 `gemini_image`
-5. 健康检查过滤 → 跳过不健康的
-6. 按 `priority` 降序排列
-7. 首选失败 → 自动尝试下一个候选
+对外产品语义优先遵循“固定品类映射”：Agent 按品类调用命令，不按 provider 做决策。底层 Dispatcher 仍保留统一路由与 fallback 机制，用于内部实现、调试和健康切换。
 
-`POST /api/process3d` 不走多 Provider Dispatcher；它是 Tripo 专属的续处理链路，直接消费上一步返回的 `tripo_task_id`，把同一资产继续送入 texture / rig / animate / convert / reduce / stylize / segment / prerigcheck。
+Dispatcher 选择链：
+1. 显式 `--provider` → 仅用于内部 override / 调试，不作为 Agent 正常使用路径
+2. 未显式指定时，先按 `asset_type` 命中该品类的固定后端族
+3. 图片请求中，`transparent == true` 时优先支持透明图的候选；非透明图默认优先 `gemini_image`
+4. 健康检查过滤 → 跳过不健康的
+5. 按 `priority` 降序排列
+6. 首选失败 → 自动尝试下一个候选
+
+`POST /api/process3d` 不走多 Provider Dispatcher；它是 Tripo 专属的续处理链路，直接消费上一步返回的 `tripo_task_id`，把同一资产继续送入 texture / rig / animate / convert / reduce / stylize / segment / prerigcheck / refine / import。
 
 ## 开发约定
 
@@ -248,6 +267,8 @@ Dispatcher 选择链：
 | stylize | stylize_model | task_id + style | 风格化模型 | ~5 |
 | segment | mesh_segmentation | task_id | 部件分割信息 | ~5 |
 | prerigcheck | animate_prerigcheck | task_id | 可否绑骨 + rig_type | ~1 |
+| refine | refine_model | task_id | 更高质量的细化模型 | 20-30 |
+| import | import_model | file_url/file_path | 导入后的 Tripo task | 0 |
 
 ### 新增 API 路由 Checklist
 
@@ -353,7 +374,9 @@ src/
 
 1. **Dispatcher 健康检查缓存** — `RwLock<HashMap>` + 60s TTL，避免每次 generate 请求都做真实 HTTP 健康检查。`invalidate_health_cache()` 在 provider reload 时清缓存
 2. **Gemini Image 编辑支持** — `input_file` 存在时，下载图片并以 `inlineData` 传入 Gemini API contents 数组，支持图片编辑
-3. **Grok URL 提取加固** — 替换了 `split_whitespace` 和 `find("src=\"")` 为多策略提取：Markdown `![](url)` → HTML `<img src>` / `<a href>` → `<video>` / `<source>` tag → 裸 URL 扫描。11 个测试覆盖
-4. **cost_usd 成本估算** — 所有 6 个 provider 均返回估算成本：gemini $0.04-0.08, grok $0.07-0.10, llm $0.02-0.10, qwen3-tts ~$0.115/10K chars, elevenlabs $0.05, tripo3d $0.20
-5. **Image 编辑 CLI 支持** — Rust CLI 和 npm CLI 均新增 `--input` 参数，用于传入待编辑图片 URL
-6. **Tripo 3D 全管线接入** — 从 2/14 task type 扩展到全部 14 个：multiview 生成、P1 参数增强、convert/texture/rig/animate/reduce/stylize/segment/prerigcheck。完整的 text → model → rig → animate → export 链路
+3. **Gemini `edit_mode` 语义生效** — `edit_mode` 不再只是透传字段，现已实际参与图片编辑请求语义，覆盖 `inpaint` / `restyle` / `expand`
+4. **Grok URL 提取加固** — 替换了 `split_whitespace` 和 `find("src=\"")` 为多策略提取：Markdown `![](url)` → HTML `<img src>` / `<a href>` → `<video>` / `<source>` tag → 裸 URL 扫描。11 个测试覆盖
+5. **cost_usd 成本估算** — 所有 6 个 provider 均返回估算成本：gemini $0.04-0.08, grok $0.07-0.10, llm $0.02-0.10, qwen3-tts ~$0.115/10K chars, elevenlabs $0.05, tripo3d $0.20
+6. **Image 编辑 CLI 支持** — Rust CLI 和 npm CLI 均新增 `--input` 参数，用于传入待编辑图片 URL
+7. **Music 资产类型接入** — 新增 `Music` asset type，并通过 ElevenLabs `/v1/music-generation` 暴露 `generate music`
+8. **Tripo 3D 全管线接入** — 从 2/14 task type 扩展到全部 14 个：multiview 生成、P1 参数增强、convert/texture/rig/animate/reduce/stylize/segment/prerigcheck/refine/import。完整的 text → model → rig → animate → export 链路
