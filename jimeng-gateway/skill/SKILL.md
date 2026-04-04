@@ -1,5 +1,5 @@
 ---
-name: jimeng-gateway-api
+name: jimeng-gateway
 description: "Integrates with Jimeng Gateway for Seedance 2.0 video generation and Jimeng 5.0 image generation. Use when creating video/image generation tasks, polling task status, handling upload materials, managing API keys, or troubleshooting content moderation errors. Triggers on: jimeng, seedance, video generation, generate video, image generation, generate image."
 ---
 

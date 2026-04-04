@@ -1,5 +1,5 @@
 ---
-name: godotforge
+name: godot-forge
 description: "AI-driven Godot 4.x game development via CLI. Use when user asks to create a game, build a Godot project, design game mechanics, generate scenes, test gameplay, or export builds. Requires: godot-forge CLI (npm install -g @doufunao123/godot-forge) + Godot 4.4+ in PATH."
 ---
 

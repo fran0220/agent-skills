@@ -30,6 +30,7 @@ agent-skills/
 │   ├── skill/             #   Agent 技能
 │   ├── cli/               #   Rust 后端（axum + 即梦 API）
 │   └── web/               #   React 前端
+├── grok2api-go/           # Grok2API Go — Grok API 代理网关（手动 Docker 部署）
 ├── openclaw/              # OpenClaw — 网关最佳实践
 │   └── skill/             #   知识库
 ├── pi-sdk-practices/      # Pi SDK Practices — SDK 开发最佳实践

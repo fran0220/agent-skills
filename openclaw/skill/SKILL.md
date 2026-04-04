@@ -1,5 +1,5 @@
 ---
-name: openclaw-best-practices
+name: openclaw
 description: "Comprehensive OpenClaw operations guide for secure setup, routing, models, memory, sandboxing, skills, hooks, ACP agents, ContextEngine, and automation. Use when setting up, auditing, deploying, or extending OpenClaw gateways and agents."
 ---
 
