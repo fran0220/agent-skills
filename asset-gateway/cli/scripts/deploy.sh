@@ -2,46 +2,40 @@
 set -euo pipefail
 
 # Usage: ./scripts/deploy.sh
-# 1) Cross-compile x86_64 release binary
-# 2) Upload to jpdata host
-# 3) Restart asset-gateway systemd service
+#
+# Primary deploy path: push to main → GitHub Actions CI builds & deploys automatically.
+# This script is a manual fallback that builds on the server directly via SSH.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-TARGET="${TARGET:-x86_64-unknown-linux-gnu}"
 BINARY_NAME="asset-gateway"
 REMOTE_HOST="${REMOTE_HOST:-jpdata}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/asset-gateway}"
-
-build_binary() {
-  if command -v cross >/dev/null 2>&1; then
-    echo "[deploy] Building with cross for ${TARGET}"
-    cross build --release --target "${TARGET}" --manifest-path "${PROJECT_ROOT}/Cargo.toml"
-    return
-  fi
-
-  echo "[deploy] 'cross' not found, fallback to cargo build for ${TARGET}"
-  cargo build --release --target "${TARGET}" --manifest-path "${PROJECT_ROOT}/Cargo.toml"
-}
+REMOTE_SRC="/tmp/asset-gateway-build"
 
 main() {
-  build_binary
+  echo "[deploy] Syncing source to ${REMOTE_HOST}:${REMOTE_SRC}"
+  rsync -az --delete \
+    --exclude 'target/' \
+    --exclude '.git/' \
+    "${PROJECT_ROOT}/" "${REMOTE_HOST}:${REMOTE_SRC}/"
 
-  local local_bin="${PROJECT_ROOT}/target/${TARGET}/release/${BINARY_NAME}"
-  if [[ ! -f "${local_bin}" ]]; then
-    echo "[deploy] Build succeeded but binary not found: ${local_bin}" >&2
-    exit 1
-  fi
+  echo "[deploy] Building release on ${REMOTE_HOST}"
+  ssh "${REMOTE_HOST}" "\
+    cd ${REMOTE_SRC} && \
+    ~/.cargo/bin/cargo build --release 2>&1 | tail -3"
 
-  echo "[deploy] Preparing remote directory: ${REMOTE_HOST}:${REMOTE_DIR}"
-  ssh "${REMOTE_HOST}" "sudo mkdir -p '${REMOTE_DIR}' && sudo chown \$(id -un):\$(id -gn) '${REMOTE_DIR}'"
+  echo "[deploy] Installing binary"
+  ssh "${REMOTE_HOST}" "\
+    sudo mkdir -p '${REMOTE_DIR}' && \
+    sudo chown \$(id -un):\$(id -gn) '${REMOTE_DIR}' && \
+    cp ${REMOTE_SRC}/target/release/${BINARY_NAME} ${REMOTE_DIR}/${BINARY_NAME}"
 
-  echo "[deploy] Uploading binary"
-  scp "${local_bin}" "${REMOTE_HOST}:${REMOTE_DIR}/${BINARY_NAME}"
-
-  echo "[deploy] Restarting systemd service"
-  ssh "${REMOTE_HOST}" "sudo systemctl restart asset-gateway && sudo systemctl --no-pager --full status asset-gateway | sed -n '1,12p'"
+  echo "[deploy] Restarting service"
+  ssh "${REMOTE_HOST}" "\
+    sudo systemctl restart ${BINARY_NAME} && \
+    sudo systemctl --no-pager --full status ${BINARY_NAME} | head -12"
 
   echo "[deploy] Done"
 }

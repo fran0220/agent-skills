@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=opc
+User=root
 WorkingDirectory=/opt/ai-search
 ExecStart=/opt/ai-search/ai-search serve --port 6900 --config /opt/ai-search/config.toml
 Restart=always

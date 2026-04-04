@@ -1,25 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVER="opc@161.33.13.122"
-REMOTE_DIR="/opt/ai-search"
-BUILD_DIR="/tmp/ai-search-build"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CLI_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Usage: ./scripts/deploy.sh
+#
+# Primary deploy path: push to main → GitHub Actions CI builds & deploys automatically.
+# This script is a manual fallback that builds on the server directly via SSH.
 
-echo "==> Syncing source..."
-rsync -az --exclude target --exclude .git \
-  "$CLI_DIR/" "$SERVER:$BUILD_DIR/"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-echo "==> Building on server..."
-ssh "$SERVER" "cd $BUILD_DIR && cargo build --release"
+BINARY_NAME="ai-search"
+REMOTE_HOST="${REMOTE_HOST:-bwg}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/ai-search}"
+REMOTE_SRC="/tmp/ai-search-build"
 
-echo "==> Deploying..."
-ssh "$SERVER" "sudo systemctl stop ai-search || true"
-ssh "$SERVER" "sudo mkdir -p $REMOTE_DIR"
-ssh "$SERVER" "sudo cp $BUILD_DIR/target/release/ai-search $REMOTE_DIR/"
-ssh "$SERVER" "sudo cp $BUILD_DIR/scripts/ai-search.service /etc/systemd/system/ai-search.service"
-ssh "$SERVER" "sudo systemctl daemon-reload"
-ssh "$SERVER" "sudo systemctl start ai-search"
+main() {
+  echo "[deploy] Syncing source to ${REMOTE_HOST}:${REMOTE_SRC}"
+  rsync -az --delete \
+    --exclude 'target/' \
+    --exclude '.git/' \
+    "${PROJECT_ROOT}/" "${REMOTE_HOST}:${REMOTE_SRC}/"
 
-echo "==> Done! Check: curl https://search.xiaomao.chat/health"
+  echo "[deploy] Building release on ${REMOTE_HOST}"
+  ssh "${REMOTE_HOST}" "cd ${REMOTE_SRC} && cargo build --release"
+
+  echo "[deploy] Installing binary"
+  ssh "${REMOTE_HOST}" "\
+    mkdir -p '${REMOTE_DIR}' && \
+    cp ${REMOTE_SRC}/target/release/${BINARY_NAME} ${REMOTE_DIR}/${BINARY_NAME}"
+
+  echo "[deploy] Restarting service"
+  ssh "${REMOTE_HOST}" "\
+    systemctl restart ${BINARY_NAME} && \
+    systemctl --no-pager --full status ${BINARY_NAME} | head -12"
+
+  echo "[deploy] Done"
+}
+
+main "$@"

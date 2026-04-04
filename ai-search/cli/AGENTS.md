@@ -24,13 +24,14 @@ AI 驱动的 Web 搜索 CLI + Gateway + MCP 服务器。
 
 | 项目 | 值 |
 |------|-----|
-| 服务器 | Oracle (161.33.13.122), user `opc` |
+| 服务器 | BWG (67.230.182.59), user `root`, x86_64 |
 | 二进制 | `/opt/ai-search/ai-search` |
 | 配置文件 | `/opt/ai-search/config.toml` |
 | systemd | `ai-search.service` |
 | 端口 | `6900` (Axum)，Nginx 反代 `443` |
-| 域名 | `search.xiaomao.chat`（CF proxy → Oracle Nginx → 6900） |
+| 域名 | `search.xiaomao.chat`（CF proxy → BWG Nginx → 6900） |
 | 管理面板 | `https://search.xiaomao.chat/admin` |
+| CI | push main → GitHub Actions → SSH deploy to BWG |
 
 ## 技术栈
 
@@ -120,12 +121,17 @@ src/
 ## 部署流程
 
 ```bash
-rsync -az --exclude target --exclude .git cli/ opc@161.33.13.122:/tmp/ai-search-build/
-ssh opc@161.33.13.122 'cd /tmp/ai-search-build && cargo build --release'
-ssh opc@161.33.13.122 'sudo systemctl stop ai-search || true'
-ssh opc@161.33.13.122 'sudo mkdir -p /opt/ai-search && sudo cp /tmp/ai-search-build/target/release/ai-search /opt/ai-search/'
-ssh opc@161.33.13.122 'sudo cp /tmp/ai-search-build/scripts/ai-search.service /etc/systemd/system/ai-search.service && sudo systemctl daemon-reload && sudo systemctl start ai-search'
+git push origin main
+
+# 手动 fallback
+./scripts/deploy.sh
 ```
+
+### CI 部署
+
+- GitHub Actions workflow：`.github/workflows/ai-search.yml`
+- Secrets：`BWG_SSH_KEY`、`BWG_HOST`
+- 策略：GitHub runner 直接构建 x86_64 release，上传到 `/opt/ai-search/ai-search` 后重启 `ai-search`
 
 ## 管理面板
 

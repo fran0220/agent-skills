@@ -5,11 +5,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'skills/**'
+      - '*/skill/**'
       - '.github/workflows/skills.yml'
   pull_request:
     paths:
-      - 'skills/**'
+      - '*/skill/**'
       - '.github/workflows/skills.yml'
 
 jobs:
@@ -21,21 +21,33 @@ jobs:
 
       - name: Check SKILL.md frontmatter
         run: |
+          set -euo pipefail
+          shopt -s nullglob
+
           errors=0
-          for skill_dir in skills/*/; do
-            skill_name=$(basename "$skill_dir")
-            skill_file="$skill_dir/SKILL.md"
+          skill_dirs=(*/skill/)
+
+          if [ ${#skill_dirs[@]} -eq 0 ]; then
+            echo "No skill directories found"
+            exit 1
+          fi
+
+          for skill_dir in "${skill_dirs[@]}"; do
+            skill_errors=0
+            skill_root="${skill_dir%/}"
+            skill_name=$(basename "$(dirname "$skill_root")")
+            skill_file="${skill_dir}SKILL.md"
 
             if [ ! -f "$skill_file" ]; then
               echo "❌ $skill_dir: missing SKILL.md"
-              errors=$((errors + 1))
+              skill_errors=$((skill_errors + 1))
               continue
             fi
 
             # Check frontmatter exists
             if ! head -1 "$skill_file" | grep -q "^---"; then
               echo "❌ $skill_file: missing YAML frontmatter"
-              errors=$((errors + 1))
+              skill_errors=$((skill_errors + 1))
               continue
             fi
 
@@ -43,17 +55,17 @@ jobs:
             name=$(sed -n '/^---$/,/^---$/p' "$skill_file" | grep "^name:" | head -1 | sed 's/name: *//')
             if [ -z "$name" ]; then
               echo "❌ $skill_file: missing 'name' in frontmatter"
-              errors=$((errors + 1))
+              skill_errors=$((skill_errors + 1))
             elif [ "$name" != "$skill_name" ]; then
               echo "❌ $skill_file: name '$name' doesn't match directory '$skill_name'"
-              errors=$((errors + 1))
+              skill_errors=$((skill_errors + 1))
             fi
 
             # Check description exists
             desc=$(sed -n '/^---$/,/^---$/p' "$skill_file" | grep "^description:" | head -1)
             if [ -z "$desc" ]; then
               echo "❌ $skill_file: missing 'description' in frontmatter"
-              errors=$((errors + 1))
+              skill_errors=$((skill_errors + 1))
             fi
 
             # Check README exists
@@ -67,9 +79,11 @@ jobs:
               echo "⚠️  $skill_file: $lines lines (recommended < 500)"
             fi
 
-            if [ $errors -eq 0 ]; then
+            if [ $skill_errors -eq 0 ]; then
               echo "✅ $skill_name"
             fi
+
+            errors=$((errors + skill_errors))
           done
 
           if [ $errors -gt 0 ]; then

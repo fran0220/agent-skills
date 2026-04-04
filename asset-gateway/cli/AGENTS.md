@@ -33,20 +33,18 @@
 
 | 项目 | 值 |
 |------|-----|
-| 服务器 | Oracle (161.33.13.122), user `opc` |
+| 服务器 | jpdata (185.200.65.233), user `root`, x86_64 |
 | 二进制 | `/opt/asset-gateway/asset-gateway` |
 | 配置文件 | `/opt/asset-gateway/config.toml` |
-| 环境变量 | `/opt/asset-gateway/.env`（仅 DB/JWT，不含 provider keys） |
+| 环境变量 | `/opt/asset-gateway/.env` |
 | systemd | `asset-gateway.service` |
-| 端口 | 6700 (Axum)，Nginx 反代 443 |
-| 域名 | `upload.xiaomao.chat`（CF proxy → Oracle Nginx → 6700） |
-| 管理面板 | `https://upload.xiaomao.chat/admin` |
-| Admin Token | `agk_admin_2484d6cec8ccc8b8d1eb076eac171e17` |
-| DB | PostgreSQL (`assetgw@localhost:5432/asset_gateway`) |
+| 端口 | `6700` (Axum)，Nginx 反代 → upload.xiaomao.chat |
+| 域名 | `upload.xiaomao.chat` |
+| CI | push main → GitHub Actions → SSH deploy to jpdata |
 
 ### 服务器本地工具依赖
 
-后处理管线依赖以下工具（已安装在 Oracle 服务器）：
+后处理管线依赖以下工具（已安装在 jpdata 服务器）：
 
 | 工具 | 用途 | 安装方式 |
 |------|------|---------|
@@ -82,11 +80,10 @@ key = "..."
 
 ### 部署流程
 
-```bash
-rsync -az --exclude target --exclude .git cli/ opc@161.33.13.122:/tmp/asset-gateway-build/
-ssh opc@161.33.13.122 'cd /tmp/asset-gateway-build && cargo build --release'
-ssh opc@161.33.13.122 'sudo systemctl stop asset-gateway && sudo cp /tmp/asset-gateway-build/target/release/asset-gateway /opt/asset-gateway/ && sudo systemctl start asset-gateway'
-```
+- **主要路径**：push 到 main 自动触发 CI 部署（GitHub Actions → SSH deploy to jpdata）
+- **手动 fallback**：`./scripts/deploy.sh`（rsync 源码到服务器编译）
+
+CI workflow：`.github/workflows/asset-gateway.yml`，Secrets：`JPDATA_SSH_KEY`、`JPDATA_HOST`
 
 ## npm CLI 客户端
 

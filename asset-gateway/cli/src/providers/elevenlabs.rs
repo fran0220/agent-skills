@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::core::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -15,11 +15,16 @@ pub struct ElevenLabsProvider {
 
 impl ElevenLabsProvider {
     pub fn new(api_key: String) -> Self {
+        let http = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(120))
+            .build()
+            .expect("failed to build ElevenLabs HTTP client");
         Self {
             id: "elevenlabs".into(),
             api_key,
             base_url: "https://api.elevenlabs.io".into(),
-            http: reqwest::Client::new(),
+            http,
         }
     }
 
@@ -186,8 +191,9 @@ impl AssetProvider for ElevenLabsProvider {
         let start = Instant::now();
         let resp = self
             .http
-            .get(format!("{}/v1/user", self.base_url))
+            .get(format!("{}/v1/models", self.base_url))
             .header("xi-api-key", &self.api_key)
+            .timeout(Duration::from_secs(10))
             .send()
             .await;
 
@@ -195,7 +201,11 @@ impl AssetProvider for ElevenLabsProvider {
             Ok(r) => Ok(HealthStatus {
                 healthy: r.status().is_success(),
                 latency_ms: Some(start.elapsed().as_millis() as u64),
-                message: None,
+                message: if r.status().is_success() {
+                    None
+                } else {
+                    Some(format!("HTTP {}", r.status()))
+                },
             }),
             Err(e) => Ok(HealthStatus {
                 healthy: false,

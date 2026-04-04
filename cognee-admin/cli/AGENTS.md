@@ -270,11 +270,14 @@ Cognee 图谱抽取依赖 **structured output**（JSON schema 遵从），模型
 
 ## 部署信息
 
-- **服务器**：Oracle VPS (4C ARM / 22G RAM)
-- **二进制**：`/usr/local/bin/cognee-admin`
-- **systemd**：`cognee-admin.service`（enabled, auto-restart）
-- **构建**：Oracle 上 `cargo build --release`，或通过 GitHub Actions 交叉编译 ARM64 artifact
-- **更新流程**：rsync → build → stop → cp → start
+| 项目 | 值 |
+|------|-----|
+| 服务器 | Oracle (161.33.13.122), user `opc`, aarch64 |
+| 二进制 | `/usr/local/bin/cognee-admin` |
+| systemd | `cognee-admin.service` |
+| 端口 | `9847` (Axum)，Nginx 反代 → cognee.xiaomao.chat |
+| 域名 | `cognee.xiaomao.chat`（CF proxy → Oracle Nginx → 9847） |
+| CI | push main → GitHub Actions → cross-compile aarch64 → SSH deploy to Oracle |
 
 ## 开发约定
 

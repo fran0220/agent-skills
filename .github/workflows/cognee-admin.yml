@@ -70,7 +70,7 @@ jobs:
         run: cargo fmt -- --check
 
   build-arm64:
-    name: Build ARM64 (deploy artifact)
+    name: Build ARM64 & Deploy (Oracle)
     needs: check
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -110,3 +110,17 @@ jobs:
           name: cognee-admin-aarch64
           path: cognee-admin/cli/target/aarch64-unknown-linux-gnu/release/cognee-admin
           retention-days: 7
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ORACLE_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.ORACLE_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new opc@${{ secrets.ORACLE_HOST }}"
+          SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
+          $SCP target/aarch64-unknown-linux-gnu/release/cognee-admin opc@${{ secrets.ORACLE_HOST }}:/tmp/cognee-admin.new
+          $SSH "sudo install -m 755 /tmp/cognee-admin.new /usr/local/bin/cognee-admin && rm -f /tmp/cognee-admin.new && sudo systemctl restart cognee-admin && sleep 2 && sudo systemctl --no-pager --full status cognee-admin | head -10"

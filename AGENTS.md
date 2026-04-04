@@ -68,6 +68,38 @@ agent-skills/
 - **分离原则**：Skill 告诉 Agent 该做什么 → Agent 调 CLI 执行
 - **同项目共存**：一个项目的 Skill 和 CLI 在同一顶级目录下
 
+## 部署架构
+
+本仓库中部分项目有线上服务部署：
+
+### 服务器清单
+
+| 服务器 | 别名 | IP | 架构 | SSH 用户 |
+|--------|------|-----|------|---------|
+| BWG | bwg | 67.230.182.59 | x86_64 | root |
+| jpdata | jpdata | 185.200.65.233 | x86_64 | root |
+| Oracle | oracle | 161.33.13.122 | aarch64 | opc |
+
+### 服务 × 域名映射
+
+| 服务 | 域名 | 服务器 | 端口 | CI 自动部署 |
+|------|------|--------|------|:---:|
+| asset-gateway | upload.xiaomao.chat | jpdata | 6700 | ✅ push main |
+| ai-search | search.xiaomao.chat | BWG | 6900 | ✅ push main |
+| cognee-admin | cognee.xiaomao.chat | Oracle | 9847 | ✅ push main |
+| grok2api-go | grok.xiaomao.chat | BWG | 8000 | 手动 docker |
+
+### 已下线服务
+
+- jimeng-gateway（原 jpdata）— 已停用
+- grok-register（原 jpdata）— 已停用
+
+### CI 部署流程
+
+所有 Rust 服务通过 GitHub Actions 自动部署：push 到 main 且 paths 匹配 → check → build release → SSH 上传 binary → restart systemd。
+
+GitHub Secrets：`DEPLOY_SSH_KEY`（统一私钥）+ 各服务器 `*_HOST` / `*_USER`。
+
 ## 新建项目约定
 
 ```bash

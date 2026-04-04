@@ -1,20 +1,19 @@
-# asset-gateway CI — build, test, deploy to jpdata
-name: asset-gateway
+name: ai-search
 
 on:
   push:
     branches: [main]
     paths:
-      - 'asset-gateway/cli/**'
-      - '.github/workflows/asset-gateway.yml'
+      - 'ai-search/cli/**'
+      - '.github/workflows/ai-search.yml'
   pull_request:
     paths:
-      - 'asset-gateway/cli/**'
-      - '.github/workflows/asset-gateway.yml'
+      - 'ai-search/cli/**'
+      - '.github/workflows/ai-search.yml'
 
 defaults:
   run:
-    working-directory: asset-gateway/cli
+    working-directory: ai-search/cli
 
 env:
   CARGO_TERM_COLOR: always
@@ -37,8 +36,8 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            asset-gateway/cli/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('asset-gateway/cli/Cargo.lock') }}
+            ai-search/cli/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('ai-search/cli/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Check
@@ -54,7 +53,7 @@ jobs:
         run: cargo fmt -- --check
 
   deploy:
-    name: Build & Deploy (jpdata)
+    name: Build & Deploy (BWG)
     needs: check
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -72,8 +71,8 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            asset-gateway/cli/target/
-          key: ${{ runner.os }}-cargo-x86_64-${{ hashFiles('asset-gateway/cli/Cargo.lock') }}
+            ai-search/cli/target/
+          key: ${{ runner.os }}-cargo-x86_64-${{ hashFiles('ai-search/cli/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-x86_64-
 
       - name: Build release (x86_64)
@@ -82,20 +81,20 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: asset-gateway-x86_64
-          path: asset-gateway/cli/target/release/asset-gateway
+          name: ai-search-x86_64
+          path: ai-search/cli/target/release/ai-search
           retention-days: 7
 
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.JPDATA_SSH_KEY }}" > ~/.ssh/deploy_key
+          echo "${{ secrets.BWG_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.JPDATA_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "${{ secrets.BWG_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy
         run: |
-          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new root@${{ secrets.JPDATA_HOST }}"
+          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new root@${{ secrets.BWG_HOST }}"
           SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
-          $SCP target/release/asset-gateway root@${{ secrets.JPDATA_HOST }}:/opt/asset-gateway/asset-gateway.new
-          $SSH "mv /opt/asset-gateway/asset-gateway.new /opt/asset-gateway/asset-gateway && systemctl restart asset-gateway && sleep 2 && systemctl --no-pager --full status asset-gateway | head -10"
+          $SCP target/release/ai-search root@${{ secrets.BWG_HOST }}:/opt/ai-search/ai-search.new
+          $SSH "mv /opt/ai-search/ai-search.new /opt/ai-search/ai-search && systemctl restart ai-search && sleep 2 && systemctl --no-pager --full status ai-search | head -10"
