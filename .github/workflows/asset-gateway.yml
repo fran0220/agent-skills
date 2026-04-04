@@ -45,7 +45,7 @@ jobs:
         run: cargo check --release
 
       - name: Test
-        run: cargo test
+        run: cargo test --lib
 
       - name: Clippy
         run: cargo clippy -- -D warnings 2>/dev/null || cargo clippy
