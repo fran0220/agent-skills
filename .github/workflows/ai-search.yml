@@ -1,4 +1,4 @@
-# ai-search CI — build, test, docker deploy to BWG
+# ai-search CI — check + remote build on BWG
 name: ai-search
 
 on:
@@ -18,7 +18,6 @@ defaults:
 
 env:
   CARGO_TERM_COLOR: always
-  IMAGE: ghcr.io/${{ github.repository }}/ai-search
 
 jobs:
   check:
@@ -43,32 +42,11 @@ jobs:
       - run: cargo fmt -- --check
 
   deploy:
-    name: Docker Build & Deploy
+    name: Deploy (BWG)
     needs: check
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    permissions:
-      contents: read
-      packages: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build & push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: ai-search/cli
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
-
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -76,14 +54,16 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.BWG_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Deploy to server
+      - name: Build & restart on server
         run: |
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new root@${{ secrets.BWG_HOST }}"
-          $SSH "docker pull ${{ env.IMAGE }}:latest && \
-            docker stop ai-search 2>/dev/null; docker rm ai-search 2>/dev/null; \
-            docker run -d --name ai-search --restart unless-stopped \
-              --network host \
-              -v /opt/ai-search/config.toml:/etc/ai-search/config.toml:ro \
-              ${{ env.IMAGE }}:latest \
-              serve --port 6900 --config /etc/ai-search/config.toml && \
-            sleep 3 && docker logs ai-search --tail 5"
+          $SSH "cd /opt/ai-search/repo && \
+            git fetch origin main && git reset --hard origin/main && \
+            cd ai-search/cli && \
+            source ~/.cargo/env && \
+            cargo build --release 2>&1 | tail -5 && \
+            cp target/release/ai-search /opt/ai-search/ai-search.new && \
+            cp /opt/ai-search/ai-search /opt/ai-search/ai-search.old 2>/dev/null; \
+            mv /opt/ai-search/ai-search.new /opt/ai-search/ai-search && \
+            systemctl restart ai-search && \
+            sleep 2 && systemctl --no-pager --full status ai-search | head -8"

@@ -1,4 +1,4 @@
-# asset-gateway CI — build, test, docker deploy to jpdata
+# asset-gateway CI — check + remote build on jpdata
 name: asset-gateway
 
 on:
@@ -18,7 +18,6 @@ defaults:
 
 env:
   CARGO_TERM_COLOR: always
-  IMAGE: ghcr.io/${{ github.repository }}/asset-gateway
 
 jobs:
   check:
@@ -43,32 +42,11 @@ jobs:
       - run: cargo fmt -- --check
 
   deploy:
-    name: Docker Build & Deploy
+    name: Deploy (jpdata)
     needs: check
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    permissions:
-      contents: read
-      packages: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build & push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: asset-gateway/cli
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
-
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -76,16 +54,16 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.JPDATA_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Deploy to server
+      - name: Build & restart on server
         run: |
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new root@${{ secrets.JPDATA_HOST }}"
-          $SSH "docker pull ${{ env.IMAGE }}:latest && \
-            docker stop asset-gateway 2>/dev/null; docker rm asset-gateway 2>/dev/null; \
-            docker run -d --name asset-gateway --restart unless-stopped \
-              --network host \
-              --env-file /opt/asset-gateway/.env \
-              -v /opt/asset-gateway/config.toml:/etc/asset-gateway/config.toml:ro \
-              -v /opt/asset-gateway/data:/opt/asset-gateway/data \
-              ${{ env.IMAGE }}:latest \
-              serve --host 0.0.0.0 --port 6700 --config /etc/asset-gateway/config.toml && \
-            sleep 3 && docker logs asset-gateway --tail 5"
+          $SSH "cd /opt/asset-gateway/repo && \
+            git fetch origin main && git reset --hard origin/main && \
+            cd asset-gateway/cli && \
+            source ~/.cargo/env && \
+            cargo build --release 2>&1 | tail -5 && \
+            cp target/release/asset-gateway /opt/asset-gateway/asset-gateway.new && \
+            cp /opt/asset-gateway/asset-gateway /opt/asset-gateway/asset-gateway.old 2>/dev/null; \
+            mv /opt/asset-gateway/asset-gateway.new /opt/asset-gateway/asset-gateway && \
+            systemctl restart asset-gateway && \
+            sleep 2 && systemctl --no-pager --full status asset-gateway | head -8"
