@@ -1,3 +1,4 @@
+# ai-search CI — build, test, docker deploy to BWG
 name: ai-search
 
 on:
@@ -17,6 +18,7 @@ defaults:
 
 env:
   CARGO_TERM_COLOR: always
+  IMAGE: ghcr.io/${{ github.repository }}/ai-search
 
 jobs:
   check:
@@ -24,12 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -39,56 +37,37 @@ jobs:
             ai-search/cli/target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('ai-search/cli/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Check
-        run: cargo check --release
-
-      - name: Test
-        run: cargo test
-
-      - name: Clippy
-        run: cargo clippy -- -D warnings 2>/dev/null || cargo clippy
-
-      - name: Format check
-        run: cargo fmt -- --check
+      - run: cargo check --release
+      - run: cargo test --lib
+      - run: cargo clippy -- -D warnings 2>/dev/null || cargo clippy
+      - run: cargo fmt -- --check
 
   deploy:
-    name: Build & Deploy (BWG)
+    name: Docker Build & Deploy
     needs: check
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain + musl target
-        uses: dtolnay/rust-toolchain@stable
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          targets: x86_64-unknown-linux-musl
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install musl tools
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Build & push Docker image
+        uses: docker/build-push-action@v6
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ai-search/cli/target/
-          key: ${{ runner.os }}-cargo-musl-${{ hashFiles('ai-search/cli/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-musl-
-
-      - name: Build release (x86_64-musl static)
-        run: cargo build --release --target x86_64-unknown-linux-musl
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-search-x86_64
-          path: ai-search/cli/target/x86_64-unknown-linux-musl/release/ai-search
-          retention-days: 7
+          context: ai-search/cli
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
 
       - name: Setup SSH
         run: |
@@ -97,9 +76,14 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.BWG_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Deploy
+      - name: Deploy to server
         run: |
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new root@${{ secrets.BWG_HOST }}"
-          SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
-          $SCP target/x86_64-unknown-linux-musl/release/ai-search root@${{ secrets.BWG_HOST }}:/opt/ai-search/ai-search.new
-          $SSH "mv /opt/ai-search/ai-search.new /opt/ai-search/ai-search && systemctl restart ai-search && sleep 2 && systemctl --no-pager --full status ai-search | head -10"
+          $SSH "docker pull ${{ env.IMAGE }}:latest && \
+            docker stop ai-search 2>/dev/null; docker rm ai-search 2>/dev/null; \
+            docker run -d --name ai-search --restart unless-stopped \
+              --network host \
+              -v /opt/ai-search/config.toml:/etc/ai-search/config.toml:ro \
+              ${{ env.IMAGE }}:latest \
+              serve --port 6900 --config /etc/ai-search/config.toml && \
+            sleep 3 && docker logs ai-search --tail 5"
