@@ -38,7 +38,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('ai-search/cli/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
       - run: cargo check --release
-      - run: cargo test --lib
+      - run: cargo test
       - run: cargo clippy -- -D warnings 2>/dev/null || cargo clippy
       - run: cargo fmt -- --check
 
