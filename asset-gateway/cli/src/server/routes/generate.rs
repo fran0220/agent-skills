@@ -5,7 +5,7 @@ use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::core::{AssetType, GenerateRequest};
+use crate::core::{AssetType, GenerateRequest, ImageEditMode};
 use crate::error::{AppError, AppResult};
 use crate::server::routes::auth::CurrentUser;
 use crate::server::ServerState;
@@ -21,6 +21,10 @@ pub struct GenerateReq {
     pub size: Option<String>,
     /// Top-level transparent field sent by the npm CLI.
     pub transparent: Option<bool>,
+    #[serde(default)]
+    pub reference_images: Vec<String>,
+    pub edit_mode: Option<ImageEditMode>,
+    pub session_id: Option<String>,
     #[serde(default)]
     pub params: serde_json::Value,
 }
@@ -80,6 +84,9 @@ async fn generate(
         prompt: req.prompt,
         model: req.model,
         input_file: req.input_file,
+        reference_images: req.reference_images,
+        edit_mode: req.edit_mode,
+        session_id: req.session_id.clone(),
         params,
     };
 
@@ -96,12 +103,34 @@ async fn generate(
     .await
     .map_err(AppError::internal)?;
 
+    // Load session state if session_id provided
+    let mut gen_req = gen_req;
+    if let Some(ref sid) = gen_req.session_id {
+        let session_row = sqlx::query(
+            "SELECT state, provider_id, model FROM image_sessions WHERE id = $1 AND user_id = $2 AND (expires_at IS NULL OR expires_at > now())"
+        )
+        .bind(sid)
+        .bind(&current_user.id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(AppError::internal)?;
+
+        if let Some(row) = session_row {
+            let session_state: Value = row.try_get("state").map_err(AppError::internal)?;
+            if let Value::Object(ref mut p) = gen_req.params {
+                p.insert("_session_state".into(), session_state);
+            }
+        } else {
+            return Err(AppError::bad_request("session not found or expired"));
+        }
+    }
+
     let dispatch_result = state
         .dispatcher
         .dispatch(&gen_req, req.provider.as_deref())
         .await;
 
-    let result = match dispatch_result {
+    let (result, session_id_out) = match dispatch_result {
         Ok(result) => {
             let response_json = serde_json::to_string(&result).map_err(AppError::internal)?;
             sqlx::query(
@@ -116,6 +145,48 @@ async fn generate(
             .await
             .map_err(AppError::internal)?;
 
+            // -- Session management --
+            let mut session_id_out: Option<String> = gen_req.session_id.clone();
+
+            if let Some(session_state) = result.metadata.get("_session_state").cloned() {
+                if let Some(ref sid) = session_id_out {
+                    // Update existing session
+                    sqlx::query(
+                        "UPDATE image_sessions SET state = $1, turn_count = turn_count + 1, updated_at = now() WHERE id = $2 AND user_id = $3"
+                    )
+                    .bind(&session_state)
+                    .bind(sid)
+                    .bind(&current_user.id)
+                    .execute(&state.db)
+                    .await
+                    .map_err(AppError::internal)?;
+                } else if gen_req.asset_type == AssetType::Image {
+                    // Create new session
+                    let new_sid = format!("ses_{}", Uuid::new_v4());
+                    let provider_id = &result.provider_id;
+                    let model = result
+                        .metadata
+                        .get("model")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+
+                    sqlx::query(
+                        "INSERT INTO image_sessions (id, user_id, provider_id, model, state, turn_count) VALUES ($1, $2, $3, $4, $5, 1)"
+                    )
+                    .bind(&new_sid)
+                    .bind(&current_user.id)
+                    .bind(provider_id)
+                    .bind(&model)
+                    .bind(&session_state)
+                    .execute(&state.db)
+                    .await
+                    .map_err(AppError::internal)?;
+
+                    session_id_out = Some(new_sid);
+                }
+            }
+
             sqlx::query(
                 "UPDATE users SET api_key_quota_used = api_key_quota_used + 1, updated_at = now() WHERE id = $1 AND api_key_quota IS NOT NULL",
             )
@@ -124,7 +195,7 @@ async fn generate(
             .await
             .map_err(AppError::internal)?;
 
-            result
+            (result, session_id_out)
         }
         Err(error) => {
             let error_message = error.to_string();
@@ -144,6 +215,13 @@ async fn generate(
     if let Value::Object(ref mut object) = data {
         object.insert("job_id".into(), Value::String(job_id));
         object.insert("user_id".into(), Value::String(current_user.id));
+        // Strip internal session state from client response
+        if let Some(Value::Object(ref mut meta)) = object.get_mut("metadata") {
+            meta.remove("_session_state");
+        }
+        if let Some(sid) = session_id_out {
+            object.insert("session_id".into(), Value::String(sid));
+        }
     }
 
     Ok(Json(json!({

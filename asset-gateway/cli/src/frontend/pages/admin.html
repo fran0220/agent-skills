@@ -670,6 +670,9 @@
         <span class="nav-icon">🔌</span><span>Providers</span>
       </div>
       <div class="nav-label">Monitor</div>
+      <div class="nav-item" data-page="tripo">
+        <span class="nav-icon">🎲</span><span>Tripo Credits</span>
+      </div>
       <div class="nav-item" data-page="jobs">
         <span class="nav-icon">📋</span><span>Job Logs</span>
       </div>
@@ -793,6 +796,24 @@
       </div>
     </div>
 
+    <!-- ===== TRIPO CREDITS PAGE ===== -->
+    <div class="view-panel" id="page-tripo">
+      <div class="page-header">
+        <h2>Tripo 3D Credits</h2>
+        <p>Monitor API key balances and credit usage across all Tripo3D keys</p>
+      </div>
+      <div class="page-body">
+        <div class="stat-grid" id="tripoStats"></div>
+        <div class="panel-section">
+          <div class="panel-header">
+            <h3>API Key Balances</h3>
+            <button class="btn btn-sm" id="reloadTripo">↻ Refresh</button>
+          </div>
+          <div id="tripoTable"><div class="empty-state">Loading...</div></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== JOBS PAGE ===== -->
     <div class="view-panel" id="page-jobs">
       <div class="page-header">
@@ -912,6 +933,7 @@
     document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.page === page));
     document.querySelectorAll(".view-panel").forEach(v => v.classList.toggle("active", v.id === `page-${page}`));
     if (page === "config") loadConfig();
+    if (page === "tripo") loadTripo();
   }
 
   // ============ USERS ============
@@ -1234,6 +1256,56 @@
     try { await api(`/api/jobs/${id}/cancel`, { method: "POST" }); toast("Job cancelled", "ok"); loadJobs(); } catch (e) { toast(e.message, "error"); }
   }
 
+  // ============ TRIPO CREDITS ============
+  async function loadTripo() {
+    try {
+      const data = await api("/api/tripo/balance");
+      const keys = data.keys || [];
+      const s = data.summary || {};
+
+      $("tripoStats").innerHTML = `
+        <div class="stat-card"><div class="stat-label">API Keys</div><div class="stat-value">${s.total_keys || 0}</div></div>
+        <div class="stat-card"><div class="stat-label">Healthy</div><div class="stat-value" style="color:var(--green)">${s.healthy_keys || 0}</div></div>
+        <div class="stat-card"><div class="stat-label">Total Balance</div><div class="stat-value" style="color:var(--accent)">${fmt(s.total_balance)}</div></div>
+        <div class="stat-card"><div class="stat-label">Available</div><div class="stat-value" style="color:var(--green)">${fmt(s.total_available)}</div></div>
+        <div class="stat-card"><div class="stat-label">Frozen</div><div class="stat-value" style="color:var(--amber)">${fmt(s.total_frozen)}</div></div>
+      `;
+
+      if (!keys.length) { $("tripoTable").innerHTML = '<div class="empty-state">No Tripo3D keys configured. Add keys in Config.</div>'; return; }
+      let h = '<table class="data-table"><thead><tr><th>#</th><th>API Key</th><th>Status</th><th>Balance</th><th>Frozen</th><th>Available</th></tr></thead><tbody>';
+      for (const k of keys) {
+        const statusColor = k.status === "ok" ? "var(--green)" : "var(--red)";
+        const avail = k.available || 0;
+        const barPct = s.total_balance > 0 ? Math.min(100, (k.balance / s.total_balance) * 100) : 0;
+        h += `<tr>
+          <td class="cell-mono">${k.index + 1}</td>
+          <td><span class="cell-mono">${k.key_masked}</span></td>
+          <td><span class="pill" style="background:${k.status === "ok" ? "var(--green-soft)" : "var(--red-soft)"};color:${statusColor};border-color:transparent"><span class="pill-dot"></span>${k.status}</span></td>
+          <td class="cell-mono">${fmt(k.balance)}</td>
+          <td class="cell-mono" style="color:var(--amber)">${fmt(k.frozen)}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="cell-mono" style="color:var(--green)">${fmt(avail)}</span>
+              <div style="flex:1;max-width:80px;height:4px;background:var(--bg-surface);border-radius:2px;overflow:hidden">
+                <div style="width:${barPct}%;height:100%;background:var(--accent);border-radius:2px"></div>
+              </div>
+            </div>
+          </td>
+        </tr>`;
+      }
+      h += "</tbody></table>";
+      $("tripoTable").innerHTML = h;
+    } catch (e) {
+      $("tripoStats").innerHTML = "";
+      $("tripoTable").innerHTML = `<div class="empty-state" style="color:var(--red)">Failed to load: ${e.message}</div>`;
+    }
+  }
+
+  function fmt(n) {
+    if (n == null || isNaN(n)) return "0";
+    return Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+
   // ============ MODAL ============
   function openModal(title, content) {
     $("modalContent").innerHTML = `<h3>${title}</h3>${content}`;
@@ -1267,6 +1339,7 @@
   $("reloadConfig").addEventListener("click", loadConfig);
   $("reloadJobs").addEventListener("click", loadJobs);
   $("jobStatusFilter").addEventListener("change", loadJobs);
+  $("reloadTripo").addEventListener("click", loadTripo);
 
   // Expose to inline onclick handlers
   window.approveUser = approveUser;

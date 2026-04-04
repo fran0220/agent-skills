@@ -60,6 +60,9 @@ export function createGenerateCommand(): Command {
       .option("--model <model>", "Model to use")
       .option("--size <size>", "Image size (e.g. 1024x1024)")
       .option("--input <url>", "Input image URL for editing (Gemini/Grok)")
+      .option("--ref <urls...>", "Reference image URLs for multi-image editing (repeatable)")
+      .option("--edit-mode <mode>", "Edit mode: edit, inpaint, restyle, expand")
+      .option("--session <id>", "Session ID for multi-turn editing")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
@@ -73,6 +76,9 @@ export function createGenerateCommand(): Command {
           if (options.model) body.model = options.model;
           if (options.size) body.size = options.size;
           if (options.input) body.input_file = options.input;
+          if (options.ref && options.ref.length > 0) body.reference_images = options.ref;
+          if (options.editMode) body.edit_mode = options.editMode;
+          if (options.session) body.session_id = options.session;
 
           const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
           const localPath = await saveOutput(data, "image", options.outputDir);

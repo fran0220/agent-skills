@@ -32,6 +32,7 @@ pub struct ProxySection {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ProviderKeySection {
     pub key: Option<String>,
+    pub keys: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -56,7 +57,7 @@ pub struct AppConfig {
 
     // External provider keys (empty = disabled)
     pub elevenlabs_key: String,
-    pub tripo3d_key: String,
+    pub tripo3d_keys: Vec<String>,
 
     // DashScope Qwen3-TTS (International Singapore region)
     pub dashscope_url: String,
@@ -115,11 +116,29 @@ impl AppConfig {
                 file_cfg.elevenlabs.key.as_deref(),
                 "",
             ),
-            tripo3d_key: env_or(
-                "ASSET_GATEWAY_TRIPO3D_KEY",
-                file_cfg.tripo3d.key.as_deref(),
-                "",
-            ),
+            tripo3d_keys: {
+                let env_keys = std::env::var("ASSET_GATEWAY_TRIPO3D_KEY").unwrap_or_default();
+                if !env_keys.trim().is_empty() {
+                    env_keys
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                } else if let Some(keys) = &file_cfg.tripo3d.keys {
+                    keys.iter()
+                        .filter(|s| !s.trim().is_empty())
+                        .cloned()
+                        .collect()
+                } else if let Some(key) = &file_cfg.tripo3d.key {
+                    if key.trim().is_empty() {
+                        vec![]
+                    } else {
+                        vec![key.clone()]
+                    }
+                } else {
+                    vec![]
+                }
+            },
 
             dashscope_url: env_or(
                 "ASSET_GATEWAY_DASHSCOPE_URL",

@@ -136,36 +136,71 @@ pub async fn handle(cmd: Process3dCommands, gateway_url: &str) -> anyhow::Result
             format,
             quad,
             face_limit,
+            pack_uv,
+            bake,
+            texture_format,
+            force_symmetry,
             output_dir,
-        } => (
-            json!({
-                "task_id": task_id,
-                "operation": "convert",
-                "params": {
-                    "format": format,
-                    "quad": quad,
-                    "face_limit": face_limit,
-                },
-            }),
-            Some(output_dir),
-            Some(format),
-        ),
+        } => {
+            let mut params = json!({
+                "format": format,
+                "quad": quad,
+                "face_limit": face_limit,
+            });
+            if pack_uv {
+                params["pack_uv"] = json!(true);
+            }
+            if bake {
+                params["bake"] = json!(true);
+            }
+            if force_symmetry {
+                params["force_symmetry"] = json!(true);
+            }
+            if let Some(texture_format) = texture_format {
+                params["texture_format"] = json!(texture_format);
+            }
+            (
+                json!({
+                    "task_id": task_id,
+                    "operation": "convert",
+                    "params": params,
+                }),
+                Some(output_dir),
+                Some(format),
+            )
+        }
         Process3dCommands::Texture {
             task_id,
             prompt,
+            style_image,
             pbr,
             quality,
+            texture_alignment,
+            bake,
+            texture_version,
             output_dir,
         } => {
             let mut params = json!({});
             if let Some(prompt) = prompt {
                 params["prompt"] = json!(prompt);
             }
+            if let Some(style_image) = style_image {
+                params["style_image"] = json!(style_image);
+            }
             if pbr {
                 params["pbr"] = json!(true);
             }
             if let Some(quality) = quality {
                 params["texture_quality"] = json!(quality);
+            }
+            if let Some(texture_alignment) = texture_alignment {
+                params["texture_alignment"] = json!(texture_alignment);
+            }
+            if bake {
+                params["bake"] = json!(true);
+            }
+            if let Some(texture_version) = texture_version {
+                params["model_version"] = json!(texture_version);
             }
             (
                 json!({
@@ -181,19 +216,26 @@ pub async fn handle(cmd: Process3dCommands, gateway_url: &str) -> anyhow::Result
             task_id,
             format,
             spec,
+            rig_type,
             output_dir,
-        } => (
-            json!({
-                "task_id": task_id,
-                "operation": "rig",
-                "params": {
-                    "out_format": format,
-                    "spec": spec,
-                },
-            }),
-            Some(output_dir),
-            Some(format),
-        ),
+        } => {
+            let mut params = json!({
+                "out_format": format,
+                "spec": spec,
+            });
+            if let Some(rig_type) = rig_type {
+                params["rig_type"] = json!(rig_type);
+            }
+            (
+                json!({
+                    "task_id": task_id,
+                    "operation": "rig",
+                    "params": params,
+                }),
+                Some(output_dir),
+                Some(format),
+            )
+        }
         Process3dCommands::Animate {
             task_id,
             animation,
@@ -261,6 +303,40 @@ pub async fn handle(cmd: Process3dCommands, gateway_url: &str) -> anyhow::Result
             None,
             None,
         ),
+        Process3dCommands::Refine {
+            task_id,
+            output_dir,
+        } => (
+            json!({
+                "task_id": task_id,
+                "operation": "refine",
+                "params": {},
+            }),
+            Some(output_dir),
+            Some("glb".to_string()),
+        ),
+        Process3dCommands::Import {
+            file_url,
+            file_path,
+            output_dir,
+        } => {
+            let mut params = json!({});
+            if let Some(url) = file_url {
+                params["file_url"] = json!(url);
+            }
+            if let Some(path) = file_path {
+                params["file_path"] = json!(path);
+            }
+            (
+                json!({
+                    "task_id": "",
+                    "operation": "import",
+                    "params": params,
+                }),
+                Some(output_dir),
+                Some("glb".to_string()),
+            )
+        }
     };
 
     let (client, gateway_url) = authenticated_client(gateway_url)?;

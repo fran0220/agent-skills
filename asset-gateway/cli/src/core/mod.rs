@@ -105,6 +105,17 @@ impl Default for ProviderCapabilities {
     }
 }
 
+// -- Image edit mode --
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImageEditMode {
+    Edit,
+    Inpaint,
+    Restyle,
+    Expand,
+}
+
 // -- Generate request / response --
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,6 +124,10 @@ pub struct GenerateRequest {
     pub prompt: Option<String>,
     pub model: Option<String>,
     pub input_file: Option<String>,
+    #[serde(default)]
+    pub reference_images: Vec<String>,
+    pub edit_mode: Option<ImageEditMode>,
+    pub session_id: Option<String>,
     pub params: serde_json::Value,
 }
 
@@ -144,6 +159,17 @@ impl GenerateRequest {
             .get("stream")
             .and_then(|v| v.as_bool())
             .unwrap_or(false)
+    }
+
+    /// Collect all image inputs into one ordered list.
+    /// `input_file` (legacy) comes first, then `reference_images`.
+    pub fn image_inputs(&self) -> Vec<&str> {
+        let mut out = Vec::new();
+        if let Some(input) = self.input_file.as_deref() {
+            out.push(input);
+        }
+        out.extend(self.reference_images.iter().map(String::as_str));
+        out
     }
 }
 

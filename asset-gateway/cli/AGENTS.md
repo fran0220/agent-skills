@@ -39,8 +39,8 @@
 | 环境变量 | `/opt/asset-gateway/.env`（仅 DB/JWT，不含 provider keys） |
 | systemd | `asset-gateway.service` |
 | 端口 | 6700 (Axum)，Nginx 反代 443 |
-| 域名 | `assets.xiaomao.chat`（CF proxy → Oracle Nginx → 6700） |
-| 管理面板 | `https://assets.xiaomao.chat/admin` |
+| 域名 | `upload.xiaomao.chat`（CF proxy → Oracle Nginx → 6700） |
+| 管理面板 | `https://upload.xiaomao.chat/admin` |
 | Admin Token | `agk_admin_2484d6cec8ccc8b8d1eb076eac171e17` |
 | DB | PostgreSQL (`assetgw@localhost:5432/asset_gateway`) |
 
@@ -152,7 +152,7 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | Provider ID | 类型 | 关键能力 | 测试状态 |
 |-------------|------|---------|:--------:|
 | `llm_proxy` | Text | 双协议（Anthropic + OpenAI 自动选择），SSE streaming | ✅ 1.3s |
-| `gemini_image` | Image | Google generateContent，gemini-3.1-flash-image-preview，支持 text-to-image + image editing (inlineData) | ✅ 15s |
+| `gemini_image` | Image | Google generateContent，gemini-3.1-flash-image-preview，支持 text-to-image + image editing (inlineData) + 多图参考(≤14) + 多轮 session 编辑 + edit_mode (inpaint/restyle/expand) | ✅ 15s |
 | `grok_image` | Image/Video | Grok 图片生成/编辑 + 视频生成（OpenAI 兼容格式） | ⚠️ 502 upstream |
 | `qwen_tts` | Tts/Voice | Qwen3-TTS via DashScope Intl：49+ 系统音色、指令控制、VC/VD | ✅ ~97ms 首包 |
 | `elevenlabs` | Audio | sound-generation (BGM/SFX) | ✅ 1.5s |

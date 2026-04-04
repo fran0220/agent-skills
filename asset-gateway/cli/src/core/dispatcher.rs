@@ -274,6 +274,9 @@ mod tests {
             prompt: Some("hero image".to_string()),
             model: None,
             input_file: None,
+            reference_images: vec![],
+            edit_mode: None,
+            session_id: None,
             params: json!({}),
         };
 
@@ -317,6 +320,9 @@ mod tests {
             prompt: Some("a running cat".to_string()),
             model: None,
             input_file: None,
+            reference_images: vec![],
+            edit_mode: None,
+            session_id: None,
             params: json!({}),
         };
 
@@ -360,6 +366,9 @@ mod tests {
             prompt: Some("portrait".to_string()),
             model: None,
             input_file: None,
+            reference_images: vec![],
+            edit_mode: None,
+            session_id: None,
             params: json!({}),
         };
 

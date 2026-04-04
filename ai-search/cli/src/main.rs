@@ -23,10 +23,6 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// Search query (shorthand for `search` subcommand)
-    #[arg(trailing_var_arg = true)]
-    query: Vec<String>,
-
     /// Model to use
     #[arg(short, long, global = true)]
     model: Option<String>,
@@ -46,6 +42,10 @@ struct Cli {
     /// Human-readable output
     #[arg(long, global = true)]
     human: bool,
+
+    /// Search query (shorthand for `search` subcommand)
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    query: Vec<String>,
 }
 
 #[derive(Subcommand)]

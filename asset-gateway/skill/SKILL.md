@@ -23,6 +23,11 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 |--------------|---------|-----------|
 | An image from text | `generate image` | `--prompt`, `--transparent`, `--provider`, `--size` |
 | Edit an existing image | `generate image` | `--prompt`, `--input <url>`, `--provider` |
+| Edit with reference images | `generate image` | `--prompt`, `--ref <url>` (repeatable, up to 14) |
+| Inpaint (semantic masking) | `generate image` | `--prompt`, `--input <url>`, `--edit-mode inpaint` |
+| Restyle an image | `generate image` | `--prompt`, `--input <url>`, `--edit-mode restyle` |
+| Multi-turn image editing | `generate image` | `--prompt`, `--session <id>` |
+| Character consistency | `generate image` | `--prompt`, `--ref char1.png --ref char2.png` |
 | A video clip | `generate video` | `--prompt` |
 | Sound effect or BGM | `generate audio` | `--prompt`, `--type sfx\|bgm`, `--duration` |
 | Text-to-speech (Chinese/multilingual) | `generate tts` | `--prompt`, `--voice-id`, `--model`, `--speed`, `--language-boost` |
@@ -64,6 +69,64 @@ asset-gateway generate image --prompt "make the background a sunset" --input "ht
 # Image editing with model override
 asset-gateway generate image --prompt "add a hat to the character" --input "https://example.com/char.png" --output-dir ./assets
 ```
+
+### Multi-Image Reference & Editing
+
+Gemini 3.1 Flash supports up to 14 reference images for composition, character consistency, and style transfer.
+
+```bash
+# Multi-image composition: combine reference images into a new scene
+asset-gateway generate image \
+  --prompt "create a scene with these characters in a forest" \
+  --ref character1.png --ref character2.png --ref forest-bg.png \
+  --output-dir ./assets
+
+# Character consistency: maintain character across different scenes
+asset-gateway generate image \
+  --prompt "draw this character riding a horse at sunset" \
+  --ref character-front.png --ref character-side.png \
+  --output-dir ./assets
+
+# Style transfer: apply the style of one image to another
+asset-gateway generate image \
+  --prompt "recreate this photo in the style of the reference painting" \
+  --input photo.jpg --ref painting-style.png --edit-mode restyle \
+  --output-dir ./assets
+
+# Semantic inpaint: describe what to change in natural language
+asset-gateway generate image \
+  --prompt "replace the sofa with a red leather couch" \
+  --input living-room.png --edit-mode inpaint \
+  --output-dir ./assets
+```
+
+### Multi-Turn Image Editing (Sessions)
+
+Generate an image, then iteratively edit it across multiple turns. The gateway automatically manages conversation history via sessions.
+
+```bash
+# Turn 1: Generate initial image → returns session_id
+asset-gateway generate image \
+  --prompt "create a vibrant infographic about photosynthesis" \
+  --size 1792x1024 --output-dir ./assets
+# Response includes session_id: "ses_abc123..."
+
+# Turn 2: Edit using session (no need to re-upload the image)
+asset-gateway generate image \
+  --prompt "translate all text to Spanish, keep the layout the same" \
+  --session ses_abc123... --output-dir ./assets
+
+# Turn 3: Further refinement
+asset-gateway generate image \
+  --prompt "add a decorative border and make the title larger" \
+  --session ses_abc123... --output-dir ./assets
+```
+
+**Session rules:**
+- Sessions auto-expire after 24 hours
+- Each session is pinned to one provider + model
+- The gateway stores conversation history in PostgreSQL (survives restarts)
+- `session_id` is returned in every image generation response
 
 **Image size control** (`--size WxH`): The `--size` flag maps to Gemini's `imageConfig`:
 
@@ -358,7 +421,7 @@ Only proceed if the required provider type shows `healthy: true`.
 
 | ID | Asset Types | Speed | Notes |
 |----|------------|-------|-------|
-| `gemini_image` | image | ~15s | Default for images, supports editing via `--input`, ~$0.04/gen |
+| `gemini_image` | image | ~15s | Default for images; supports editing (`--input`), up to 14 reference images (`--ref`), multi-turn sessions (`--session`), edit modes (inpaint/restyle/expand); ~$0.04-0.08/gen |
 | `grok_image` | video | varies | Grok imagine video, ~$0.10/video |
 | `qwen_tts` | tts | ~97ms first packet | Qwen3-TTS via DashScope Intl, 49+ system voices, VC + VD workflows, ~$0.115/10K chars |
 | `elevenlabs` | audio | ~2s | BGM/SFX sound generation, ~$0.05/call |
@@ -379,7 +442,8 @@ Every command returns a JSON envelope:
     "cost_usd": 0.04,
     "elapsed_ms": 15000,
     "local_path": "./assets/image_1234.png",
-    "metadata": { "model": "gemini-3.1-flash-image-preview" }
+    "metadata": { "model": "gemini-3.1-flash-image-preview" },
+    "session_id": "ses_abc123-..."
   }
 }
 ```

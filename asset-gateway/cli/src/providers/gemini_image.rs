@@ -41,19 +41,48 @@ impl GeminiImageProvider {
         prompt
     }
 
-    async fn fetch_image_as_base64(&self, input: &str) -> anyhow::Result<String> {
+    /// Fetch image and return as a Gemini inlineData part with correct MIME type.
+    async fn fetch_image_part(&self, input: &str) -> anyhow::Result<Value> {
         if input.starts_with("data:") {
-            let b64 = input
+            // Parse data URI: data:<mime>;base64,<data>
+            let (header, data) = input
                 .split_once(";base64,")
-                .map(|(_, data)| data.to_string())
                 .ok_or_else(|| anyhow::anyhow!("Invalid data URI: missing ;base64, segment"))?;
-            Ok(b64)
+            let mime = header.strip_prefix("data:").unwrap_or("image/png");
+            Ok(json!({"inlineData": {"mimeType": mime, "data": data}}))
         } else if input.starts_with("http://") || input.starts_with("https://") {
-            let bytes = self.http.get(input).send().await?.bytes().await?;
-            Ok(STANDARD.encode(&bytes))
+            let resp = self.http.get(input).send().await?;
+            let content_type = resp
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("image/png")
+                .split(';')
+                .next()
+                .unwrap_or("image/png")
+                .to_string();
+            let bytes = resp.bytes().await?;
+            Ok(json!({"inlineData": {"mimeType": content_type, "data": STANDARD.encode(&bytes)}}))
         } else {
+            // Local file
             let bytes = tokio::fs::read(input).await?;
-            Ok(STANDARD.encode(&bytes))
+            let mime = Self::infer_mime_from_path(input);
+            Ok(json!({"inlineData": {"mimeType": mime, "data": STANDARD.encode(&bytes)}}))
+        }
+    }
+
+    fn infer_mime_from_path(path: &str) -> &'static str {
+        match path
+            .rsplit('.')
+            .next()
+            .map(|e| e.to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("png") => "image/png",
+            Some("webp") => "image/webp",
+            Some("gif") => "image/gif",
+            Some("svg") => "image/svg+xml",
+            _ => "image/jpeg",
         }
     }
 
@@ -147,18 +176,32 @@ impl AssetProvider for GeminiImageProvider {
         let prompt = self.build_prompt(req);
         let start = Instant::now();
 
-        let parts = if let Some(ref input_file) = req.input_file {
-            let image_data = self.fetch_image_as_base64(input_file).await?;
-            json!([
-                {"inlineData": {"mimeType": "image/png", "data": image_data}},
-                {"text": prompt}
-            ])
-        } else {
-            json!([{"text": prompt}])
-        };
+        // Build image parts from all inputs
+        let image_inputs = req.image_inputs();
+        let mut image_parts = Vec::new();
+        for input in &image_inputs {
+            image_parts.push(self.fetch_image_part(input).await?);
+        }
+
+        // Build current user turn parts: images first, then text
+        let mut current_parts = image_parts;
+        current_parts.push(json!({"text": prompt}));
+
+        // Build contents array (multi-turn or single-turn)
+        let mut contents: Vec<Value> = Vec::new();
+
+        // Load prior conversation history from session state if available
+        if let Some(session_state) = req.params.get("_session_state") {
+            if let Some(prior_contents) = session_state.get("contents").and_then(|c| c.as_array()) {
+                contents.extend(prior_contents.iter().cloned());
+            }
+        }
+
+        // Add current user turn
+        contents.push(json!({"role": "user", "parts": current_parts}));
 
         let mut gen_config = json!({
-            "responseModalities": ["IMAGE"],
+            "responseModalities": ["IMAGE", "TEXT"],
         });
 
         if let Some(size_str) = req.params.get("size").and_then(|v| v.as_str()) {
@@ -171,7 +214,7 @@ impl AssetProvider for GeminiImageProvider {
         }
 
         let body = json!({
-            "contents": [{"parts": parts}],
+            "contents": contents,
             "generationConfig": gen_config,
         });
 
@@ -197,6 +240,21 @@ impl AssetProvider for GeminiImageProvider {
         let (image_data, mime_type) = Self::extract_inline_image(&payload)
             .ok_or_else(|| anyhow::anyhow!("Gemini response does not contain inlineData image"))?;
 
+        // Build session state: prior contents + current user turn + model response
+        let model_content = payload["candidates"][0]["content"].clone();
+        let mut session_contents = contents;
+        session_contents.push(model_content);
+
+        let has_refs = !image_inputs.is_empty();
+        let is_multi_turn = req.session_id.is_some() || req.params.get("_session_state").is_some();
+        let cost = if is_multi_turn {
+            0.06
+        } else if has_refs {
+            0.08
+        } else {
+            0.04
+        };
+
         Ok(GenerateResponse {
             provider_id: self.id.clone(),
             output_path: None,
@@ -207,10 +265,16 @@ impl AssetProvider for GeminiImageProvider {
                 "mime_type": mime_type,
                 "quality": req.quality().map(|q| q.as_str()),
                 "style": req.style(),
-                "editing": req.input_file.is_some(),
+                "editing": has_refs,
+                "edit_mode": req.edit_mode,
+                "multi_turn": is_multi_turn,
+                "image_count": image_inputs.len(),
                 "size": req.params.get("size"),
+                "_session_state": {
+                    "contents": session_contents
+                }
             }),
-            cost_usd: Some(if req.input_file.is_some() { 0.08 } else { 0.04 }),
+            cost_usd: Some(cost),
             elapsed_ms: start.elapsed().as_millis() as u64,
         })
     }

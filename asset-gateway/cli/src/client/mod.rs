@@ -54,6 +54,15 @@ pub enum GenerateCommands {
         /// Input image URL for editing (Gemini/Grok)
         #[arg(long, alias = "image")]
         input: Option<String>,
+        /// Reference images for multi-image editing (can be specified multiple times)
+        #[arg(long = "ref", value_name = "URL")]
+        reference_images: Vec<String>,
+        /// Edit mode: edit, inpaint, restyle, expand
+        #[arg(long)]
+        edit_mode: Option<String>,
+        /// Session ID for multi-turn editing (returned from previous generate)
+        #[arg(long)]
+        session: Option<String>,
         /// Output directory for generated files
         #[arg(long, default_value = ".")]
         output_dir: String,
@@ -319,6 +328,14 @@ pub enum Process3dCommands {
         quad: bool,
         #[arg(long)]
         face_limit: Option<u32>,
+        #[arg(long)]
+        pack_uv: bool,
+        #[arg(long)]
+        bake: bool,
+        #[arg(long)]
+        texture_format: Option<String>,
+        #[arg(long)]
+        force_symmetry: bool,
         #[arg(long, default_value = ".")]
         output_dir: String,
     },
@@ -329,9 +346,17 @@ pub enum Process3dCommands {
         #[arg(long)]
         prompt: Option<String>,
         #[arg(long)]
+        style_image: Option<String>,
+        #[arg(long)]
         pbr: bool,
         #[arg(long)]
         quality: Option<String>,
+        #[arg(long)]
+        texture_alignment: Option<String>,
+        #[arg(long)]
+        bake: bool,
+        #[arg(long = "texture-version")]
+        texture_version: Option<String>,
         #[arg(long, default_value = ".")]
         output_dir: String,
     },
@@ -343,6 +368,8 @@ pub enum Process3dCommands {
         format: String,
         #[arg(long, default_value = "mixamo")]
         spec: String,
+        #[arg(long)]
+        rig_type: Option<String>,
         #[arg(long, default_value = ".")]
         output_dir: String,
     },
@@ -386,6 +413,22 @@ pub enum Process3dCommands {
     Prerigcheck {
         #[arg(long)]
         task_id: String,
+    },
+    /// Refine a draft model to higher quality
+    Refine {
+        #[arg(long)]
+        task_id: String,
+        #[arg(long, default_value = ".")]
+        output_dir: String,
+    },
+    /// Import an external 3D model for post-processing
+    Import {
+        #[arg(long)]
+        file_url: Option<String>,
+        #[arg(long)]
+        file_path: Option<String>,
+        #[arg(long, default_value = ".")]
+        output_dir: String,
     },
 }
 
@@ -514,6 +557,9 @@ fn describe_schemas() -> Value {
                     "transparent": { "type": "boolean", "default": false, "description": "Prefer transparent-capable provider" },
                     "model": { "type": "string", "description": "Optional provider model override" },
                     "size": { "type": "string", "default": "1024x1024", "description": "Target image size" },
+                    "reference_images": { "type": "array", "items": { "type": "string" }, "description": "Reference images (URLs or local paths) for multi-image editing, up to 14" },
+                    "edit_mode": { "type": "string", "enum": ["edit", "inpaint", "restyle", "expand"], "description": "Image editing mode" },
+                    "session": { "type": "string", "description": "Session ID for multi-turn editing continuations" },
                     "output_dir": { "type": "string", "default": ".", "description": "Directory to save generated files" }
                 }
             },
@@ -768,6 +814,10 @@ fn describe_schemas() -> Value {
                     "format": { "type": "string", "enum": ["GLTF", "FBX", "USDZ", "OBJ", "STL", "3MF"] },
                     "quad": { "type": "boolean", "default": false },
                     "face_limit": { "type": "integer" },
+                    "pack_uv": { "type": "boolean", "default": false },
+                    "bake": { "type": "boolean", "default": false },
+                    "texture_format": { "type": "string", "description": "Texture export format override" },
+                    "force_symmetry": { "type": "boolean", "default": false },
                     "output_dir": { "type": "string", "default": "." }
                 }
             },
@@ -796,8 +846,12 @@ fn describe_schemas() -> Value {
                 "properties": {
                     "task_id": { "type": "string" },
                     "prompt": { "type": "string", "description": "Optional text prompt describing the new texture" },
+                    "style_image": { "type": "string", "description": "Optional texture style reference image URL or local file path" },
                     "pbr": { "type": "boolean", "default": false },
                     "quality": { "type": "string", "enum": ["standard", "detailed"] },
+                    "texture_alignment": { "type": "string", "description": "Optional Tripo texture alignment mode" },
+                    "bake": { "type": "boolean", "default": false },
+                    "texture_version": { "type": "string", "description": "Optional Tripo texture model version override" },
                     "output_dir": { "type": "string", "default": "." }
                 }
             },
@@ -811,6 +865,7 @@ fn describe_schemas() -> Value {
                     "task_id": { "type": "string" },
                     "format": { "type": "string", "default": "glb" },
                     "spec": { "type": "string", "enum": ["mixamo", "tripo"], "default": "mixamo" },
+                    "rig_type": { "type": "string", "description": "Rig type override passed through to Tripo" },
                     "output_dir": { "type": "string", "default": "." }
                 }
             },

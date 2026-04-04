@@ -226,19 +226,40 @@ pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<
             model,
             size,
             input,
+            reference_images,
+            edit_mode,
+            session,
             output_dir,
-        } => (
-            "image",
-            serde_json::json!({
+        } => {
+            let input = maybe_encode_local_input(input).await?;
+            let reference_images = maybe_encode_local_inputs(if reference_images.is_empty() {
+                None
+            } else {
+                Some(reference_images)
+            })
+            .await?;
+
+            let mut body = serde_json::json!({
                 "asset_type": "image",
                 "prompt": prompt,
                 "provider": provider,
                 "model": model,
                 "input_file": input,
                 "params": { "size": size, "transparent": transparent },
-            }),
-            output_dir,
-        ),
+            });
+
+            if let Some(refs) = reference_images {
+                body["reference_images"] = serde_json::json!(refs);
+            }
+            if let Some(mode) = edit_mode {
+                body["edit_mode"] = serde_json::json!(mode);
+            }
+            if let Some(sid) = session {
+                body["session_id"] = serde_json::json!(sid);
+            }
+
+            ("image", body, output_dir)
+        }
         GenerateCommands::Video {
             prompt,
             provider,

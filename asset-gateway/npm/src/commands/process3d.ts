@@ -51,6 +51,10 @@ export function createProcess3dCommand(): Command {
       .requiredOption("--format <fmt>", "Target format: FBX, USDZ, OBJ, STL, GLTF, 3MF")
       .option("--quad", "Enable quad remeshing")
       .option("--face-limit <n>", "Max face count")
+      .option("--pack-uv", "Pack UVs during export")
+      .option("--bake", "Bake textures during export")
+      .option("--texture-format <fmt>", "Texture export format override")
+      .option("--force-symmetry", "Force symmetry during conversion")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
@@ -60,6 +64,10 @@ export function createProcess3dCommand(): Command {
           };
           if (options.quad) params.quad = true;
           if (options.faceLimit) params.face_limit = Number(options.faceLimit);
+          if (options.packUv) params.pack_uv = true;
+          if (options.bake) params.bake = true;
+          if (options.textureFormat) params.texture_format = options.textureFormat;
+          if (options.forceSymmetry) params.force_symmetry = true;
 
           const data = await ctx.client.post("/api/process3d", {
             task_id: options.taskId,
@@ -81,16 +89,24 @@ export function createProcess3dCommand(): Command {
       .description("Re-texture a 3D model with new materials")
       .requiredOption("--task-id <id>", "Tripo task ID")
       .option("--prompt <text>", "Texture description prompt")
+      .option("--style-image <input>", "Texture style reference image URL or local file path")
       .option("--pbr", "Enable PBR materials")
       .option("--quality <q>", "Texture quality: standard or detailed")
+      .option("--texture-alignment <mode>", "Tripo texture alignment mode")
+      .option("--bake", "Bake textures during re-texturing")
+      .option("--texture-version <version>", "Tripo texture model version override")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
           const ctx = createContext(this);
           const params: Record<string, unknown> = {};
           if (options.prompt) params.prompt = options.prompt;
+          if (options.styleImage) params.style_image = options.styleImage;
           if (options.pbr) params.pbr = true;
-          if (options.quality) params.quality = options.quality;
+          if (options.quality) params.texture_quality = options.quality;
+          if (options.textureAlignment) params.texture_alignment = options.textureAlignment;
+          if (options.bake) params.bake = true;
+          if (options.textureVersion) params.model_version = options.textureVersion;
 
           const data = await ctx.client.post("/api/process3d", {
             task_id: options.taskId,
@@ -113,17 +129,20 @@ export function createProcess3dCommand(): Command {
       .requiredOption("--task-id <id>", "Tripo task ID")
       .option("--format <fmt>", "Output format: glb or fbx", "glb")
       .option("--spec <spec>", "Rig spec: mixamo or tripo", "mixamo")
+      .option("--rig-type <type>", "Rig type override passed through to Tripo")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
           const ctx = createContext(this);
+          const params: Record<string, unknown> = {
+            out_format: options.format,
+            spec: options.spec,
+          };
+          if (options.rigType) params.rig_type = options.rigType;
           const data = await ctx.client.post("/api/process3d", {
             task_id: options.taskId,
             operation: "rig",
-            params: {
-              format: options.format,
-              spec: options.spec,
-            },
+            params,
           }) as Record<string, unknown>;
 
           const localPath = await saveProcess3dOutput(data, "rig", options.outputDir, options.format);
@@ -260,6 +279,60 @@ export function createProcess3dCommand(): Command {
           printSuccess("process3d.prerigcheck", data, ctx);
         } catch (error) {
           printError("process3d.prerigcheck", error);
+        }
+      })
+  );
+
+  command.addCommand(
+    new Command("refine")
+      .description("Refine a draft model to higher quality")
+      .requiredOption("--task-id <id>", "Tripo task ID")
+      .option("--output-dir <dir>", "Directory to save output", ".")
+      .action(async function (options) {
+        try {
+          const ctx = createContext(this);
+          const data = await ctx.client.post("/api/process3d", {
+            task_id: options.taskId,
+            operation: "refine",
+            params: {},
+          }) as Record<string, unknown>;
+
+          const localPath = await saveProcess3dOutput(data, "refine", options.outputDir);
+          if (localPath) data.local_path = localPath;
+          printSuccess("process3d.refine", data, ctx);
+        } catch (error) {
+          printError("process3d.refine", error);
+        }
+      })
+  );
+
+  command.addCommand(
+    new Command("import")
+      .description("Import an external 3D model for post-processing")
+      .option("--file-url <url>", "URL of the 3D model to import")
+      .option("--file-path <path>", "Local path of the 3D model to import")
+      .option("--output-dir <dir>", "Directory to save output", ".")
+      .action(async function (options) {
+        try {
+          const ctx = createContext(this);
+          const params: Record<string, unknown> = {};
+          if (options.fileUrl) params.file_url = options.fileUrl;
+          if (options.filePath) params.file_path = options.filePath;
+          if (!params.file_url && !params.file_path) {
+            throw new Error("Either --file-url or --file-path is required");
+          }
+
+          const data = await ctx.client.post("/api/process3d", {
+            task_id: "",
+            operation: "import",
+            params,
+          }) as Record<string, unknown>;
+
+          const localPath = await saveProcess3dOutput(data, "import", options.outputDir);
+          if (localPath) data.local_path = localPath;
+          printSuccess("process3d.import", data, ctx);
+        } catch (error) {
+          printError("process3d.import", error);
         }
       })
   );

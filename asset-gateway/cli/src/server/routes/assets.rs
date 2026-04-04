@@ -11,7 +11,7 @@ use crate::server::routes::auth::{require_admin, CurrentUser};
 use crate::server::ServerState;
 
 const UPLOAD_DIR: &str = "uploads";
-const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
+const MAX_FILE_SIZE: usize = 500 * 1024 * 1024; // 500MB
 
 fn is_allowed_content_type(ct: &str) -> bool {
     ct.starts_with("image/")

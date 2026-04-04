@@ -40,7 +40,7 @@ Config file format:
 ```json
 {
   "token": "agk_...",
-  "gateway_url": "https://assets.xiaomao.chat"
+  "gateway_url": "https://upload.xiaomao.chat"
 }
 ```
 

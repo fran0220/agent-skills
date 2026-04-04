@@ -3,6 +3,7 @@ pub mod routes;
 use std::path::Path;
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::Router;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
@@ -58,8 +59,9 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         providers.push(Arc::new(el));
     }
 
-    if !config.tripo3d_key.is_empty() {
-        let mut tripo = crate::providers::tripo3d::Tripo3dProvider::new(config.tripo3d_key.clone());
+    if !config.tripo3d_keys.is_empty() {
+        let mut tripo =
+            crate::providers::tripo3d::Tripo3dProvider::new(config.tripo3d_keys.clone());
         tripo.id = "tripo3d".into();
         providers.push(Arc::new(tripo));
     }
@@ -117,6 +119,7 @@ pub async fn run(
         .nest("/auth", routes::auth_router())
         .nest_service("/uploads", tower_http::services::ServeDir::new("uploads"))
         .merge(frontend::router())
+        .layer(DefaultBodyLimit::max(500 * 1024 * 1024)) // 500MB
         .layer(CorsLayer::permissive())
         .with_state(state);
 

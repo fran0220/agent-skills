@@ -133,27 +133,74 @@ impl Pipeline {
 
     async fn remove_bg(input: &Path, tmp_dir: &Path) -> anyhow::Result<PathBuf> {
         let output = tmp_dir.join(format!("rmbg_{}.png", uuid::Uuid::new_v4()));
-        // Use python3 directly — avoids rembg CLI's broken gradio import
-        let result = Command::new("python3")
-            .args([
-                "-c",
-                &format!(
-                    "from rembg import remove, new_session\n\
-                 from PIL import Image\n\
-                 s = new_session('birefnet-general')\n\
-                 img = Image.open('{}')\n\
-                 out = remove(img, session=s)\n\
-                 out.save('{}')",
-                    input.display(),
-                    output.display()
-                ),
-            ])
-            .output()
+        let file_bytes = tokio::fs::read(input).await?;
+
+        let ext = input
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("png")
+            .to_lowercase();
+        let mime = match ext.as_str() {
+            "jpg" | "jpeg" => "image/jpeg",
+            "webp" => "image/webp",
+            _ => "image/png",
+        };
+
+        let b64 = STANDARD.encode(&file_bytes);
+        let data_uri = format!("data:{};base64,{}", mime, b64);
+        drop(file_bytes);
+
+        let bgsweep_url = std::env::var("BGSWEEP_URL")
+            .unwrap_or_else(|_| "https://bgsweep.com/api/remove-background".to_string());
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(&bgsweep_url)
+            .header("Content-Type", "application/json")
+            .body(format!(r#"{{"imageData":"{}"}}"#, data_uri))
+            .timeout(std::time::Duration::from_secs(120))
+            .send()
             .await?;
-        if !result.status.success() {
-            let stderr = String::from_utf8_lossy(&result.stderr);
-            anyhow::bail!("rembg failed: {}", stderr);
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("bgsweep error: HTTP {} - {}", status, body);
         }
+
+        let result: serde_json::Value = resp.json().await?;
+        if !result
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            let err = result
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            anyhow::bail!("bgsweep failed: {}", err);
+        }
+
+        let output_url = result
+            .get("outputUrl")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("bgsweep: missing outputUrl"))?;
+
+        let img_resp = client
+            .get(output_url)
+            .timeout(std::time::Duration::from_secs(60))
+            .send()
+            .await?;
+
+        if !img_resp.status().is_success() {
+            anyhow::bail!(
+                "failed to download bgsweep result: HTTP {}",
+                img_resp.status()
+            );
+        }
+
+        let png_bytes = img_resp.bytes().await?;
+        tokio::fs::write(&output, &png_bytes).await?;
         Ok(output)
     }
 

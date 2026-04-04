@@ -7,6 +7,7 @@ pub mod jobs;
 pub mod process;
 pub mod process3d;
 pub mod providers;
+pub mod tripo;
 pub mod users;
 pub mod voice;
 
@@ -26,6 +27,7 @@ pub fn api_router() -> Router<Arc<ServerState>> {
         .merge(jobs::router())
         .merge(users::router())
         .merge(assets::router())
+        .merge(tripo::router())
 }
 
 pub fn auth_router() -> Router<Arc<ServerState>> {

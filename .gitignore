@@ -43,3 +43,14 @@ target/
 Cargo.lock
 AccessKey.csv
 SecretKey.csv
+
+# Credentials / tokens
+bearer.txt
+sso.txt
+
+# Processed image artifacts
+processed_*.png
+
+# Test media files
+*.mp4
+*.mov
