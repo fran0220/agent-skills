@@ -56,7 +56,7 @@ jobs:
   deploy:
     name: Build & Deploy (jpdata)
     needs: check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
@@ -98,4 +98,4 @@ jobs:
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new root@${{ secrets.JPDATA_HOST }}"
           SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
           $SCP target/release/asset-gateway root@${{ secrets.JPDATA_HOST }}:/opt/asset-gateway/asset-gateway.new
-          $SSH "mv /opt/asset-gateway/asset-gateway.new /opt/asset-gateway/asset-gateway && systemctl restart asset-gateway && sleep 2 && systemctl --no-pager --full status asset-gateway | head -10"
+          $SSH "cp /opt/asset-gateway/asset-gateway /opt/asset-gateway/asset-gateway.old 2>/dev/null; mv /opt/asset-gateway/asset-gateway.new /opt/asset-gateway/asset-gateway && systemctl restart asset-gateway && sleep 2 && systemctl --no-pager --full status asset-gateway | head -10"
