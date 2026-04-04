@@ -96,9 +96,11 @@ agent-skills/
 
 ### CI 部署流程
 
-所有 Rust 服务通过 GitHub Actions 自动部署：push 到 main 且 paths 匹配 → check → build release → SSH 上传 binary → restart systemd。
+所有 Rust 服务通过 GitHub Actions 自动部署：push 到 main 且 paths 匹配 → CI check/test/clippy → SSH 到目标服务器 → `git pull + cargo build --release` → restart systemd。
 
-GitHub Secrets：`DEPLOY_SSH_KEY`（统一私钥）+ 各服务器 `*_HOST` / `*_USER`。
+编译在目标服务器本地执行，避免跨平台 glibc 兼容问题。各服务器已预装 Rust 工具链，代码通过 `/opt/<service>/repo/` 的 shallow clone 同步。
+
+GitHub Secrets：`DEPLOY_SSH_KEY`（统一私钥）+ `JPDATA_HOST` / `BWG_HOST` / `ORACLE_HOST`。
 
 ## 新建项目约定
 
