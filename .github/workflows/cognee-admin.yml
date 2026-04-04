@@ -64,6 +64,7 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: Setup SSH
+        working-directory: /tmp
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
@@ -71,6 +72,7 @@ jobs:
           ssh-keyscan -H "${{ secrets.ORACLE_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Build & restart on server
+        working-directory: /tmp
         run: |
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new opc@${{ secrets.ORACLE_HOST }}"
           $SSH "cd /opt/cognee-admin/repo && \
