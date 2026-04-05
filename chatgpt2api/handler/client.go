@@ -98,6 +98,9 @@ type UploadedFile struct {
 	FileID      string
 	DownloadURL string
 	SizeBytes   int
+	Width       int
+	Height      int
+	MIMEType    string
 }
 
 // UploadFile uploads an image to ChatGPT's backend for use in conversations.
@@ -187,11 +190,47 @@ func (c *ChatGPTClient) UploadFile(ctx context.Context, data []byte, filename, m
 
 	log.Printf("[upload] confirmed: file_id=%s", preResult.FileID)
 
+	w, h := detectImageSize(data)
 	return &UploadedFile{
 		FileID:      preResult.FileID,
 		DownloadURL: confirmResult.DownloadURL,
 		SizeBytes:   len(data),
+		Width:       w,
+		Height:      h,
+		MIMEType:    mimeType,
 	}, nil
+}
+
+// detectImageSize reads width/height from PNG or JPEG headers.
+func detectImageSize(data []byte) (int, int) {
+	if len(data) < 24 {
+		return 0, 0
+	}
+	// PNG: width at bytes 16-19, height at bytes 20-23 (big-endian in IHDR)
+	if data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 {
+		w := int(data[16])<<24 | int(data[17])<<16 | int(data[18])<<8 | int(data[19])
+		h := int(data[20])<<24 | int(data[21])<<16 | int(data[22])<<8 | int(data[23])
+		return w, h
+	}
+	// JPEG: scan for SOF0 (0xFFC0) marker
+	if data[0] == 0xFF && data[1] == 0xD8 {
+		i := 2
+		for i < len(data)-9 {
+			if data[i] != 0xFF {
+				i++
+				continue
+			}
+			marker := data[i+1]
+			if marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC {
+				h := int(data[i+5])<<8 | int(data[i+6])
+				w := int(data[i+7])<<8 | int(data[i+8])
+				return w, h
+			}
+			segLen := int(data[i+2])<<8 | int(data[i+3])
+			i += 2 + segLen
+		}
+	}
+	return 0, 0
 }
 
 // EditImageByUpload uploads images to ChatGPT, then sends an edit conversation.
@@ -205,7 +244,7 @@ func (c *ChatGPTClient) EditImageByUpload(ctx context.Context, prompt string, im
 	var uploads []*UploadedFile
 	for i, imgData := range images {
 		filename := fmt.Sprintf("image_%d.png", i)
-		uploaded, err := c.UploadFile(ctx, imgData, filename, "image/png")
+		uploaded, err := c.UploadFile(ctx, imgData, filename, detectMIME(imgData))
 		if err != nil {
 			return nil, fmt.Errorf("upload image %d: %w", i, err)
 		}
@@ -216,7 +255,7 @@ func (c *ChatGPTClient) EditImageByUpload(ctx context.Context, prompt string, im
 	var maskUpload *UploadedFile
 	if mask != nil {
 		var err error
-		maskUpload, err = c.UploadFile(ctx, mask, "mask.png", "image/png")
+		maskUpload, err = c.UploadFile(ctx, mask, "mask.png", detectMIME(mask))
 		if err != nil {
 			return nil, fmt.Errorf("upload mask: %w", err)
 		}
@@ -226,6 +265,26 @@ func (c *ChatGPTClient) EditImageByUpload(ctx context.Context, prompt string, im
 	return c.doConversation(ctx, body)
 }
 
+// detectMIME sniffs the MIME type from image bytes.
+func detectMIME(data []byte) string {
+	if len(data) >= 8 {
+		// PNG: 89 50 4E 47
+		if data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 {
+			return "image/png"
+		}
+		// JPEG: FF D8 FF
+		if data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
+			return "image/jpeg"
+		}
+		// WebP: RIFF....WEBP
+		if data[0] == 0x52 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x46 &&
+			len(data) >= 12 && data[8] == 0x57 && data[9] == 0x45 && data[10] == 0x42 && data[11] == 0x50 {
+			return "image/webp"
+		}
+	}
+	return "image/png"
+}
+
 func (c *ChatGPTClient) buildMultimodalBody(prompt string, uploads []*UploadedFile, maskUpload *UploadedFile) map[string]any {
 	msgID := uuid.NewString()
 
@@ -233,33 +292,50 @@ func (c *ChatGPTClient) buildMultimodalBody(prompt string, uploads []*UploadedFi
 	parts := []any{prompt}
 	attachments := []any{}
 
-	for _, up := range uploads {
-		parts = append(parts, map[string]any{
+	for i, up := range uploads {
+		imgPart := map[string]any{
 			"content_type":  "image_asset_pointer",
 			"asset_pointer": "file-service://" + up.FileID,
 			"size_bytes":    up.SizeBytes,
-			"mime_type":     "image/png",
-		})
+			"mime_type":     up.MIMEType,
+		}
+		if up.Width > 0 && up.Height > 0 {
+			imgPart["width"] = up.Width
+			imgPart["height"] = up.Height
+		}
+		parts = append(parts, imgPart)
+
+		name := fmt.Sprintf("image_%d.png", i)
 		attachments = append(attachments, map[string]any{
 			"id":       up.FileID,
-			"name":     "image.png",
+			"name":     name,
 			"size":     up.SizeBytes,
-			"mimeType": "image/png",
+			"mimeType": up.MIMEType,
+			"width":    up.Width,
+			"height":   up.Height,
 		})
 	}
 
 	if maskUpload != nil {
-		parts = append(parts, map[string]any{
+		maskPart := map[string]any{
 			"content_type":  "image_asset_pointer",
 			"asset_pointer": "file-service://" + maskUpload.FileID,
 			"size_bytes":    maskUpload.SizeBytes,
-			"mime_type":     "image/png",
-		})
+			"mime_type":     maskUpload.MIMEType,
+		}
+		if maskUpload.Width > 0 && maskUpload.Height > 0 {
+			maskPart["width"] = maskUpload.Width
+			maskPart["height"] = maskUpload.Height
+		}
+		parts = append(parts, maskPart)
+
 		attachments = append(attachments, map[string]any{
 			"id":       maskUpload.FileID,
 			"name":     "mask.png",
 			"size":     maskUpload.SizeBytes,
-			"mimeType": "image/png",
+			"mimeType": maskUpload.MIMEType,
+			"width":    maskUpload.Width,
+			"height":   maskUpload.Height,
 		})
 	}
 
