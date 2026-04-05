@@ -101,8 +101,17 @@ pub struct ProcessResponse {
     pub output_data: String,
     pub width: u32,
     pub height: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outputs: Vec<ProcessOutputItem>,
     pub operations_applied: Vec<String>,
     pub elapsed_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessOutputItem {
+    pub output_data: String,
+    pub width: u32,
+    pub height: u32,
 }
 
 // -- Pipeline --
@@ -224,18 +233,45 @@ impl Pipeline {
             applied.push(op_name);
         }
 
-        let current = current.into_single("finalize")?;
-        let bytes = tokio::fs::read(&current).await?;
-        let output_data = STANDARD.encode(&bytes);
-        let (width, height) = Self::get_dimensions(&current).await.unwrap_or((0, 0));
-
-        Ok(ProcessResponse {
-            output_data,
-            width,
-            height,
-            operations_applied: applied,
-            elapsed_ms: start.elapsed().as_millis() as u64,
-        })
+        match current {
+            PipelineState::Single(path) => {
+                let bytes = tokio::fs::read(&path).await?;
+                let output_data = STANDARD.encode(&bytes);
+                let (width, height) = Self::get_dimensions(&path).await.unwrap_or((0, 0));
+                Ok(ProcessResponse {
+                    output_data,
+                    width,
+                    height,
+                    outputs: vec![],
+                    operations_applied: applied,
+                    elapsed_ms: start.elapsed().as_millis() as u64,
+                })
+            }
+            PipelineState::Multi(paths) => {
+                let mut outputs = Vec::with_capacity(paths.len());
+                for path in &paths {
+                    let bytes = tokio::fs::read(path).await?;
+                    let (w, h) = Self::get_dimensions(path).await.unwrap_or((0, 0));
+                    outputs.push(ProcessOutputItem {
+                        output_data: STANDARD.encode(&bytes),
+                        width: w,
+                        height: h,
+                    });
+                }
+                let (width, height) = outputs
+                    .first()
+                    .map(|o| (o.width, o.height))
+                    .unwrap_or((0, 0));
+                Ok(ProcessResponse {
+                    output_data: String::new(),
+                    width,
+                    height,
+                    outputs,
+                    operations_applied: applied,
+                    elapsed_ms: start.elapsed().as_millis() as u64,
+                })
+            }
+        }
     }
 
     async fn resolve_inputs(req: &ProcessRequest, tmp_dir: &Path) -> anyhow::Result<PipelineState> {

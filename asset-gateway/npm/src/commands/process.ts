@@ -13,11 +13,30 @@ function readInputAsBase64(input: string): string {
 }
 
 function saveProcessOutput(data: Record<string, unknown>, outputDir: string): string | null {
+  mkdirSync(outputDir, { recursive: true });
+  const timestamp = Date.now();
+
+  // Multi-output (extract_frames, remove_bg on multiple inputs)
+  const outputs = data.outputs as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(outputs) && outputs.length > 0) {
+    const localPaths: string[] = [];
+    for (let i = 0; i < outputs.length; i++) {
+      const item = outputs[i];
+      const b64 = item.output_data;
+      if (typeof b64 !== "string" || !b64) continue;
+      const filePath = join(outputDir, `frame_${timestamp}_${String(i).padStart(4, "0")}.png`);
+      writeFileSync(filePath, Buffer.from(b64, "base64"));
+      localPaths.push(filePath);
+    }
+    delete data.outputs;
+    data.local_paths = localPaths;
+    return localPaths[0] ?? null;
+  }
+
+  // Single output
   const outputData = data.output_data;
   if (typeof outputData !== "string" || !outputData) return null;
 
-  mkdirSync(outputDir, { recursive: true });
-  const timestamp = Date.now();
   const filePath = join(outputDir, `processed_${timestamp}.png`);
   writeFileSync(filePath, Buffer.from(outputData, "base64"));
   delete data.output_data;
