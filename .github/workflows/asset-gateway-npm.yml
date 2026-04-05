@@ -1,0 +1,39 @@
+# 与网关能力对齐：npm 公开包在 main 上随 npm 源码变更自动发布（须先 bump version）。
+name: asset-gateway-npm
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'asset-gateway/npm/**'
+      - '.github/workflows/asset-gateway-npm.yml'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: asset-gateway/npm
+
+jobs:
+  publish:
+    name: Publish @doufunao123/asset-gateway
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install, build, publish
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run lint
+          pnpm run build
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
