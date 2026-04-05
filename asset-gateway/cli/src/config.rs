@@ -186,8 +186,16 @@ impl AppConfig {
                 "",
             ),
 
-            jimeng_url: env_or("ASSET_GATEWAY_JIMENG_URL", file_cfg.jimeng.url.as_deref(), ""),
-            jimeng_token: env_or("ASSET_GATEWAY_JIMENG_TOKEN", file_cfg.jimeng.token.as_deref(), ""),
+            jimeng_url: env_or(
+                "ASSET_GATEWAY_JIMENG_URL",
+                file_cfg.jimeng.url.as_deref(),
+                "",
+            ),
+            jimeng_token: env_or(
+                "ASSET_GATEWAY_JIMENG_TOKEN",
+                file_cfg.jimeng.token.as_deref(),
+                "",
+            ),
         })
     }
 
