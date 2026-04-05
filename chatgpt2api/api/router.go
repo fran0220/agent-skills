@@ -28,7 +28,7 @@ func SetupRouter(cfg *config.Config) http.Handler {
 
 	// Page routes
 	pages := NewPageHandler()
-	mux.HandleFunc("GET /", pages.Root())
+	mux.HandleFunc("GET /{$}", pages.Root())
 	mux.HandleFunc("GET /admin", pages.AdminRoot())
 	mux.HandleFunc("GET /admin/login", pages.ServePage("static/admin/pages/login.html"))
 	mux.HandleFunc("GET /admin/token", pages.ServePage("static/admin/pages/token.html"))

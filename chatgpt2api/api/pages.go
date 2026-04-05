@@ -35,10 +35,6 @@ func (h *PageHandler) Static() http.Handler {
 
 func (h *PageHandler) Root() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
 		http.Redirect(w, r, "/admin/login", http.StatusTemporaryRedirect)
 	}
 }
