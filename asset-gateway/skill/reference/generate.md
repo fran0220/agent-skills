@@ -50,7 +50,7 @@ asset-gateway generate image --prompt "mobile splash screen" --size 1024x1792 --
 
 ## Video
 
-Text-to-video or image-to-video via Grok.
+Text-to-video or image-to-video via Veo 3.1 (Google).
 
 ### Text-to-Video
 
@@ -66,7 +66,7 @@ Pass a reference image with `--input` for image-to-video generation. The image s
 asset-gateway generate video --prompt "walk cycle animation, smooth movement" --input https://upload.xiaomao.chat/uploads/character.png --output-dir ./assets
 ```
 
-> Grok's image-to-video produces highly consistent frames — the same character appears in every frame. This is the recommended approach for sprite animation (see reference/sprite-workflow.md).
+> Veo's image-to-video produces highly consistent frames — the same character appears in every frame. This is the recommended approach for sprite animation (see reference/sprite-workflow.md).
 
 ## Audio
 

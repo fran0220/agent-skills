@@ -57,7 +57,7 @@ asset-gateway process extract-frames --input ./video.mp4 --output-dir ./frames
 asset-gateway process extract-frames --input ./video.mp4 --count 12 --output-dir ./frames
 
 # From a URL
-asset-gateway process extract-frames --input https://grok.xiaomao.chat/v1/files/video/xxx.mp4 --count 8 --output-dir ./frames
+asset-gateway process extract-frames --input ./video_output.mp4 --count 8 --output-dir ./frames
 ```
 
 **Response** returns multiple files with `local_paths[]` array:

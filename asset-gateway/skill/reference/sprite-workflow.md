@@ -23,7 +23,7 @@ asset-gateway upload file ./sprites/image_*.png
 
 ### Step 3: Generate Animation Video (Image-to-Video)
 
-Use the reference image as input for Grok's image-to-video. The character stays perfectly consistent across all frames.
+Use the reference image as input for Veo's image-to-video. The character stays perfectly consistent across all frames.
 
 ```bash
 asset-gateway generate video \
