@@ -22,13 +22,13 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Category | Use Case | Command |
 |----------|----------|---------|
 | Image | Generate, edit, reference, inpaint, restyle, expand | `generate image` |
-| Video | Text-to-video, image-to-video | `generate video` |
+| Video | ~~Removed~~ — no stable provider available | — |
 | Audio | SFX, BGM | `generate audio` |
 | Music | Music generation | `generate music` |
 | Speech | TTS, multilingual, instructed style | `generate tts` |
 | Voice Identity | Voice clone, voice design | `voice clone`, `voice design` |
 | 3D Model | Text/image → 3D, rig/animate/convert | `generate model`, `process3d ...` |
-| Sprite Animation | Full pipeline: image-to-video → extract frames → remove bg → compose | See reference/sprite-workflow.md |
+| Sprite Animation | Frame-by-frame generation → remove bg → compose (video approach unavailable) | See reference/sprite-workflow.md |
 | Text | Single-shot LLM text generation | `generate text` |
 | Image/Video Tools | Crop, resize, compose, extract frames, remove background | `process ...` |
 
@@ -42,8 +42,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Use reference images | `generate image` | `--prompt`, `--ref <url> [<url>...]`, `--output-dir` |
 | Inpaint / restyle / expand | `generate image` | `--prompt`, `--input`, `--edit-mode`, `--output-dir` |
 | Continue editing (multi-turn) | `generate image` | `--prompt`, `--session <id>`, `--output-dir` |
-| Generate video from text | `generate video` | `--prompt`, `--output-dir` |
-| Generate video from image | `generate video` | `--prompt`, `--input <url>`, `--output-dir` |
+| ~~Generate video~~ | ~~`generate video`~~ | No stable provider — Grok proxy removed |
 | Generate SFX / BGM | `generate audio` | `--prompt`, `--type`, `--duration`, `--output-dir` |
 | Generate music | `generate music` | `--prompt`, `--duration`, `--output-dir` |
 | Text-to-speech | `generate tts` | `--prompt`, `--voice`, `--language`, `--output-dir` |
