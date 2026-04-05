@@ -72,7 +72,9 @@ impl JimengProvider {
         let url = payload["data"][0]["url"]
             .as_str()
             .map(String::from)
-            .ok_or_else(|| anyhow::anyhow!("Jimeng image response missing data[0].url: {}", text))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("Jimeng image response missing data[0].url: {}", text)
+            })?;
 
         Ok(GenerateResponse {
             provider_id: self.id.clone(),
@@ -129,9 +131,7 @@ impl JimengProvider {
             body["file_paths"] = json!(urls);
         }
 
-        let client = reqwest::Client::builder()
-            .timeout(VIDEO_TIMEOUT)
-            .build()?;
+        let client = reqwest::Client::builder().timeout(VIDEO_TIMEOUT).build()?;
 
         let resp = client
             .post(format!("{}/v1/videos/generations", self.base_url))
@@ -152,7 +152,9 @@ impl JimengProvider {
         let url = payload["data"][0]["url"]
             .as_str()
             .map(String::from)
-            .ok_or_else(|| anyhow::anyhow!("Jimeng video response missing data[0].url: {}", text))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("Jimeng video response missing data[0].url: {}", text)
+            })?;
 
         let cost = if model.contains("fast-vip") {
             0.05
