@@ -26,8 +26,10 @@ func handleTokens() http.HandlerFunc {
 			}
 			stats := tokenMgr.GetStats()
 			writeJSON(w, http.StatusOK, map[string]any{
-				"tokens": items,
-				"stats":  stats,
+				"tokens": map[string]any{
+					"default": items,
+				},
+				"stats": stats,
 			})
 
 		case http.MethodPost:

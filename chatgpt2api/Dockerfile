@@ -11,6 +11,7 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /chatgpt2api /chatgpt2api
 COPY config.defaults.toml /app/config.defaults.toml
+COPY _public /app/_public
 RUN mkdir -p /app/data
 EXPOSE 8200
 ENV SERVER_HOST=0.0.0.0 SERVER_PORT=8200 TZ=Asia/Shanghai
