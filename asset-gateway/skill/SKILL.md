@@ -71,8 +71,18 @@ asset-gateway upload file ./reference.png
 
 ```bash
 asset-gateway generate image --prompt "isometric village, soft morning light" --size 1792x1024 --output-dir ./assets
-asset-gateway generate image --prompt "character sheet, transparent background" --size 1024x1792 --output-dir ./assets
 ```
+
+### 透明背景图
+
+加 `--transparent` 生成带真实 Alpha 通道的 PNG（自动路由到 GPT Image，输出 RGBA 4 通道）。适合游戏精灵图、UI 图标、角色立绘等需要去背景的场景。
+
+```bash
+asset-gateway generate image --prompt "pixel art sword icon" --transparent --output-dir ./assets
+asset-gateway generate image --prompt "character sprite sheet, chibi style" --transparent --size 1024x1792 --output-dir ./assets
+```
+
+> 不加 `--transparent` 时走 Gemini（快、便宜），加了走 GPT Image（原生透明，稍慢）。
 
 ### 编辑
 
