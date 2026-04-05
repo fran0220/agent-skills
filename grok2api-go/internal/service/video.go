@@ -336,15 +336,15 @@ func (s *VideoService) generateWithToken(ctx context.Context, params generateExe
 		}
 	}
 
-	if s.publicAssetEnabled() {
+	// Cache video locally BEFORE creating public link (internal URLs are downloadable,
+	// public x.ai CDN URLs are blocked by Cloudflare).
+	if localURL := s.cacheVideoLocally(ctx, params.Token, finalVideoURL); localURL != "" {
+		finalVideoURL = localURL
+	} else if s.publicAssetEnabled() {
 		if params.Stream {
 			builder.Append(builder.EmitNote("正在生成可公开访问链接\n")...)
 		}
 		finalVideoURL = s.createPublicVideoLink(ctx, params.Token, finalVideoURL)
-	}
-
-	if localURL := s.cacheVideoLocally(ctx, params.Token, finalVideoURL); localURL != "" {
-		finalVideoURL = localURL
 	}
 
 	rendered := s.renderVideo(finalVideoURL, finalResult.ThumbnailURL)
