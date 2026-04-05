@@ -1,14 +1,23 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::core::*;
 use serde_json::{json, Value};
 
-const DEFAULT_MODEL: &str = "grok-imagine-1.0";
-const EDIT_MODEL: &str = "grok-imagine-1.0-edit";
+const IMAGE_MODEL: &str = "grok-imagine-1.0";
 const VIDEO_MODEL: &str = "grok-imagine-1.0-video";
 
-/// Grok Image provider (xAI grok-imagine via OpenAI-compatible chat completions).
-/// Supports image generation, image editing, and video generation.
+/// Allowed sizes for grok2api-go image/video endpoints.
+const ALLOWED_SIZES: &[(&str, f64)] = &[
+    ("1024x1024", 1.0),
+    ("1280x720", 1.778),
+    ("720x1280", 0.5625),
+    ("1792x1024", 1.75),
+    ("1024x1792", 0.571),
+];
+
+/// Grok Image provider — connects directly to grok2api-go native REST APIs.
+/// Supports image generation (`/v1/images/generations`) and video generation
+/// (`/v1/video/generations`).
 pub struct GrokImageProvider {
     pub id: String,
     pub base_url: String,
@@ -27,6 +36,31 @@ impl GrokImageProvider {
     }
 }
 
+/// Map a "WxH" size string to the closest allowed grok2api-go size.
+fn map_size(size: &str) -> &'static str {
+    let parts: Vec<&str> = size.split('x').chain(size.split('X')).take(2).collect();
+    if parts.len() < 2 {
+        return "1024x1024";
+    }
+    let w: f64 = parts[0].trim().parse().unwrap_or(0.0);
+    let h: f64 = parts[1].trim().parse().unwrap_or(0.0);
+    if w <= 0.0 || h <= 0.0 {
+        return "1024x1024";
+    }
+
+    let ratio = w / h;
+    let mut best = ALLOWED_SIZES[0].0;
+    let mut best_diff = f64::MAX;
+    for &(name, r) in ALLOWED_SIZES {
+        let diff = (ratio - r).abs();
+        if diff < best_diff {
+            best_diff = diff;
+            best = name;
+        }
+    }
+    best
+}
+
 #[async_trait::async_trait]
 impl AssetProvider for GrokImageProvider {
     fn as_any(&self) -> &dyn std::any::Any {
@@ -42,13 +76,13 @@ impl AssetProvider for GrokImageProvider {
     }
 
     fn asset_types(&self) -> &[AssetType] {
-        &[AssetType::Video]
+        &[AssetType::Image, AssetType::Video]
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
             supports_transparency: false,
-            priority: 100,
+            priority: 80,
             ..Default::default()
         }
     }
@@ -57,39 +91,55 @@ impl AssetProvider for GrokImageProvider {
         let prompt = req.prompt.as_deref().unwrap_or("");
         let start = Instant::now();
 
-        let (model, messages) = match req.asset_type {
-            AssetType::Video => (VIDEO_MODEL, json!([{ "role": "user", "content": prompt }])),
-            _ => {
-                if let Some(ref image_url) = req.input_file {
-                    (
-                        EDIT_MODEL,
-                        json!([{
-                            "role": "user",
-                            "content": [
-                                { "type": "image_url", "image_url": { "url": image_url } },
-                                { "type": "text", "text": prompt }
-                            ]
-                        }]),
-                    )
-                } else {
-                    (
-                        DEFAULT_MODEL,
-                        json!([{ "role": "user", "content": prompt }]),
-                    )
-                }
-            }
-        };
+        let size = req
+            .params
+            .get("size")
+            .and_then(|v| v.as_str())
+            .map(map_size)
+            .unwrap_or("1024x1024");
 
-        let body = json!({
-            "model": model,
-            "messages": messages,
-            "stream": false,
-        });
+        let (url, body, timeout, model, cost) = match req.asset_type {
+            AssetType::Video => {
+                let seconds = req
+                    .params
+                    .get("seconds")
+                    .and_then(|v| v.as_u64())
+                    .map(|s| s.clamp(6, 30))
+                    .unwrap_or(6);
+
+                (
+                    format!("{}/v1/video/generations", self.base_url),
+                    json!({
+                        "model": VIDEO_MODEL,
+                        "prompt": prompt,
+                        "size": size,
+                        "seconds": seconds,
+                        "quality": "standard",
+                    }),
+                    Duration::from_secs(180),
+                    VIDEO_MODEL,
+                    0.10,
+                )
+            }
+            _ => (
+                format!("{}/v1/images/generations", self.base_url),
+                json!({
+                    "model": IMAGE_MODEL,
+                    "prompt": prompt,
+                    "size": size,
+                    "response_format": "url",
+                }),
+                Duration::from_secs(60),
+                IMAGE_MODEL,
+                0.07,
+            ),
+        };
 
         let resp = self
             .http
-            .post(format!("{}/v1/chat/completions", self.base_url))
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
+            .timeout(timeout)
             .json(&body)
             .send()
             .await?;
@@ -102,13 +152,14 @@ impl AssetProvider for GrokImageProvider {
         }
 
         let payload: Value = serde_json::from_str(&text)?;
-        let content = payload["choices"][0]["message"]["content"]
-            .as_str()
-            .unwrap_or("");
 
         let output_url = match req.asset_type {
-            AssetType::Video => extract_video_url(content),
-            _ => extract_image_url(content),
+            AssetType::Video => payload["url"]
+                .as_str()
+                .map(String::from),
+            _ => payload["data"][0]["url"]
+                .as_str()
+                .map(String::from),
         };
 
         let output_url = output_url
@@ -122,11 +173,9 @@ impl AssetProvider for GrokImageProvider {
             metadata: json!({
                 "model": model,
                 "asset_type": req.asset_type.to_string(),
+                "size": size,
             }),
-            cost_usd: Some(match req.asset_type {
-                AssetType::Video => 0.10,
-                _ => 0.07,
-            }),
+            cost_usd: Some(cost),
             elapsed_ms: start.elapsed().as_millis() as u64,
         })
     }
@@ -155,255 +204,46 @@ impl AssetProvider for GrokImageProvider {
     }
 }
 
-/// Trim trailing characters that are common URL-wrapping delimiters but not part of the URL.
-fn trim_url(raw: &str) -> &str {
-    let mut s = raw;
-    // Strip pairs of wrapping quotes/brackets if present
-    for (open, close) in [('\"', '\"'), ('\'', '\''), ('<', '>'), ('(', ')')] {
-        if s.starts_with(open) && s.ends_with(close) && s.len() >= 2 {
-            s = &s[open.len_utf8()..s.len() - close.len_utf8()];
-        }
-    }
-    // Strip trailing delimiters that commonly follow pasted URLs
-    s.trim_end_matches(|c: char| matches!(c, ')' | ']' | '"' | '\'' | '>' | ',' | ';'))
-}
-
-/// Extract a quoted attribute value: given `attr="value"` or `attr='value'`, return `value`.
-/// `haystack` should start right after the tag name (e.g. the attributes portion).
-fn extract_attr<'a>(attrs: &'a str, name: &str) -> Option<&'a str> {
-    // Try both `name="..."` and `name='...'`
-    for quote in ['"', '\''] {
-        let needle = format!("{}={}", name, quote);
-        if let Some(pos) = attrs.find(&needle) {
-            let start = pos + needle.len();
-            if let Some(end) = attrs[start..].find(quote) {
-                let val = &attrs[start..start + end];
-                if !val.is_empty() {
-                    return Some(val);
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Find the first URL (http/https) starting at or after `start` in `content`,
-/// reading until a whitespace or delimiter character.
-fn scan_url(content: &str) -> Option<String> {
-    let hay = content;
-    for scheme in ["https://", "http://"] {
-        let mut search_from = 0;
-        while let Some(pos) = hay[search_from..].find(scheme) {
-            let abs = search_from + pos;
-            // Walk forward to find the end of the URL
-            let url_end = hay[abs..]
-                .find(|c: char| {
-                    c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | ')' | ']')
-                })
-                .map_or(hay.len(), |e| abs + e);
-            let candidate = &hay[abs..url_end];
-            if candidate.len() > scheme.len() {
-                return Some(trim_url(candidate).to_string());
-            }
-            search_from = abs + scheme.len();
-        }
-    }
-    None
-}
-
-/// Extract the first HTML tag of the given name and return its inner attributes string.
-/// e.g. for `tag = "img"` and `<img src="x" alt="y">`, returns `src="x" alt="y"`.
-fn find_tag_attrs<'a>(content: &'a str, tag: &str) -> Option<&'a str> {
-    let open = format!("<{}", tag);
-    let pos = content.find(&open)?;
-    let rest = &content[pos + open.len()..];
-    // The tag name must be followed by whitespace or `>` (not e.g. `<imgs...`)
-    let first = rest.chars().next()?;
-    if first != '>' && first != '/' && !first.is_whitespace() {
-        return None;
-    }
-    let end = rest.find('>')?;
-    Some(rest[..end].trim())
-}
-
-/// Extract an image URL (http/https) from response content.
-///
-/// Tries, in order:
-/// 1. Markdown image `![...](URL)`
-/// 2. HTML `<img src="URL">`
-/// 3. HTML `<a href="URL">`
-/// 4. Bare URL scan
-fn extract_image_url(content: &str) -> Option<String> {
-    // 1. Markdown image: ![alt](url)
-    //    Find `](` then read until closing `)`
-    {
-        let mut search_from = 0;
-        while let Some(pos) = content[search_from..].find("](") {
-            let abs = search_from + pos;
-            // Walk backward to verify there's a `![` somewhere before
-            if abs > 0 && content[..abs].contains("![") {
-                let url_start = abs + 2;
-                if let Some(paren_end) = content[url_start..].find(')') {
-                    let candidate = content[url_start..url_start + paren_end].trim();
-                    if candidate.starts_with("http://") || candidate.starts_with("https://") {
-                        return Some(trim_url(candidate).to_string());
-                    }
-                }
-            }
-            search_from = abs + 2;
-        }
-    }
-
-    // 2. HTML <img ... src="URL" ...>
-    if let Some(attrs) = find_tag_attrs(content, "img") {
-        if let Some(url) = extract_attr(attrs, "src") {
-            if url.starts_with("http://") || url.starts_with("https://") {
-                return Some(trim_url(url).to_string());
-            }
-        }
-    }
-
-    // 3. HTML <a ... href="URL" ...>
-    if let Some(attrs) = find_tag_attrs(content, "a") {
-        if let Some(url) = extract_attr(attrs, "href") {
-            if url.starts_with("http://") || url.starts_with("https://") {
-                return Some(trim_url(url).to_string());
-            }
-        }
-    }
-
-    // 4. Bare URL scan
-    scan_url(content)
-}
-
-/// Extract a video URL from response content.
-///
-/// Tries, in order:
-/// 1. HTML `<video ... src="URL">` or `<source ... src="URL">`
-/// 2. Any URL containing `.mp4`
-/// 3. Fallback to `extract_image_url`
-fn extract_video_url(content: &str) -> Option<String> {
-    // 1. <video src="URL"> or <source src="URL">
-    for tag in ["video", "source"] {
-        if let Some(attrs) = find_tag_attrs(content, tag) {
-            if let Some(url) = extract_attr(attrs, "src") {
-                if url.starts_with("http://") || url.starts_with("https://") {
-                    return Some(trim_url(url).to_string());
-                }
-            }
-        }
-    }
-
-    // 2. Scan for any URL containing `.mp4`
-    for scheme in ["https://", "http://"] {
-        let mut search_from = 0;
-        while let Some(pos) = content[search_from..].find(scheme) {
-            let abs = search_from + pos;
-            let url_end = content[abs..]
-                .find(|c: char| {
-                    c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | ')' | ']')
-                })
-                .map_or(content.len(), |e| abs + e);
-            let candidate = trim_url(&content[abs..url_end]);
-            if candidate.contains(".mp4") {
-                return Some(candidate.to_string());
-            }
-            search_from = abs + scheme.len();
-        }
-    }
-
-    // 3. Fallback
-    extract_image_url(content)
-}
-
 #[cfg(test)]
-mod url_extraction_tests {
+mod tests {
     use super::*;
 
     #[test]
-    fn markdown_image() {
-        let c = "Here is your image: ![result](https://example.com/img.png)";
-        assert_eq!(extract_image_url(c).unwrap(), "https://example.com/img.png");
+    fn map_size_square() {
+        assert_eq!(map_size("1024x1024"), "1024x1024");
+        assert_eq!(map_size("512x512"), "1024x1024");
     }
 
     #[test]
-    fn html_img_tag() {
-        let c = r#"<img src="https://cdn.example.com/a.jpg" alt="pic">"#;
-        assert_eq!(
-            extract_image_url(c).unwrap(),
-            "https://cdn.example.com/a.jpg"
-        );
+    fn map_size_landscape() {
+        assert_eq!(map_size("1280x720"), "1280x720");
+        // 1920x1080 = 1.778 ratio, same as 1280x720
+        assert_eq!(map_size("1920x1080"), "1280x720");
+        assert_eq!(map_size("1792x1024"), "1792x1024");
     }
 
     #[test]
-    fn html_a_href() {
-        let c = r#"Click <a href="https://example.com/download.png">here</a>"#;
-        assert_eq!(
-            extract_image_url(c).unwrap(),
-            "https://example.com/download.png"
-        );
+    fn map_size_portrait() {
+        assert_eq!(map_size("720x1280"), "720x1280");
+        assert_eq!(map_size("1024x1792"), "1024x1792");
+        // 1080x1920 = 0.5625 ratio, same as 720x1280
+        assert_eq!(map_size("1080x1920"), "720x1280");
     }
 
     #[test]
-    fn bare_url() {
-        let c = "Generated: https://example.com/output.png enjoy!";
-        assert_eq!(
-            extract_image_url(c).unwrap(),
-            "https://example.com/output.png"
-        );
+    fn map_size_invalid() {
+        assert_eq!(map_size("bad"), "1024x1024");
+        assert_eq!(map_size("0x0"), "1024x1024");
+        assert_eq!(map_size(""), "1024x1024");
     }
 
     #[test]
-    fn bare_url_with_trailing_paren() {
-        let c = "(https://example.com/img.png)";
-        assert_eq!(extract_image_url(c).unwrap(), "https://example.com/img.png");
-    }
-
-    #[test]
-    fn video_tag_src() {
-        let c = r#"<video src="https://cdn.example.com/v.mp4" controls></video>"#;
-        assert_eq!(
-            extract_video_url(c).unwrap(),
-            "https://cdn.example.com/v.mp4"
-        );
-    }
-
-    #[test]
-    fn source_tag_src() {
-        let c = r#"<video><source src="https://cdn.example.com/v.mp4" type="video/mp4"></video>"#;
-        assert_eq!(
-            extract_video_url(c).unwrap(),
-            "https://cdn.example.com/v.mp4"
-        );
-    }
-
-    #[test]
-    fn mp4_in_plain_text() {
-        let c = "Your video: https://example.com/output.mp4 is ready";
-        assert_eq!(
-            extract_video_url(c).unwrap(),
-            "https://example.com/output.mp4"
-        );
-    }
-
-    #[test]
-    fn video_fallback_to_image() {
-        let c = "![thumb](https://example.com/thumb.jpg)";
-        assert_eq!(
-            extract_video_url(c).unwrap(),
-            "https://example.com/thumb.jpg"
-        );
-    }
-
-    #[test]
-    fn single_quoted_attr() {
-        let c = "<img src='https://example.com/img.png' />";
-        assert_eq!(extract_image_url(c).unwrap(), "https://example.com/img.png");
-    }
-
-    #[test]
-    fn no_url_returns_none() {
-        assert!(extract_image_url("no url here").is_none());
-        assert!(extract_video_url("no url here").is_none());
+    fn map_size_near_ratios() {
+        // 4:3 ≈ 1.333 — closest to 1280x720 (1.778) vs 1024x1024 (1.0)
+        // diff to 1.0 = 0.333, diff to 1.778 = 0.445, diff to 1.75 = 0.417
+        // → closest is 1024x1024
+        assert_eq!(map_size("800x600"), "1024x1024");
+        // 16:10 = 1.6 — closest to 1792x1024 (1.75)
+        assert_eq!(map_size("1680x1050"), "1792x1024");
     }
 }

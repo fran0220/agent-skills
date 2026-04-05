@@ -15,6 +15,8 @@ pub struct ConfigFile {
     pub tripo3d: ProviderKeySection,
     #[serde(default)]
     pub dashscope: DashscopeSection,
+    #[serde(default)]
+    pub grok2api: Grok2apiSection,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -41,6 +43,12 @@ pub struct DashscopeSection {
     pub key: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Grok2apiSection {
+    pub url: Option<String>,
+    pub key: Option<String>,
+}
+
 /// Runtime config derived from TOML file + env var overrides.
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -50,7 +58,7 @@ pub struct AppConfig {
     pub config_path: PathBuf,
     pub admin_token: String,
 
-    // Shared LLM proxy (covers llm_proxy, gemini_image, grok_image)
+    // Shared LLM proxy (covers llm_proxy, gemini_image, gpt_image)
     pub proxy_url: String,
     pub proxy_key: String,
     pub default_model: String,
@@ -62,6 +70,10 @@ pub struct AppConfig {
     // DashScope Qwen3-TTS (International Singapore region)
     pub dashscope_url: String,
     pub dashscope_key: String,
+
+    // Grok2API (direct connection to grok2api-go reverse proxy)
+    pub grok2api_url: String,
+    pub grok2api_key: String,
 }
 
 impl AppConfig {
@@ -148,6 +160,17 @@ impl AppConfig {
             dashscope_key: env_or(
                 "ASSET_GATEWAY_DASHSCOPE_KEY",
                 file_cfg.dashscope.key.as_deref(),
+                "",
+            ),
+
+            grok2api_url: env_or(
+                "ASSET_GATEWAY_GROK2API_URL",
+                file_cfg.grok2api.url.as_deref(),
+                "",
+            ),
+            grok2api_key: env_or(
+                "ASSET_GATEWAY_GROK2API_KEY",
+                file_cfg.grok2api.key.as_deref(),
                 "",
             ),
         })

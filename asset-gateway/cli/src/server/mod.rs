@@ -51,10 +51,13 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         gpt.id = "gpt_image".into();
         providers.push(Arc::new(gpt));
 
-        // Grok Image/Video
+    }
+
+    if !config.grok2api_key.is_empty() {
+        // Grok Image/Video (direct connection to grok2api-go)
         let mut grok = crate::providers::grok_image::GrokImageProvider::new(
-            config.proxy_url.clone(),
-            config.proxy_key.clone(),
+            config.grok2api_url.clone(),
+            config.grok2api_key.clone(),
         );
         grok.id = "grok_image".into();
         providers.push(Arc::new(grok));
