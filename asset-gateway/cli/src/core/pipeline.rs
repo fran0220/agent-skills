@@ -166,10 +166,9 @@ impl Pipeline {
                         .unwrap_or_else(|| "auto".to_string()),
                 ),
                 ProcessOp::ExtractFrames { count } => format!("extract_frames:{}", count),
-                ProcessOp::RemoveBg { bg_color } => format!(
-                    "remove_bg:{}",
-                    bg_color.as_deref().unwrap_or("auto")
-                ),
+                ProcessOp::RemoveBg { bg_color } => {
+                    format!("remove_bg:{}", bg_color.as_deref().unwrap_or("auto"))
+                }
             };
 
             current = match op {
@@ -449,25 +448,23 @@ impl Pipeline {
         // Get total frame count using ffprobe
         let probe = Command::new("ffprobe")
             .args([
-                "-v", "error",
-                "-select_streams", "v:0",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
                 "-count_packets",
-                "-show_entries", "stream=nb_read_packets",
-                "-of", "csv=p=0",
+                "-show_entries",
+                "stream=nb_read_packets",
+                "-of",
+                "csv=p=0",
             ])
             .arg(input)
             .output()
             .await?;
         if !probe.status.success() {
-            anyhow::bail!(
-                "ffprobe failed: {}",
-                String::from_utf8_lossy(&probe.stderr)
-            );
+            anyhow::bail!("ffprobe failed: {}", String::from_utf8_lossy(&probe.stderr));
         }
-        let total_frames: u32 = String::from_utf8(probe.stdout)?
-            .trim()
-            .parse()
-            .unwrap_or(0);
+        let total_frames: u32 = String::from_utf8(probe.stdout)?.trim().parse().unwrap_or(0);
         if total_frames == 0 {
             anyhow::bail!("ffprobe returned 0 frames for input video");
         }
@@ -487,8 +484,10 @@ impl Pipeline {
             .args([
                 "-vf",
                 &format!("select='not(mod(n\\,{}))'", interval),
-                "-vsync", "0",
-                "-frames:v", &count.to_string(),
+                "-vsync",
+                "0",
+                "-frames:v",
+                &count.to_string(),
             ])
             .arg(&pattern);
         Self::run_command(&mut command, "ffmpeg extract_frames failed").await?;
@@ -678,7 +677,12 @@ mod tests {
         let req = ProcessRequest {
             input: None,
             inputs: (0..3)
-                .map(|i| tmp.path().join(format!("img{}.png", i)).to_string_lossy().to_string())
+                .map(|i| {
+                    tmp.path()
+                        .join(format!("img{}.png", i))
+                        .to_string_lossy()
+                        .to_string()
+                })
                 .collect(),
             operations: vec![super::ProcessOp::Compose {
                 direction: ComposeDirection::Horizontal,
@@ -693,7 +697,10 @@ mod tests {
         assert_eq!(result.width, 96); // 3 * 32
         assert_eq!(result.height, 32);
         assert!(!result.output_data.is_empty());
-        assert_eq!(result.operations_applied, vec!["compose:horizontal:auto:0:autoxauto"]);
+        assert_eq!(
+            result.operations_applied,
+            vec!["compose:horizontal:auto:0:autoxauto"]
+        );
     }
 
     #[tokio::test]
@@ -719,7 +726,13 @@ mod tests {
         for (i, (w, h)) in [(50, 80), (30, 40), (60, 60), (45, 70)].iter().enumerate() {
             let path = tmp.path().join(format!("img{}.png", i));
             StdCommand::new(im)
-                .args(["-size", &format!("{}x{}", w, h), "xc:orange", "-alpha", "set"])
+                .args([
+                    "-size",
+                    &format!("{}x{}", w, h),
+                    "xc:orange",
+                    "-alpha",
+                    "set",
+                ])
                 .arg(&path)
                 .output()
                 .expect("create test image");
@@ -728,7 +741,12 @@ mod tests {
         let req = ProcessRequest {
             input: None,
             inputs: (0..4)
-                .map(|i| tmp.path().join(format!("img{}.png", i)).to_string_lossy().to_string())
+                .map(|i| {
+                    tmp.path()
+                        .join(format!("img{}.png", i))
+                        .to_string_lossy()
+                        .to_string()
+                })
                 .collect(),
             operations: vec![super::ProcessOp::Compose {
                 direction: ComposeDirection::Grid,
