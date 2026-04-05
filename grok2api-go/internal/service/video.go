@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/fran0220/grok2api-go/internal/config"
 	"github.com/fran0220/grok2api-go/internal/model"
 	"github.com/fran0220/grok2api-go/internal/reverse"
+	"github.com/fran0220/grok2api-go/internal/storage"
 	"github.com/fran0220/grok2api-go/internal/token"
 )
 
@@ -690,15 +692,61 @@ func (s *VideoService) cacheVideoLocally(tokenValue, videoURL string) string {
 	if appURL == "" {
 		return ""
 	}
-	downloader := reverse.NewDownloadService()
-	defer downloader.Close()
-	cacheName, _, err := downloader.DownloadFile(videoURL, tokenValue, "video")
+
+	// Normalize the URL: internal paths need the assets.grok.com prefix
+	fullURL := strings.TrimSpace(videoURL)
+	if !strings.HasPrefix(fullURL, "http://") && !strings.HasPrefix(fullURL, "https://") {
+		fullURL = "https://assets.grok.com/" + strings.TrimLeft(fullURL, "/")
+	}
+
+	// Download using a simple HTTP client with Grok auth cookie
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
-		slog.Warn("video local cache failed, returning original URL", "error", err, "url", videoURL)
+		slog.Warn("video cache: failed to build request", "error", err)
 		return ""
 	}
+	req.Header.Set("Cookie", fmt.Sprintf("sso=%s; sso-rw=%s", tokenValue, tokenValue))
+	req.Header.Set("Origin", "https://grok.com")
+	req.Header.Set("Referer", "https://grok.com/")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Warn("video cache: download failed", "error", err, "url", fullURL)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("video cache: download returned non-200", "status", resp.StatusCode, "url", fullURL)
+		return ""
+	}
+
+	// Save to local video cache directory
+	videoDir := fmt.Sprintf("%s/tmp/video", storage.DataDir())
+	_ = os.MkdirAll(videoDir, 0o755)
+	cacheName := fmt.Sprintf("video_%s.mp4", strings.ReplaceAll(uuid.NewString(), "-", "")[:16])
+	cachePath := fmt.Sprintf("%s/%s", videoDir, cacheName)
+
+	file, err := os.Create(cachePath)
+	if err != nil {
+		slog.Warn("video cache: failed to create file", "error", err)
+		return ""
+	}
+	written, err := io.Copy(file, resp.Body)
+	file.Close()
+	if err != nil || written == 0 {
+		_ = os.Remove(cachePath)
+		slog.Warn("video cache: write failed", "error", err, "written", written)
+		return ""
+	}
+
 	localURL := fmt.Sprintf("%s/v1/files/video/%s", strings.TrimRight(appURL, "/"), cacheName)
-	slog.Info("video cached locally", "cache_name", cacheName, "local_url", localURL)
+	slog.Info("video cached locally", "cache_name", cacheName, "size_bytes", written, "local_url", localURL)
 	return localURL
 }
 
