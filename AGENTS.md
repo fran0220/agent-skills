@@ -89,7 +89,7 @@ agent-skills/
 
 ### 已下线服务
 
-- jimeng-gateway（原 jpdata）— 已移除，替换为 iptag/jimeng-api
+- jimeng-gateway（原 jpdata）— 已移除，替换为 wwwzhouhui/jimeng-free-api-all Docker
 - grok-register（原 jpdata）— 已停用
 
 ### CI 部署流程

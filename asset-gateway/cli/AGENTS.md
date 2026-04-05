@@ -28,7 +28,7 @@
 | 品类 | 固定 Provider（内部） | Agent 命令 |
 |------|----------------------|------------|
 | 图片（生成 + 编辑 + 蒙版 + 风格） | Gemini | `generate image` |
-| 视频 | Grok | `generate video` |
+| 视频 | Jimeng (Seedance) | `generate video` |
 | 音效 / BGM | ElevenLabs | `generate audio` |
 | 音乐 | ElevenLabs | `generate music` |
 | 语音合成 | Qwen / DashScope | `generate tts` |
@@ -93,6 +93,10 @@ key = "..."
 [dashscope]
 url = "https://dashscope-intl.aliyuncs.com"  # Singapore / Intl endpoint
 key = "..."
+
+[jimeng]
+url = "http://127.0.0.1:5100"
+token = "..."
 ```
 
 ### 部署流程
@@ -180,12 +184,12 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 |-------------|------|---------|:--------:|
 | `llm_proxy` | Text | 双协议（Anthropic + OpenAI 自动选择），SSE streaming | ✅ 1.3s |
 | `gemini_image` | Image | 图片生成与编辑统一入口；支持多图参考(≤14)、多轮 session 编辑，且 `edit_mode` 会实际影响编辑语义（`inpaint` / `restyle` / `expand`） | ✅ 15s |
-| `grok_image` | Video | 视频生成（底层支持 text-to-video / image-to-video） | ⚠️ 502 upstream |
+| `jimeng` | Image + Video | 图片生成 (jimeng-5.0) + 视频生成 (seedance-2.0-fast-vip / seedance-2.0-vip) | ✅ |
 | `qwen_tts` | Tts/Voice | Qwen3-TTS via DashScope Intl：49+ 系统音色、指令控制、VC/VD | ✅ ~97ms 首包 |
 | `elevenlabs` | Audio/Music | sound-generation（BGM/SFX）+ music-generation | ✅ 1.5s |
 | `tripo3d` | Model3d | 完整 3D 管线：text/image/multiview → model, texture, rig, animate, convert, reduce, stylize, segment, prerigcheck, refine, import | ✅ |
 
-> `llm_proxy` / `gemini_image` / `grok_image` 继续通过 LLM proxy（api.xiaomao.chat）接入；`qwen_tts` 使用独立 DashScope 国际站 `https://dashscope-intl.aliyuncs.com`。
+> `llm_proxy` / `gemini_image` 通过 LLM proxy（api.xiaomao.chat）接入；`jimeng` 通过本地 jimeng-api Docker 容器（127.0.0.1:5100）接入；`qwen_tts` 使用独立 DashScope 国际站。
 
 ### 后处理与渲染管线（本地工具）
 
@@ -322,7 +326,7 @@ src/
 │   ├── mod.rs          (7)  pub mod 声明
 │   ├── llm_proxy.rs  (359)  LLM 双协议 + streaming
 │   ├── gemini_image.rs(378) Google 图像
-│   ├── grok_image.rs (249)  Grok 视频与 URL 提取
+│   ├── jimeng.rs    (237)  Jimeng 图片 + 视频（Seedance VIP）
 │   ├── qwen_tts.rs   (548)  Qwen3-TTS：标准合成 + instruct + Voice Clone + Voice Design
 │   ├── elevenlabs.rs (251)  音频 / 音乐
 │   └── tripo3d.rs   (1045)  TripoClient + 全链路 3D 管线
@@ -380,7 +384,7 @@ src/
 
 ## 已知问题
 
-- **Grok Image**: 通过 proxy 调用时偶发 502 upstream error，proxy 侧问题
+- **Jimeng Video**: Seedance 视频生成需要图片输入，不支持纯文生视频；Docker 容器需设置 shm_size >= 1GB
 - **Nginx Timeout**: 长时间后处理请求可能触发 Nginx 60s 超时，需调整 `proxy_read_timeout`
 
 ## 已完成优化（2026-03-30）

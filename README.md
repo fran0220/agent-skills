@@ -10,7 +10,6 @@
 | [`asset-gateway`](./asset-gateway/) | Skill + CLI | 通用资产生成网关（图像/视频/音频/3D/文本） |
 | [`cognee-admin`](./cognee-admin/) | CLI | Cognee 知识引擎管理（CLI + Web 面板） |
 | [`bb-browser`](./bb-browser/) | Skill | 浏览器自动化 |
-| [`jimeng-gateway`](./jimeng-gateway/) | Skill + CLI + Web | [已停用] 即梦/Seedance 视频生成网关 |
 | [`grok2api-go`](./grok2api-go/) | CLI | Grok API 代理网关（Go 重写，手动 Docker 部署） |
 | [`openclaw`](./openclaw/) | Skill | OpenClaw 网关最佳实践 |
 | [`pi-sdk-practices`](./pi-sdk-practices/) | Skill | Pi Agent SDK 开发最佳实践 |

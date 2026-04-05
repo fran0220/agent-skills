@@ -22,7 +22,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Category | Use Case | Command |
 |----------|----------|---------|
 | Image | Generate, edit, reference, inpaint, restyle, expand | `generate image` |
-| Video | Text-to-video, image-to-video (Veo 3.1) | `generate video` |
+| Video | Image-to-video (Jimeng Seedance 2.0 VIP) | `generate video` |
 | Audio | SFX, BGM | `generate audio` |
 | Music | Music generation | `generate music` |
 | Speech | TTS, multilingual, instructed style | `generate tts` |

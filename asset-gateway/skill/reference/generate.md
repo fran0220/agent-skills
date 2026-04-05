@@ -50,23 +50,17 @@ asset-gateway generate image --prompt "mobile splash screen" --size 1024x1792 --
 
 ## Video
 
-Text-to-video or image-to-video via Veo 3.1 (Google).
-
-### Text-to-Video
-
-```bash
-asset-gateway generate video --prompt "camera slowly panning over a misty mountain lake" --output-dir ./assets
-```
+Image-to-video via Jimeng Seedance (ByteDance). Requires an input image — use `--input` with an image URL.
 
 ### Image-to-Video
 
-Pass a reference image with `--input` for image-to-video generation. The image serves as the first frame / visual reference.
+Pass an input image with `--input` for image-to-video generation. The image serves as the reference frame. Seedance models (`seedance-2.0-fast-vip`, `seedance-2.0-vip`) require at least one image.
 
 ```bash
 asset-gateway generate video --prompt "walk cycle animation, smooth movement" --input https://upload.xiaomao.chat/uploads/character.png --output-dir ./assets
 ```
 
-> Veo's image-to-video produces highly consistent frames — the same character appears in every frame. This is the recommended approach for sprite animation (see reference/sprite-workflow.md).
+> Seedance produces consistent character frames from the input image. Default model: `seedance-2.0-fast-vip` (faster), or use `--provider jimeng` with `--model seedance-2.0-vip` for higher quality.
 
 ## Audio
 
