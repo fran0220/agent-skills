@@ -270,6 +270,13 @@ func (s *VideoService) generateWithToken(ctx context.Context, params generateExe
 		upscaleTiming = s.resolveUpscaleTiming()
 	}
 
+	// Upload image references to xAI and convert URLs to fileIDs
+	fileAttachments, uploadedRefs, err := s.uploadImageReferences(params.ImageReferences, params.Token)
+	if err != nil {
+		return nil, err
+	}
+	params.ImageReferences = uploadedRefs
+
 	roundPlan := BuildRoundPlan(params.VideoLength, isSuperPool)
 	seedPostID, err := s.CreatePost(ctx, params.Token, params.Prompt, mediaTypeVideo, "")
 	if err != nil {
@@ -288,7 +295,8 @@ func (s *VideoService) generateWithToken(ctx context.Context, params generateExe
 		if err != nil {
 			return nil, err
 		}
-		roundResult, err := s.runRound(ctx, params.Token, message, configOverride, func(progress any) {
+		roundFileAttachments := firstRoundReferences(plan.RoundIndex, fileAttachments)
+		roundResult, err := s.runRound(ctx, params.Token, message, configOverride, roundFileAttachments, func(progress any) {
 			if params.Stream {
 				builder.Append(builder.EmitProgress(plan.RoundIndex, plan.TotalRounds, progress)...)
 			}
@@ -467,6 +475,40 @@ func buildExtensionConfig(parentPostID, extendPostID, originalPostID, originalPr
 	}
 }
 
+// uploadImageReferences uploads external image URLs to xAI via UploadService,
+// returning both the fileAttachments (fileIDs for appChat) and the same fileIDs
+// to replace imageReferences in videoGenModelConfig.
+func (s *VideoService) uploadImageReferences(imageRefs []string, tokenValue string) ([]string, []string, error) {
+	if len(imageRefs) == 0 {
+		return nil, nil, nil
+	}
+	uploadService := NewUploadService(s.cfg)
+	defer uploadService.Close()
+	fileAttachments := make([]string, 0, len(imageRefs))
+	for _, ref := range imageRefs {
+		fileID, _, err := uploadService.UploadFile(ref, tokenValue)
+		if err != nil {
+			slog.Warn("video image upload failed", "url", ref, "error", err)
+			return nil, nil, &VideoError{
+				StatusCode: http.StatusBadGateway,
+				Message:    fmt.Sprintf("failed to upload image reference: %v", err),
+				Code:       "upload_failed",
+			}
+		}
+		if fileID != "" {
+			fileAttachments = append(fileAttachments, fileID)
+		}
+	}
+	if len(fileAttachments) == 0 && len(imageRefs) > 0 {
+		return nil, nil, &VideoError{
+			StatusCode: http.StatusBadGateway,
+			Message:    "all image reference uploads failed",
+			Code:       "upload_failed",
+		}
+	}
+	return fileAttachments, fileAttachments, nil
+}
+
 func buildRoundConfig(plan VideoRoundPlan, seedPostID, lastPostID, originalPostID, prompt, aspectRatio, resolutionName string, imageReferences []string) (map[string]any, error) {
 	if !plan.IsExtension {
 		config := buildBaseConfig(seedPostID, aspectRatio, resolutionName, plan.VideoLength)
@@ -487,12 +529,12 @@ func buildRoundConfig(plan VideoRoundPlan, seedPostID, lastPostID, originalPostI
 	return buildExtensionConfig(lastPostID, lastPostID, originalPostID, prompt, aspectRatio, resolutionName, plan.VideoLength, startTime), nil
 }
 
-func (s *VideoService) runRound(ctx context.Context, tokenValue, message string, modelConfigOverride map[string]any, onProgress func(any)) (VideoRoundResult, error) {
+func (s *VideoService) runRound(ctx context.Context, tokenValue, message string, modelConfigOverride map[string]any, fileAttachments []string, onProgress func(any)) (VideoRoundResult, error) {
 	s.acquire()
 	defer s.release()
 	session := reverse.NewResettableSession(reverse.SessionOptions{})
 	defer session.Close()
-	body, err := s.appChat.Request(ctx, session, tokenValue, message, appChatModel, "", nil, map[string]any{"videoGen": true}, modelConfigOverride, nil)
+	body, err := s.appChat.Request(ctx, session, tokenValue, message, appChatModel, "", fileAttachments, map[string]any{"videoGen": true}, modelConfigOverride, nil)
 	if err != nil {
 		return VideoRoundResult{}, err
 	}
