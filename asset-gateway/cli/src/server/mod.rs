@@ -43,6 +43,14 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         gemini.id = "gemini_image".into();
         providers.push(Arc::new(gemini));
 
+        // GPT Image (transparent-capable)
+        let mut gpt = crate::providers::gpt_image::GptImageProvider::new(
+            config.proxy_url.clone(),
+            config.proxy_key.clone(),
+        );
+        gpt.id = "gpt_image".into();
+        providers.push(Arc::new(gpt));
+
         // Grok Image/Video
         let mut grok = crate::providers::grok_image::GrokImageProvider::new(
             config.proxy_url.clone(),

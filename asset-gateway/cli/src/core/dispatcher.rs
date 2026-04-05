@@ -169,8 +169,14 @@ impl Dispatcher {
         healthy
     }
 
-    fn provider_score(provider: &dyn AssetProvider, _req: &GenerateRequest) -> i32 {
-        provider.capabilities().priority
+    fn provider_score(provider: &dyn AssetProvider, req: &GenerateRequest) -> i32 {
+        let base = provider.capabilities().priority;
+        // Boost transparent-capable providers when transparency is requested
+        if req.transparent() && provider.capabilities().supports_transparency {
+            base + 200
+        } else {
+            base
+        }
     }
 }
 
@@ -407,5 +413,68 @@ mod tests {
 
         let result = dispatcher.dispatch(&req, None).await.unwrap();
         assert_eq!(result.provider_id, "fallback");
+    }
+
+    #[tokio::test]
+    async fn transparent_request_prefers_transparent_provider() {
+        let registry = Arc::new(ProviderRegistry::new());
+
+        registry
+            .register(Arc::new(MockProvider {
+                id: "gemini_image",
+                asset_types: &[AssetType::Image],
+                caps: ProviderCapabilities {
+                    supports_transparency: false,
+                    priority: 100,
+                    ..Default::default()
+                },
+                healthy: true,
+                fail_generate: false,
+            }))
+            .await;
+
+        registry
+            .register(Arc::new(MockProvider {
+                id: "gpt_image",
+                asset_types: &[AssetType::Image],
+                caps: ProviderCapabilities {
+                    supports_transparency: true,
+                    priority: 50,
+                    ..Default::default()
+                },
+                healthy: true,
+                fail_generate: false,
+            }))
+            .await;
+
+        let dispatcher = Dispatcher::new(registry);
+
+        // Non-transparent: gemini wins (priority 100 > 50)
+        let req = GenerateRequest {
+            asset_type: AssetType::Image,
+            prompt: Some("icon".to_string()),
+            model: None,
+            input_file: None,
+            reference_images: vec![],
+            edit_mode: None,
+            session_id: None,
+            params: json!({}),
+        };
+        let result = dispatcher.dispatch(&req, None).await.unwrap();
+        assert_eq!(result.provider_id, "gemini_image");
+
+        // Transparent: gpt_image wins (50 + 200 = 250 > 100)
+        let req_transparent = GenerateRequest {
+            asset_type: AssetType::Image,
+            prompt: Some("icon".to_string()),
+            model: None,
+            input_file: None,
+            reference_images: vec![],
+            edit_mode: None,
+            session_id: None,
+            params: json!({"transparent": true}),
+        };
+        let result = dispatcher.dispatch(&req_transparent, None).await.unwrap();
+        assert_eq!(result.provider_id, "gpt_image");
     }
 }
