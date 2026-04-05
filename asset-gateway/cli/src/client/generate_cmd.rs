@@ -279,16 +279,21 @@ pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<
         GenerateCommands::Video {
             prompt,
             provider,
+            input,
             output_dir,
-        } => (
-            "video",
-            serde_json::json!({
-                "asset_type": "video",
-                "prompt": prompt,
-                "provider": provider,
-            }),
-            output_dir,
-        ),
+        } => {
+            let input = maybe_encode_local_input(input).await?;
+            (
+                "video",
+                serde_json::json!({
+                    "asset_type": "video",
+                    "prompt": prompt,
+                    "provider": provider,
+                    "input_file": input,
+                }),
+                output_dir,
+            )
+        }
         GenerateCommands::Audio {
             prompt,
             r#type,

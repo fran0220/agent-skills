@@ -107,15 +107,20 @@ impl AssetProvider for GrokImageProvider {
                     .map(|s| s.clamp(6, 30))
                     .unwrap_or(6);
 
+                let mut video_body = json!({
+                    "model": VIDEO_MODEL,
+                    "prompt": prompt,
+                    "size": size,
+                    "seconds": seconds,
+                    "quality": "standard",
+                });
+                if let Some(ref image_url) = req.input_file {
+                    video_body["image"] = json!(image_url);
+                }
+
                 (
                     format!("{}/v1/video/generations", self.base_url),
-                    json!({
-                        "model": VIDEO_MODEL,
-                        "prompt": prompt,
-                        "size": size,
-                        "seconds": seconds,
-                        "quality": "standard",
-                    }),
+                    video_body,
                     Duration::from_secs(180),
                     VIDEO_MODEL,
                     0.10,

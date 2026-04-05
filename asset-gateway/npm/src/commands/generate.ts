@@ -132,9 +132,10 @@ export function createGenerateCommand(): Command {
 
   command.addCommand(
     new Command("video")
-      .description("Generate a video from a text prompt")
+      .description("Generate a video from a text prompt (or image-to-video with --input)")
       .requiredOption("--prompt <text>", "Video description prompt")
       .option("--provider <id>", "Provider to use")
+      .option("--input <url>", "Reference image URL for image-to-video (Grok)")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
@@ -144,6 +145,7 @@ export function createGenerateCommand(): Command {
             prompt: options.prompt,
           };
           if (options.provider) body.provider = options.provider;
+          if (options.input) body.input_file = options.input;
 
           const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
           const localPath = await saveOutput(data, "video", options.outputDir);

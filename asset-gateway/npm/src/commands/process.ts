@@ -25,7 +25,7 @@ function saveProcessOutput(data: Record<string, unknown>, outputDir: string): st
 }
 
 export function createProcessCommand(): Command {
-  const command = new Command("process").description("Post-process images (crop, resize, compose)");
+  const command = new Command("process").description("Post-process images and video (crop, resize, compose, extract-frames, remove-bg)");
 
   command.addCommand(
     new Command("crop")
@@ -105,6 +105,56 @@ export function createProcessCommand(): Command {
           printSuccess("process.compose", data, ctx);
         } catch (error) {
           printError("process.compose", error);
+        }
+      })
+  );
+
+  command.addCommand(
+    new Command("extract-frames")
+      .description("Extract evenly-spaced frames from a video using ffmpeg")
+      .requiredOption("--input <path>", "Input video (file path or URL)")
+      .option("--count <n>", "Number of frames to extract", "8")
+      .option("--output-dir <dir>", "Directory to save output", ".")
+      .action(async function (options) {
+        try {
+          const ctx = createContext(this);
+          const data = await ctx.client.post("/api/process", {
+            input: readInputAsBase64(options.input),
+            operations: [{ op: "extract_frames", count: Number(options.count) }],
+          }) as Record<string, unknown>;
+
+          const localPath = saveProcessOutput(data, options.outputDir);
+          if (localPath) data.local_path = localPath;
+          printSuccess("process.extract_frames", data, ctx);
+        } catch (error) {
+          printError("process.extract_frames", error);
+        }
+      })
+  );
+
+  command.addCommand(
+    new Command("remove-bg")
+      .description("Remove background from image(s) using rembg or ImageMagick fallback")
+      .requiredOption("--input <paths...>", "Input images (files or URLs)")
+      .option("--bg-color <color>", "Background color hint for fallback (e.g. white, black)")
+      .option("--output-dir <dir>", "Directory to save output", ".")
+      .action(async function (options) {
+        try {
+          const ctx = createContext(this);
+          const inputs = Array.isArray(options.input) ? options.input : [options.input];
+          const op: Record<string, unknown> = { op: "remove_bg" };
+          if (options.bgColor) op.bg_color = options.bgColor;
+
+          const data = await ctx.client.post("/api/process", {
+            inputs: inputs.map(readInputAsBase64),
+            operations: [op],
+          }) as Record<string, unknown>;
+
+          const localPath = saveProcessOutput(data, options.outputDir);
+          if (localPath) data.local_path = localPath;
+          printSuccess("process.remove_bg", data, ctx);
+        } catch (error) {
+          printError("process.remove_bg", error);
         }
       })
   );

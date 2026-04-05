@@ -29,10 +29,26 @@ pub enum ProcessOp {
         #[serde(default)]
         frame_height: Option<u32>,
     },
+    ExtractFrames {
+        #[serde(default = "default_frame_count")]
+        count: u32,
+    },
+    RemoveBg {
+        #[serde(default = "default_bg_color")]
+        bg_color: Option<String>,
+    },
 }
 
 fn default_crop_mode() -> CropMode {
     CropMode::Tightest
+}
+
+fn default_frame_count() -> u32 {
+    8
+}
+
+fn default_bg_color() -> Option<String> {
+    None
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -149,6 +165,11 @@ impl Pipeline {
                         .map(|value| value.to_string())
                         .unwrap_or_else(|| "auto".to_string()),
                 ),
+                ProcessOp::ExtractFrames { count } => format!("extract_frames:{}", count),
+                ProcessOp::RemoveBg { bg_color } => format!(
+                    "remove_bg:{}",
+                    bg_color.as_deref().unwrap_or("auto")
+                ),
             };
 
             current = match op {
@@ -180,6 +201,26 @@ impl Pipeline {
                     )
                     .await?,
                 ),
+                ProcessOp::ExtractFrames { count } => {
+                    let input = current.into_single("extract_frames")?;
+                    PipelineState::Multi(
+                        Self::extract_frames(&input, *count, tmp_dir.path()).await?,
+                    )
+                }
+                ProcessOp::RemoveBg { bg_color } => {
+                    let paths = current.into_multi();
+                    let mut results = Vec::with_capacity(paths.len());
+                    for path in &paths {
+                        results.push(
+                            Self::remove_bg(path, bg_color.as_deref(), tmp_dir.path()).await?,
+                        );
+                    }
+                    if results.len() == 1 {
+                        PipelineState::Single(results.remove(0))
+                    } else {
+                        PipelineState::Multi(results)
+                    }
+                }
             };
             applied.push(op_name);
         }
@@ -396,6 +437,142 @@ impl Pipeline {
                 Self::run_command(&mut command, "ImageMagick grid compose failed").await?;
             }
         }
+
+        Ok(output)
+    }
+
+    async fn extract_frames(
+        input: &Path,
+        count: u32,
+        tmp_dir: &Path,
+    ) -> anyhow::Result<Vec<PathBuf>> {
+        // Get total frame count using ffprobe
+        let probe = Command::new("ffprobe")
+            .args([
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-count_packets",
+                "-show_entries", "stream=nb_read_packets",
+                "-of", "csv=p=0",
+            ])
+            .arg(input)
+            .output()
+            .await?;
+        if !probe.status.success() {
+            anyhow::bail!(
+                "ffprobe failed: {}",
+                String::from_utf8_lossy(&probe.stderr)
+            );
+        }
+        let total_frames: u32 = String::from_utf8(probe.stdout)?
+            .trim()
+            .parse()
+            .unwrap_or(0);
+        if total_frames == 0 {
+            anyhow::bail!("ffprobe returned 0 frames for input video");
+        }
+
+        // Calculate select interval: pick `count` evenly spaced frames
+        let interval = if total_frames <= count {
+            1
+        } else {
+            total_frames / count
+        };
+
+        let pattern = tmp_dir.join("frame_%04d.png");
+        let mut command = Command::new("ffmpeg");
+        command
+            .args(["-i"])
+            .arg(input)
+            .args([
+                "-vf",
+                &format!("select='not(mod(n\\,{}))'", interval),
+                "-vsync", "0",
+                "-frames:v", &count.to_string(),
+            ])
+            .arg(&pattern);
+        Self::run_command(&mut command, "ffmpeg extract_frames failed").await?;
+
+        // Collect output frames in order
+        let mut frames = Vec::new();
+        for i in 1..=count {
+            let path = tmp_dir.join(format!("frame_{:04}.png", i));
+            if path.exists() {
+                frames.push(path);
+            }
+        }
+        if frames.is_empty() {
+            anyhow::bail!("ffmpeg produced no output frames");
+        }
+        Ok(frames)
+    }
+
+    async fn remove_bg(
+        input: &Path,
+        _bg_color: Option<&str>,
+        tmp_dir: &Path,
+    ) -> anyhow::Result<PathBuf> {
+        let output = tmp_dir.join(format!("nobg_{}.png", uuid::Uuid::new_v4()));
+
+        let file_bytes = tokio::fs::read(input).await?;
+        let ext = input
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("png")
+            .to_ascii_lowercase();
+        let mime = match ext.as_str() {
+            "jpg" | "jpeg" => "image/jpeg",
+            "webp" => "image/webp",
+            _ => "image/png",
+        };
+
+        let b64 = STANDARD.encode(&file_bytes);
+        let data_uri = format!("data:{};base64,{}", mime, b64);
+        drop(file_bytes);
+
+        let bgsweep_url = std::env::var("BGSWEEP_URL")
+            .unwrap_or_else(|_| "https://bgsweep.com/api/remove-background".to_string());
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(&bgsweep_url)
+            .header("Content-Type", "application/json")
+            .body(format!(r#"{{"imageData":"{}"}}"#, data_uri))
+            .timeout(std::time::Duration::from_secs(120))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("bgsweep error: HTTP {} - {}", status, body);
+        }
+
+        let result: serde_json::Value = resp.json().await?;
+        if !result
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            let err = result
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            anyhow::bail!("bgsweep failed: {}", err);
+        }
+
+        let output_url = result
+            .get("outputUrl")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("bgsweep: missing outputUrl"))?;
+
+        let img_resp = client
+            .get(output_url)
+            .timeout(std::time::Duration::from_secs(60))
+            .send()
+            .await?;
+        let png_bytes = img_resp.bytes().await?;
+        tokio::fs::write(&output, &png_bytes).await?;
 
         Ok(output)
     }

@@ -72,6 +72,40 @@ pub async fn handle(cmd: ProcessCommands, gateway_url: &str) -> anyhow::Result<(
                 output_dir.clone(),
             )
         }
+        ProcessCommands::ExtractFrames {
+            input,
+            count,
+            output_dir,
+        } => (
+            json!({
+                "input": encode_input(input).await?,
+                "operations": [{"op": "extract_frames", "count": count}],
+            }),
+            output_dir.clone(),
+        ),
+        ProcessCommands::RemoveBg {
+            inputs,
+            bg_color,
+            output_dir,
+        } => {
+            let mut encoded_inputs = Vec::with_capacity(inputs.len());
+            for input in inputs {
+                encoded_inputs.push(encode_input(input).await?);
+            }
+
+            let mut op = json!({"op": "remove_bg"});
+            if let Some(color) = bg_color {
+                op["bg_color"] = json!(color);
+            }
+
+            (
+                json!({
+                    "inputs": encoded_inputs,
+                    "operations": [op],
+                }),
+                output_dir.clone(),
+            )
+        }
     };
 
     let (client, gateway_url) = authenticated_client(gateway_url)?;

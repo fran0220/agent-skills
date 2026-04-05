@@ -74,6 +74,9 @@ pub enum GenerateCommands {
         prompt: String,
         #[arg(long)]
         provider: Option<String>,
+        /// Input image URL for image-to-video (Grok)
+        #[arg(long, alias = "image")]
+        input: Option<String>,
         /// Output directory for generated files
         #[arg(long, default_value = ".")]
         output_dir: String,
@@ -341,6 +344,30 @@ pub enum ProcessCommands {
         /// Normalize frame height
         #[arg(long)]
         frame_height: Option<u32>,
+        /// Output directory
+        #[arg(long, default_value = ".")]
+        output_dir: String,
+    },
+    /// Extract evenly-spaced frames from a video using ffmpeg
+    ExtractFrames {
+        /// Input video (URL, file path, or base64)
+        #[arg(long)]
+        input: String,
+        /// Number of frames to extract
+        #[arg(long, default_value = "8")]
+        count: u32,
+        /// Output directory
+        #[arg(long, default_value = ".")]
+        output_dir: String,
+    },
+    /// Remove background from image(s) using rembg or ImageMagick fallback
+    RemoveBg {
+        /// Input image(s) (URLs, file paths, or base64). Multiple values.
+        #[arg(long = "input", value_name = "PATH_OR_URL", num_args = 1..)]
+        inputs: Vec<String>,
+        /// Background color hint for ImageMagick fallback (e.g. "white", "black")
+        #[arg(long)]
+        bg_color: Option<String>,
         /// Output directory
         #[arg(long, default_value = ".")]
         output_dir: String,
@@ -647,6 +674,7 @@ fn describe_schemas() -> Value {
                 "properties": {
                     "prompt": { "type": "string", "description": "Prompt for video generation" },
                     "provider": { "type": "string", "description": "Optional provider override" },
+                    "input": { "type": "string", "description": "Reference image URL for image-to-video generation (Grok)" },
                     "output_dir": { "type": "string", "default": ".", "description": "Directory to save generated files" }
                 }
             },
@@ -887,7 +915,7 @@ fn describe_schemas() -> Value {
                         "items": {
                             "type": "object",
                             "properties": {
-                                "op": { "type": "string", "enum": ["smart_crop", "resize", "compose"] },
+                                "op": { "type": "string", "enum": ["smart_crop", "resize", "compose", "extract_frames", "remove_bg"] },
                                 "mode": { "type": "string", "enum": ["tightest", "power_of2"] },
                                 "direction": { "type": "string", "enum": ["horizontal", "vertical", "grid"] },
                                 "columns": { "type": "integer" },
@@ -895,7 +923,9 @@ fn describe_schemas() -> Value {
                                 "frame_width": { "type": "integer" },
                                 "frame_height": { "type": "integer" },
                                 "width": { "type": "integer" },
-                                "height": { "type": "integer" }
+                                "height": { "type": "integer" },
+                                "count": { "type": "integer", "description": "Frame count for extract_frames" },
+                                "bg_color": { "type": "string", "description": "Background color hint for remove_bg fallback" }
                             }
                         }
                     }
@@ -940,6 +970,53 @@ fn describe_schemas() -> Value {
                     "frame_width": { "type": "integer", "description": "Normalize each frame width before composing" },
                     "frame_height": { "type": "integer", "description": "Normalize each frame height before composing" },
                     "output_dir": { "type": "string", "default": ".", "description": "Directory to save generated files" }
+                }
+            },
+            "output": { "$ref": "#/process/output" }
+        },
+        "process.extract_frames": {
+            "input": {
+                "type": "object",
+                "required": ["input"],
+                "properties": {
+                    "input": { "type": "string", "description": "Input video URL, local path, or base64 data URI" },
+                    "count": { "type": "integer", "default": 8, "description": "Number of evenly-spaced frames to extract" },
+                    "output_dir": { "type": "string", "default": ".", "description": "Directory to save extracted frames" }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "ok": { "type": "boolean" },
+                    "command": { "const": "process" },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "frames": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Local paths to extracted frame PNGs"
+                            },
+                            "count": { "type": "integer" },
+                            "elapsed_ms": { "type": "integer" }
+                        }
+                    }
+                }
+            }
+        },
+        "process.remove_bg": {
+            "input": {
+                "type": "object",
+                "required": ["inputs"],
+                "properties": {
+                    "inputs": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": { "type": "string" },
+                        "description": "Input image URLs, local paths, or base64 data URIs"
+                    },
+                    "bg_color": { "type": "string", "description": "Background color hint for ImageMagick fallback (e.g. white, black)" },
+                    "output_dir": { "type": "string", "default": ".", "description": "Directory to save output images" }
                 }
             },
             "output": { "$ref": "#/process/output" }
