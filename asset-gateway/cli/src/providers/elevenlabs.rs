@@ -101,30 +101,42 @@ impl ElevenLabsProvider {
         req: &GenerateRequest,
         prompt: &str,
     ) -> anyhow::Result<(Vec<u8>, Option<String>, &'static str)> {
+        // ElevenLabs music API (2025+): POST /v1/music — not the legacy /v1/music-generation path (404).
+        // See: https://elevenlabs.io/docs/api-reference/music/compose
         let mut body = json!({
             "prompt": prompt,
+            "model_id": "music_v1",
         });
 
         if let Some(duration) = req.params.get("duration_seconds").and_then(Value::as_f64) {
-            body["duration_seconds"] = json!(duration);
+            let ms = (duration * 1000.0).round() as i64;
+            let clamped = ms.clamp(3_000, 600_000);
+            body["music_length_ms"] = json!(clamped);
         }
 
-        let model = req
-            .model
-            .as_deref()
-            .or_else(|| req.params.get("model_id").and_then(Value::as_str));
-        if let Some(model) = model {
-            body["model_id"] = json!(model);
+        if let Some(force) = req.params.get("force_instrumental").and_then(Value::as_bool) {
+            body["force_instrumental"] = json!(force);
         }
 
-        let endpoint = format!("{}/v1/music-generation", self.base_url);
+        // Query param must be a known codec string (see ElevenLabs AllowedOutputFormats).
+        let output_format = req
+            .params
+            .get("output_format")
+            .and_then(Value::as_str)
+            .filter(|s| s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+            .unwrap_or("mp3_44100_128");
+        let endpoint = format!(
+            "{}/v1/music?output_format={}",
+            self.base_url, output_format
+        );
+
         let request = self
             .http
             .post(endpoint)
             .header("xi-api-key", &self.api_key)
             .json(&body);
 
-        let (bytes, content_type) = self.send_audio_request(request, "music-generation").await?;
+        let (bytes, content_type) = self.send_audio_request(request, "music").await?;
         Ok((bytes, content_type, "music_generation"))
     }
 
@@ -176,7 +188,8 @@ impl AssetProvider for ElevenLabsProvider {
     }
 
     fn asset_types(&self) -> &[AssetType] {
-        &[AssetType::Audio, AssetType::Music]
+        // Tts: when `params.voice_id` is set, `generate()` routes to ElevenLabs text-to-speech.
+        &[AssetType::Audio, AssetType::Music, AssetType::Tts]
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
@@ -191,6 +204,14 @@ impl AssetProvider for ElevenLabsProvider {
         let prompt = req.prompt.as_deref().unwrap_or("").trim();
         if prompt.is_empty() {
             anyhow::bail!("ElevenLabs requires a non-empty prompt");
+        }
+
+        // Registered for Tts so `--provider elevenlabs` works; auto-routing should prefer Qwen
+        // when `voice_id` is absent — fail fast so the dispatcher can fall back to `qwen_tts`.
+        if req.asset_type == AssetType::Tts && req.params.get("voice_id").is_none() {
+            anyhow::bail!(
+                "ElevenLabs TTS requires params.voice_id (omit --provider to use qwen_tts)"
+            );
         }
 
         let start = Instant::now();

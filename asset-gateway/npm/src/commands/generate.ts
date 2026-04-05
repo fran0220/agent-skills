@@ -256,9 +256,14 @@ export function createGenerateCommand(): Command {
 
   command.addCommand(
     new Command("music")
-      .description("Generate music from a text prompt")
+      .description("Generate music (ElevenLabs /v1/music)")
       .requiredOption("--prompt <text>", "Music description prompt")
-      .option("--duration <seconds>", "Duration in seconds")
+      .option("--duration <seconds>", "Duration in seconds (maps to music_length_ms)")
+      .option("--force-instrumental", "Force instrumental output (ElevenLabs)")
+      .option(
+        "--output-format <fmt>",
+        "ElevenLabs output_format query, e.g. mp3_44100_128"
+      )
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
@@ -267,9 +272,11 @@ export function createGenerateCommand(): Command {
             asset_type: "music",
             prompt: options.prompt,
           };
-          if (options.duration) {
-            body.params = { duration_seconds: Number(options.duration) };
-          }
+          const params: Record<string, unknown> = {};
+          if (options.duration) params.duration_seconds = Number(options.duration);
+          if (options.forceInstrumental) params.force_instrumental = true;
+          if (options.outputFormat) params.output_format = options.outputFormat;
+          if (Object.keys(params).length > 0) body.params = params;
 
           const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
           const localPath = await saveOutput(data, "music", options.outputDir);
@@ -283,13 +290,19 @@ export function createGenerateCommand(): Command {
 
   command.addCommand(
     new Command("tts")
-      .description("Text-to-speech synthesis via Qwen3-TTS")
+      .description(
+        "Text-to-speech: default Qwen3-TTS; use --provider elevenlabs --voice-id for ElevenLabs"
+      )
       .requiredOption("--prompt <text>", "Text to synthesize")
-      .option("--voice <name>", "Voice name or custom voice ID", "Cherry")
+      .option("--voice <name>", "Qwen voice name or custom voice id", "Cherry")
+      .option(
+        "--voice-id <id>",
+        "ElevenLabs voice_id (use with --provider elevenlabs; routes to TTS API)"
+      )
       .option("--language <lang>", "Language hint: Auto, Chinese, English, Japanese, etc.", "Auto")
-      .option("--model <model>", "Qwen3-TTS model", "qwen3-tts-flash")
+      .option("--model <model>", "Model id (Qwen TTS or ElevenLabs model_id)", "qwen3-tts-flash")
       .option("--instructions <text>", "Natural language speaking instructions (for instruct models)")
-      .option("--provider <id>", "Provider to use")
+      .option("--provider <id>", "qwen_tts | elevenlabs")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
@@ -299,6 +312,7 @@ export function createGenerateCommand(): Command {
             language_type: options.language,
           };
           if (options.instructions) params.instructions = options.instructions;
+          if (options.voiceId) params.voice_id = options.voiceId;
 
           const body: Record<string, unknown> = {
             asset_type: "tts",

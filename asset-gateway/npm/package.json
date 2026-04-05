@@ -20,6 +20,7 @@
     "build": "tsup src/index.ts --format esm --dts --clean",
     "dev": "tsup src/index.ts --format esm --watch",
     "lint": "tsc --noEmit",
+    "test:process3d": "bash ../scripts/e2e-process3d-chain.sh",
     "prepublishOnly": "npm run build"
   },
   "engines": {
