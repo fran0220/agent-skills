@@ -338,7 +338,7 @@ func (s *VideoService) generateWithToken(ctx context.Context, params generateExe
 
 	// Cache video locally BEFORE creating public link (internal URLs are downloadable,
 	// public x.ai CDN URLs are blocked by Cloudflare).
-	if localURL := s.cacheVideoLocally(ctx, params.Token, finalVideoURL); localURL != "" {
+	if localURL := s.cacheVideoLocally(params.Token, finalVideoURL); localURL != "" {
 		finalVideoURL = localURL
 	} else if s.publicAssetEnabled() {
 		if params.Stream {
@@ -679,7 +679,7 @@ func (s *VideoService) publicAssetEnabled() bool {
 	return s.cfg != nil && s.cfg.GetBool("video.enable_public_asset", false)
 }
 
-func (s *VideoService) cacheVideoLocally(ctx context.Context, tokenValue, videoURL string) string {
+func (s *VideoService) cacheVideoLocally(tokenValue, videoURL string) string {
 	if strings.TrimSpace(videoURL) == "" {
 		return ""
 	}
