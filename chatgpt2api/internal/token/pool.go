@@ -58,7 +58,8 @@ func (p *TokenPool) Get(tokenStr string) *TokenInfo {
 	return p.tokens[tokenKey]
 }
 
-// Select picks a random available token, excluding specified ones.
+// Select picks an available token using least-used strategy.
+// Among tokens with the lowest use count, one is chosen at random.
 func (p *TokenPool) Select(exclude map[string]bool) *TokenInfo {
 	if p == nil {
 		return nil
@@ -80,7 +81,23 @@ func (p *TokenPool) Select(exclude map[string]bool) *TokenInfo {
 		return nil
 	}
 
-	return available[rand.IntN(len(available))]
+	// Find minimum use count
+	minUse := available[0].UseCount
+	for _, t := range available[1:] {
+		if t.UseCount < minUse {
+			minUse = t.UseCount
+		}
+	}
+
+	// Collect all tokens with minimum use count
+	candidates := make([]*TokenInfo, 0, len(available))
+	for _, t := range available {
+		if t.UseCount == minUse {
+			candidates = append(candidates, t)
+		}
+	}
+
+	return candidates[rand.IntN(len(candidates))]
 }
 
 func (p *TokenPool) Count() int {

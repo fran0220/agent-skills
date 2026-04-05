@@ -46,10 +46,12 @@ func handleImageGenerations() http.HandlerFunc {
 		results, err := client.GenerateImage(r.Context(), req.Prompt, req.N, req.Size, req.Quality)
 		if err != nil {
 			tokenMgr.RecordFail(tokenStr, err.Error())
+			tokenMgr.Save()
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		tokenMgr.RecordSuccess(tokenStr)
+		tokenMgr.Save()
 
 		data := make([]map[string]any, 0, len(results))
 		for _, img := range results {
@@ -126,10 +128,12 @@ func handleImageEdits() http.HandlerFunc {
 		})
 		if err != nil {
 			tokenMgr.RecordFail(tokenStr, err.Error())
+			tokenMgr.Save()
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		tokenMgr.RecordSuccess(tokenStr)
+		tokenMgr.Save()
 
 		data := make([]map[string]any, 0, len(results))
 		for _, img := range results {
