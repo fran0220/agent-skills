@@ -37,6 +37,7 @@ type videoGenerationRequest struct {
 	Size    string `json:"size"`
 	Seconds int    `json:"seconds"`
 	Quality string `json:"quality"`
+	Image   string `json:"image,omitempty"`
 }
 
 func handleVideoGenerations(videoService *service.VideoService, modelService *model.Service) http.HandlerFunc {
@@ -49,7 +50,6 @@ func handleVideoGenerations(videoService *service.VideoService, modelService *mo
 
 		var req videoGenerationRequest
 		decoder := json.NewDecoder(r.Body)
-		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&req); err != nil {
 			writeVideoError(w, &service.VideoError{StatusCode: http.StatusBadRequest, Message: "Invalid JSON in request body. Please check for trailing commas or syntax errors.", Param: "body", Code: "json_invalid"})
 			return
@@ -83,6 +83,7 @@ func handleVideoGenerations(videoService *service.VideoService, modelService *mo
 		result, err := videoService.Generate(r.Context(), service.GenerateParams{
 			Model:       modelID,
 			Prompt:      req.Prompt,
+			Image:       strings.TrimSpace(req.Image),
 			AspectRatio: aspectRatio,
 			VideoLength: seconds,
 			Resolution:  resolution,

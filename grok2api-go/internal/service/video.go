@@ -81,6 +81,7 @@ type CompletionParams struct {
 type GenerateParams struct {
 	Model       string
 	Prompt      string
+	Image       string
 	AspectRatio string
 	VideoLength int
 	Resolution  string
@@ -125,6 +126,14 @@ func NewVideoService(cfg *config.Config, models *model.Service) *VideoService {
 
 func (s *VideoService) Generate(ctx context.Context, params GenerateParams) (*VideoCompletionResult, error) {
 	content := []map[string]any{{"type": "text", "text": strings.TrimSpace(params.Prompt)}}
+	if strings.TrimSpace(params.Image) != "" {
+		content = append(content, map[string]any{
+			"type": "image_url",
+			"image_url": map[string]any{
+				"url": strings.TrimSpace(params.Image),
+			},
+		})
+	}
 	return s.Completions(ctx, CompletionParams{
 		Model:       strings.TrimSpace(params.Model),
 		Messages:    []map[string]any{{"role": "user", "content": content}},
@@ -332,6 +341,10 @@ func (s *VideoService) generateWithToken(ctx context.Context, params generateExe
 			builder.Append(builder.EmitNote("正在生成可公开访问链接\n")...)
 		}
 		finalVideoURL = s.createPublicVideoLink(ctx, params.Token, finalVideoURL)
+	}
+
+	if localURL := s.cacheVideoLocally(ctx, params.Token, finalVideoURL); localURL != "" {
+		finalVideoURL = localURL
 	}
 
 	rendered := s.renderVideo(finalVideoURL, finalResult.ThumbnailURL)
@@ -664,6 +677,29 @@ func (s *VideoService) createPublicVideoLink(ctx context.Context, tokenValue, vi
 
 func (s *VideoService) publicAssetEnabled() bool {
 	return s.cfg != nil && s.cfg.GetBool("video.enable_public_asset", false)
+}
+
+func (s *VideoService) cacheVideoLocally(ctx context.Context, tokenValue, videoURL string) string {
+	if strings.TrimSpace(videoURL) == "" {
+		return ""
+	}
+	appURL := ""
+	if s.cfg != nil {
+		appURL = strings.TrimSpace(s.cfg.GetString("app.app_url", ""))
+	}
+	if appURL == "" {
+		return ""
+	}
+	downloader := reverse.NewDownloadService()
+	defer downloader.Close()
+	cacheName, _, err := downloader.DownloadFile(videoURL, tokenValue, "video")
+	if err != nil {
+		slog.Warn("video local cache failed, returning original URL", "error", err, "url", videoURL)
+		return ""
+	}
+	localURL := fmt.Sprintf("%s/v1/files/video/%s", strings.TrimRight(appURL, "/"), cacheName)
+	slog.Info("video cached locally", "cache_name", cacheName, "local_url", localURL)
+	return localURL
 }
 
 func (s *VideoService) resolveUpscaleTiming() string {
