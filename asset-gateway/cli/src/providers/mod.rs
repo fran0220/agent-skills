@@ -5,3 +5,4 @@ pub mod grok_image;
 pub mod llm_proxy;
 pub mod qwen_tts;
 pub mod tripo3d;
+pub mod veo;

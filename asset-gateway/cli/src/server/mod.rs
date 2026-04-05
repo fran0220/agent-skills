@@ -50,6 +50,14 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         );
         gpt.id = "gpt_image".into();
         providers.push(Arc::new(gpt));
+
+        // Veo video (Google) — shares proxy URL and key with Gemini
+        let mut veo = crate::providers::veo::VeoProvider::new(
+            config.proxy_url.clone(),
+            config.proxy_key.clone(),
+        );
+        veo.id = "veo".into();
+        providers.push(Arc::new(veo));
     }
 
     // grok_image provider removed — reverse-engineered proxy too unstable for production use.

@@ -22,7 +22,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Category | Use Case | Command |
 |----------|----------|---------|
 | Image | Generate, edit, reference, inpaint, restyle, expand | `generate image` |
-| Video | ~~Removed~~ — no stable provider available | — |
+| Video | Text-to-video, image-to-video (Veo 3.1) | `generate video` |
 | Audio | SFX, BGM | `generate audio` |
 | Music | Music generation | `generate music` |
 | Speech | TTS, multilingual, instructed style | `generate tts` |
@@ -42,7 +42,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Use reference images | `generate image` | `--prompt`, `--ref <url> [<url>...]`, `--output-dir` |
 | Inpaint / restyle / expand | `generate image` | `--prompt`, `--input`, `--edit-mode`, `--output-dir` |
 | Continue editing (multi-turn) | `generate image` | `--prompt`, `--session <id>`, `--output-dir` |
-| ~~Generate video~~ | ~~`generate video`~~ | No stable provider — Grok proxy removed |
+| Generate video | `generate video` | `--prompt`, `--input <image_url>`, `--output-dir` |
 | Generate SFX / BGM | `generate audio` | `--prompt`, `--type`, `--duration`, `--output-dir` |
 | Generate music | `generate music` | `--prompt`, `--duration`, `--output-dir` |
 | Text-to-speech | `generate tts` | `--prompt`, `--voice`, `--language`, `--output-dir` |
