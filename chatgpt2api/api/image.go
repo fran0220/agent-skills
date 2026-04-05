@@ -55,7 +55,13 @@ func handleImageGenerations() http.HandlerFunc {
 
 		data := make([]map[string]any, 0, len(results))
 		for _, img := range results {
-			item := map[string]any{"revised_prompt": img.RevisedPrompt}
+			item := map[string]any{
+				"revised_prompt":    img.RevisedPrompt,
+				"file_id":          img.FileID,
+				"gen_id":           img.GenID,
+				"conversation_id":  img.ConversationID,
+				"parent_message_id": img.ParentMsgID,
+			}
 			if req.ResponseFormat == "b64_json" {
 				b64, err := client.DownloadAsBase64(r.Context(), img.URL)
 				if err != nil {
@@ -137,7 +143,13 @@ func handleImageEdits() http.HandlerFunc {
 
 		data := make([]map[string]any, 0, len(results))
 		for _, img := range results {
-			item := map[string]any{"revised_prompt": img.RevisedPrompt}
+			item := map[string]any{
+				"revised_prompt":    img.RevisedPrompt,
+				"file_id":          img.FileID,
+				"gen_id":           img.GenID,
+				"conversation_id":  img.ConversationID,
+				"parent_message_id": img.ParentMsgID,
+			}
 			if req.ResponseFormat == "b64_json" {
 				b64, err := client.DownloadAsBase64(r.Context(), img.URL)
 				if err != nil {
