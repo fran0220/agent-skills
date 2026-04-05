@@ -17,6 +17,8 @@ pub struct ConfigFile {
     pub dashscope: DashscopeSection,
     #[serde(default)]
     pub grok2api: Grok2apiSection,
+    #[serde(default)]
+    pub veo: VeoSection,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -49,6 +51,12 @@ pub struct Grok2apiSection {
     pub key: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct VeoSection {
+    pub url: Option<String>,
+    pub key: Option<String>,
+}
+
 /// Runtime config derived from TOML file + env var overrides.
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -74,6 +82,10 @@ pub struct AppConfig {
     // Grok2API (direct connection to grok2api-go reverse proxy)
     pub grok2api_url: String,
     pub grok2api_key: String,
+
+    // Veo video (Google) — separate API gateway
+    pub veo_url: String,
+    pub veo_key: String,
 }
 
 impl AppConfig {
@@ -173,6 +185,9 @@ impl AppConfig {
                 file_cfg.grok2api.key.as_deref(),
                 "",
             ),
+
+            veo_url: env_or("ASSET_GATEWAY_VEO_URL", file_cfg.veo.url.as_deref(), ""),
+            veo_key: env_or("ASSET_GATEWAY_VEO_KEY", file_cfg.veo.key.as_deref(), ""),
         })
     }
 
