@@ -19,3 +19,8 @@ key = ""
 [dashscope]
 url = "https://dashscope-intl.aliyuncs.com"
 key = ""
+
+# Jimeng video+image (ByteDance) — jimeng-api gateway
+[jimeng]
+url = "http://127.0.0.1:5100"
+token = ""

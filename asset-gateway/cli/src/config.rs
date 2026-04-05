@@ -18,7 +18,7 @@ pub struct ConfigFile {
     #[serde(default)]
     pub grok2api: Grok2apiSection,
     #[serde(default)]
-    pub veo: VeoSection,
+    pub jimeng: JimengSection,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -52,9 +52,9 @@ pub struct Grok2apiSection {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct VeoSection {
+pub struct JimengSection {
     pub url: Option<String>,
-    pub key: Option<String>,
+    pub token: Option<String>,
 }
 
 /// Runtime config derived from TOML file + env var overrides.
@@ -83,9 +83,9 @@ pub struct AppConfig {
     pub grok2api_url: String,
     pub grok2api_key: String,
 
-    // Veo video (Google) — separate API gateway
-    pub veo_url: String,
-    pub veo_key: String,
+    // Jimeng video+image (ByteDance) — jimeng-api gateway
+    pub jimeng_url: String,
+    pub jimeng_token: String,
 }
 
 impl AppConfig {
@@ -186,8 +186,8 @@ impl AppConfig {
                 "",
             ),
 
-            veo_url: env_or("ASSET_GATEWAY_VEO_URL", file_cfg.veo.url.as_deref(), ""),
-            veo_key: env_or("ASSET_GATEWAY_VEO_KEY", file_cfg.veo.key.as_deref(), ""),
+            jimeng_url: env_or("ASSET_GATEWAY_JIMENG_URL", file_cfg.jimeng.url.as_deref(), ""),
+            jimeng_token: env_or("ASSET_GATEWAY_JIMENG_TOKEN", file_cfg.jimeng.token.as_deref(), ""),
         })
     }
 

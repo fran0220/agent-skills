@@ -26,10 +26,6 @@ agent-skills/
 │   └── cli/               #   Rust CLI + HTMX Web 面板
 ├── bb-browser/            # BB Browser — 浏览器自动化
 │   └── skill/             #   Agent 技能
-├── jimeng-gateway/        # 即梦 Gateway — Seedance 视频生成网关
-│   ├── skill/             #   Agent 技能
-│   ├── cli/               #   Rust 后端（axum + 即梦 API）
-│   └── web/               #   React 前端
 ├── grok2api-go/           # Grok2API Go — Grok API 代理网关（手动 Docker 部署）
 ├── openclaw/              # OpenClaw — 网关最佳实践
 │   └── skill/             #   知识库
@@ -89,10 +85,11 @@ agent-skills/
 | ai-search | search.xiaomao.chat | BWG | 6900 | ✅ push main |
 | cognee-admin | cognee.xiaomao.chat | Oracle | 9847 | ✅ push main |
 | grok2api-go | grok.xiaomao.chat | BWG | 8000 | 手动 docker |
+| jimeng-api | — | jpdata | 5100 | 手动 docker (ghcr.io/iptag/jimeng-api) |
 
 ### 已下线服务
 
-- jimeng-gateway（原 jpdata）— 已停用
+- jimeng-gateway（原 jpdata）— 已移除，替换为 iptag/jimeng-api
 - grok-register（原 jpdata）— 已停用
 
 ### CI 部署流程
@@ -136,8 +133,6 @@ AGENTS.md                              # 本文件 — 仓库总览
 │   └── cli/AGENTS.md
 ├── cognee-admin/
 │   └── cli/AGENTS.md
-├── jimeng-gateway/
-│   └── AGENTS.md                      # 项目级指令（含后端+前端）
 ├── slide-deck/
 │   └── skill/AGENTS.md
 └── docs/

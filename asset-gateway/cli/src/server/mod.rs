@@ -52,11 +52,13 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         providers.push(Arc::new(gpt));
     }
 
-    if !config.veo_key.is_empty() && !config.veo_url.is_empty() {
-        let mut veo =
-            crate::providers::veo::VeoProvider::new(config.veo_url.clone(), config.veo_key.clone());
-        veo.id = "veo".into();
-        providers.push(Arc::new(veo));
+    if !config.jimeng_token.is_empty() && !config.jimeng_url.is_empty() {
+        let mut jimeng = crate::providers::jimeng::JimengProvider::new(
+            config.jimeng_url.clone(),
+            config.jimeng_token.clone(),
+        );
+        jimeng.id = "jimeng".into();
+        providers.push(Arc::new(jimeng));
     }
 
     // grok_image provider removed — reverse-engineered proxy too unstable for production use.
