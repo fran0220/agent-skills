@@ -32,16 +32,6 @@ type ImageResult struct {
 	RevisedPrompt  string `json:"revised_prompt"`
 }
 
-// EditRequest holds parameters for image editing.
-type EditRequest struct {
-	Prompt         string
-	ImageFileID    string
-	GenID          string
-	ConversationID string
-	ParentMsgID    string
-	MaskFileID     string // empty = transformation, non-empty = inpainting
-}
-
 type ChatGPTClient struct {
 	accessToken string
 	cookies     string
@@ -62,7 +52,7 @@ func NewChatGPTClient(accessToken, cookies string) *ChatGPTClient {
 }
 
 // GenerateImage creates a new image from a text prompt.
-func (c *ChatGPTClient) GenerateImage(ctx context.Context, prompt string, n int, size, quality string) ([]ImageResult, error) {
+func (c *ChatGPTClient) GenerateImage(ctx context.Context, prompt string, n int, size, quality, background string) ([]ImageResult, error) {
 	fullPrompt := prompt
 	if size != "" && size != "auto" && size != "1024x1024" {
 		fullPrompt = fmt.Sprintf("Generate an image with size %s. %s", size, prompt)
@@ -70,25 +60,11 @@ func (c *ChatGPTClient) GenerateImage(ctx context.Context, prompt string, n int,
 	if quality == "hd" || quality == "high" {
 		fullPrompt = fmt.Sprintf("Generate a high-quality, detailed image: %s", fullPrompt)
 	}
+	if background == "transparent" {
+		fullPrompt = fullPrompt + " The image must have a transparent background (PNG with alpha channel)."
+	}
 
 	body := c.buildConversationBody(fullPrompt, "", "", nil)
-	return c.doConversation(ctx, body)
-}
-
-// EditImage edits an existing image (transformation or inpainting).
-func (c *ChatGPTClient) EditImage(ctx context.Context, req EditRequest) ([]ImageResult, error) {
-	op := map[string]any{
-		"original_gen_id":  req.GenID,
-		"original_file_id": req.ImageFileID,
-	}
-	if req.MaskFileID != "" {
-		op["type"] = "inpainting"
-		op["mask_file_id"] = req.MaskFileID
-	} else {
-		op["type"] = "transformation"
-	}
-
-	body := c.buildConversationBody(req.Prompt, req.ConversationID, req.ParentMsgID, op)
 	return c.doConversation(ctx, body)
 }
 
@@ -115,6 +91,221 @@ func (c *ChatGPTClient) DownloadAsBase64(ctx context.Context, url string) (strin
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+// UploadedFile holds the result of a file upload to ChatGPT.
+type UploadedFile struct {
+	FileID      string
+	DownloadURL string
+	SizeBytes   int
+}
+
+// UploadFile uploads an image to ChatGPT's backend for use in conversations.
+// It performs a 3-step process: pre-upload → blob upload → confirm.
+func (c *ChatGPTClient) UploadFile(ctx context.Context, data []byte, filename, mimeType string) (*UploadedFile, error) {
+	if mimeType == "" {
+		mimeType = "image/png"
+	}
+
+	// Step 1: Pre-upload to get upload URL and file ID
+	preBody, _ := json.Marshal(map[string]any{
+		"file_name": filename,
+		"file_size": len(data),
+		"use_case":  "multimodal",
+		"mime_type": mimeType,
+	})
+	preReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/files", bytes.NewReader(preBody))
+	c.setHeaders(preReq)
+
+	preResp, err := c.httpClient.Do(preReq)
+	if err != nil {
+		return nil, fmt.Errorf("pre-upload request: %w", err)
+	}
+	defer preResp.Body.Close()
+
+	if preResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(preResp.Body, 1024))
+		return nil, fmt.Errorf("pre-upload returned %d: %s", preResp.StatusCode, string(body))
+	}
+
+	var preResult struct {
+		Status    string `json:"status"`
+		UploadURL string `json:"upload_url"`
+		FileID    string `json:"file_id"`
+	}
+	if err := json.NewDecoder(preResp.Body).Decode(&preResult); err != nil {
+		return nil, fmt.Errorf("decode pre-upload: %w", err)
+	}
+	if preResult.UploadURL == "" || preResult.FileID == "" {
+		return nil, fmt.Errorf("pre-upload returned empty upload_url or file_id")
+	}
+
+	log.Printf("[upload] pre-upload ok: file_id=%s", preResult.FileID)
+
+	// Step 2: Upload to Azure Blob Storage
+	// Use a plain HTTP client (no uTLS needed for Azure)
+	uploadReq, _ := http.NewRequestWithContext(ctx, "PUT", preResult.UploadURL, bytes.NewReader(data))
+	uploadReq.Header.Set("x-ms-blob-type", "BlockBlob")
+	uploadReq.Header.Set("Content-Type", mimeType)
+
+	plainClient := &http.Client{Timeout: 60 * time.Second}
+	uploadResp, err := plainClient.Do(uploadReq)
+	if err != nil {
+		return nil, fmt.Errorf("blob upload request: %w", err)
+	}
+	defer uploadResp.Body.Close()
+
+	if uploadResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(io.LimitReader(uploadResp.Body, 1024))
+		return nil, fmt.Errorf("blob upload returned %d: %s", uploadResp.StatusCode, string(body))
+	}
+
+	log.Printf("[upload] blob upload ok: %d bytes", len(data))
+
+	// Step 3: Confirm upload
+	confirmReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/files/"+preResult.FileID+"/uploaded", bytes.NewReader([]byte("{}")))
+	c.setHeaders(confirmReq)
+
+	confirmResp, err := c.httpClient.Do(confirmReq)
+	if err != nil {
+		return nil, fmt.Errorf("confirm upload request: %w", err)
+	}
+	defer confirmResp.Body.Close()
+
+	if confirmResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(confirmResp.Body, 1024))
+		return nil, fmt.Errorf("confirm upload returned %d: %s", confirmResp.StatusCode, string(body))
+	}
+
+	var confirmResult struct {
+		Status      string `json:"status"`
+		DownloadURL string `json:"download_url"`
+	}
+	if err := json.NewDecoder(confirmResp.Body).Decode(&confirmResult); err != nil {
+		return nil, fmt.Errorf("decode confirm: %w", err)
+	}
+
+	log.Printf("[upload] confirmed: file_id=%s", preResult.FileID)
+
+	return &UploadedFile{
+		FileID:      preResult.FileID,
+		DownloadURL: confirmResult.DownloadURL,
+		SizeBytes:   len(data),
+	}, nil
+}
+
+// EditImageByUpload uploads images to ChatGPT, then sends an edit conversation.
+// images is a list of image byte slices. mask is optional (nil = no mask).
+func (c *ChatGPTClient) EditImageByUpload(ctx context.Context, prompt string, images [][]byte, mask []byte) ([]ImageResult, error) {
+	if len(images) == 0 {
+		return nil, fmt.Errorf("at least one image is required")
+	}
+
+	// Upload all images
+	var uploads []*UploadedFile
+	for i, imgData := range images {
+		filename := fmt.Sprintf("image_%d.png", i)
+		uploaded, err := c.UploadFile(ctx, imgData, filename, "image/png")
+		if err != nil {
+			return nil, fmt.Errorf("upload image %d: %w", i, err)
+		}
+		uploads = append(uploads, uploaded)
+	}
+
+	// Upload mask if provided
+	var maskUpload *UploadedFile
+	if mask != nil {
+		var err error
+		maskUpload, err = c.UploadFile(ctx, mask, "mask.png", "image/png")
+		if err != nil {
+			return nil, fmt.Errorf("upload mask: %w", err)
+		}
+	}
+
+	body := c.buildMultimodalBody(prompt, uploads, maskUpload)
+	return c.doConversation(ctx, body)
+}
+
+func (c *ChatGPTClient) buildMultimodalBody(prompt string, uploads []*UploadedFile, maskUpload *UploadedFile) map[string]any {
+	msgID := uuid.NewString()
+
+	// Build parts: text prompt + image asset pointers
+	parts := []any{prompt}
+	attachments := []any{}
+
+	for _, up := range uploads {
+		parts = append(parts, map[string]any{
+			"content_type":  "image_asset_pointer",
+			"asset_pointer": "file-service://" + up.FileID,
+			"size_bytes":    up.SizeBytes,
+			"mime_type":     "image/png",
+		})
+		attachments = append(attachments, map[string]any{
+			"id":       up.FileID,
+			"name":     "image.png",
+			"size":     up.SizeBytes,
+			"mimeType": "image/png",
+		})
+	}
+
+	if maskUpload != nil {
+		parts = append(parts, map[string]any{
+			"content_type":  "image_asset_pointer",
+			"asset_pointer": "file-service://" + maskUpload.FileID,
+			"size_bytes":    maskUpload.SizeBytes,
+			"mime_type":     "image/png",
+		})
+		attachments = append(attachments, map[string]any{
+			"id":       maskUpload.FileID,
+			"name":     "mask.png",
+			"size":     maskUpload.SizeBytes,
+			"mimeType": "image/png",
+		})
+	}
+
+	metadata := map[string]any{
+		"attachments":  attachments,
+		"system_hints": []string{"picture_v2"},
+		"serialization_metadata": map[string]any{
+			"custom_symbol_offsets": []any{},
+		},
+	}
+
+	msg := map[string]any{
+		"id":     msgID,
+		"author": map[string]any{"role": "user"},
+		"content": map[string]any{
+			"content_type": "multimodal_text",
+			"parts":        parts,
+		},
+		"metadata": metadata,
+	}
+
+	return map[string]any{
+		"action":                   "next",
+		"messages":                 []any{msg},
+		"parent_message_id":        "client-created-root",
+		"model":                    defaultModel,
+		"timezone_offset_min":      420,
+		"timezone":                 "America/Los_Angeles",
+		"conversation_mode":        map[string]any{"kind": "primary_assistant"},
+		"enable_message_followups": true,
+		"system_hints":             []string{"picture_v2"},
+		"supports_buffering":       true,
+		"supported_encodings":      []string{},
+		"client_contextual_info": map[string]any{
+			"is_dark_mode":       true,
+			"time_since_loaded":  1000,
+			"page_height":       717,
+			"page_width":        1200,
+			"pixel_ratio":       2,
+			"screen_height":     878,
+			"screen_width":      1352,
+			"app_name":          "chatgpt.com",
+		},
+		"paragen_cot_summary_display_override": "allow",
+		"force_parallel_switch":                "auto",
+	}
 }
 
 func (c *ChatGPTClient) buildConversationBody(prompt, conversationID, parentMsgID string, dalleOp map[string]any) map[string]any {
