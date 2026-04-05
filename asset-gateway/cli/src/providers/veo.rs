@@ -188,7 +188,9 @@ impl AssetProvider for VeoProvider {
         let output_url = result["data"]["output"]
             .as_str()
             .map(String::from)
-            .ok_or_else(|| anyhow::anyhow!("Veo task {} completed but no output URL found", task_id))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("Veo task {} completed but no output URL found", task_id)
+            })?;
 
         let cost = match model {
             "veo3.1-pro" => 0.50,
