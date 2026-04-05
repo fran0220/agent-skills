@@ -85,7 +85,7 @@ pub struct SubQueryResult {
 #[derive(Clone)]
 pub struct SearchEngine {
     ai_client: AIClient,
-    grok: Option<Arc<dyn SearchProvider>>,
+    grok: Option<Arc<GrokSearchProvider>>,
     exa: Option<Arc<dyn SearchProvider>>,
     tavily: Option<Arc<dyn SearchProvider>>,
     tavily_answer: Option<Arc<TavilySearchProvider>>,
@@ -111,7 +111,7 @@ impl SearchEngine {
                 config.api_key.clone(),
                 config.search_model.clone(),
                 config.timeout_secs,
-            )?) as Arc<dyn SearchProvider>)
+            )?))
         };
 
         let exa = if config.exa_key.is_empty() {
@@ -247,8 +247,12 @@ impl SearchEngine {
         model: Option<&str>,
         intent: SearchIntent,
     ) -> Result<SearchOutcome> {
+        if matches!(mode, SearchMode::Fast) {
+            return self.search_fast(query, model).await;
+        }
+
         let raw = match mode {
-            SearchMode::Fast => self.search_fast(query, model).await?,
+            SearchMode::Fast => unreachable!(),
             SearchMode::Deep => self.search_deep(query, model).await?,
             SearchMode::Answer => self.search_answer(query).await?,
         };
@@ -273,20 +277,22 @@ impl SearchEngine {
         })
     }
 
-    async fn search_fast(&self, query: &str, model: Option<&str>) -> Result<ProviderRun> {
-        let Some(provider) = self.grok_provider(model)? else {
+    async fn search_fast(&self, query: &str, model: Option<&str>) -> Result<SearchOutcome> {
+        let provider = self.grok_provider(model)?;
+        let Some(provider) = provider else {
             anyhow::bail!(
                 "Fast mode requires [proxy].key or AI_SEARCH_KEY so Grok can run web search"
             );
         };
 
-        let results = self.run_provider(provider, query).await?;
-        if results.is_empty() {
-            anyhow::bail!("Grok returned no results for fast mode");
-        }
+        let _permit = self.semaphore.clone().acquire_owned().await?;
+        let content = provider
+            .search_text(query, DEFAULT_RESULTS_PER_PROVIDER)
+            .await?;
 
-        Ok(ProviderRun {
-            results,
+        Ok(SearchOutcome {
+            content,
+            results: Vec::new(),
             providers: vec!["grok".to_string()],
             answer: None,
             tokens: 0,
@@ -294,7 +300,9 @@ impl SearchEngine {
     }
 
     async fn search_deep(&self, query: &str, model: Option<&str>) -> Result<ProviderRun> {
-        let grok = self.grok_provider(model)?;
+        let grok: Option<Arc<dyn SearchProvider>> = self
+            .grok_provider(model)?
+            .map(|p| p as Arc<dyn SearchProvider>);
         let exa = self.exa.clone();
         let tavily = self.tavily.clone();
 
@@ -547,7 +555,7 @@ impl SearchEngine {
         }
     }
 
-    fn grok_provider(&self, model: Option<&str>) -> Result<Option<Arc<dyn SearchProvider>>> {
+    fn grok_provider(&self, model: Option<&str>) -> Result<Option<Arc<GrokSearchProvider>>> {
         if self.config.api_key.is_empty() {
             return Ok(None);
         }
@@ -559,7 +567,7 @@ impl SearchEngine {
                     self.config.api_key.clone(),
                     requested_model.to_string(),
                     self.config.timeout_secs,
-                )?) as Arc<dyn SearchProvider>));
+                )?)));
             }
         }
 
