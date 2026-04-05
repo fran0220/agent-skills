@@ -35,6 +35,33 @@ func VerifyAPIKey(apiKeys string) func(http.Handler) http.Handler {
 	}
 }
 
+// VerifyAPIKeyFunc is like VerifyAPIKey but reads the key list dynamically
+// on each request via the provided function.
+func VerifyAPIKeyFunc(keysFn func() string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			keys := parseKeys(keysFn())
+			if len(keys) == 0 {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			token, ok := bearerToken(r)
+			if !ok {
+				writeUnauthorized(w, "Missing authentication token")
+				return
+			}
+			for _, key := range keys {
+				if secureCompare(token, key) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			writeUnauthorized(w, "Invalid authentication token")
+		})
+	}
+}
+
 // VerifyAppKey returns middleware that validates Bearer tokens against a
 // single admin app key.
 func VerifyAppKey(appKey string) func(http.Handler) http.Handler {

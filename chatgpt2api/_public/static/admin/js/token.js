@@ -26,7 +26,82 @@ function closeModal(id) {
 async function init() {
   apiKey = await ensureAdminKey();
   if (!apiKey) return;
+  loadApiKeyConfig();
   loadData();
+}
+
+// API Key Settings
+let apiKeyRevealed = false;
+let currentMaskedKey = '';
+let currentRawKey = '';
+
+async function loadApiKeyConfig() {
+  try {
+    const res = await fetch('/v1/admin/config', {
+      headers: buildAuthHeaders(apiKey)
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    currentMaskedKey = data.api_key || '';
+    const statusEl = byId('api-key-status');
+    const input = byId('api-key-input');
+    if (data.api_key_set) {
+      if (statusEl) {
+        statusEl.innerHTML = '<span class="badge badge-green">已设置</span>';
+      }
+      if (input) {
+        input.value = '';
+        input.placeholder = currentMaskedKey + '（已设置，输入新值覆盖，提交空值清除）';
+      }
+    } else {
+      if (statusEl) {
+        statusEl.innerHTML = '<span class="badge badge-orange">未设置</span>';
+      }
+      if (input) {
+        input.value = '';
+        input.placeholder = '留空表示无需认证（支持逗号分隔多个 key）';
+      }
+    }
+    apiKeyRevealed = false;
+  } catch (e) {
+    // ignore
+  }
+}
+
+async function saveApiKey() {
+  const input = byId('api-key-input');
+  const newKey = input ? input.value.trim() : '';
+  try {
+    const res = await fetch('/v1/admin/config', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildAuthHeaders(apiKey)
+      },
+      body: JSON.stringify({ api_key: newKey })
+    });
+    if (res.ok) {
+      showToast(newKey ? 'API Key 已更新' : 'API Key 已清除');
+      loadApiKeyConfig();
+    } else {
+      const data = await res.json();
+      showToast(data.error?.message || '保存失败', 'error');
+    }
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error');
+  }
+}
+
+function toggleApiKeyVisibility() {
+  // This is a simple toggle - since we only have masked key from server,
+  // it just toggles between password and text type for user-entered values
+  const input = byId('api-key-input');
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+  } else {
+    input.type = 'password';
+  }
 }
 
 async function loadData() {

@@ -158,6 +158,60 @@ func (c *Config) Paths() Paths {
 	return c.paths
 }
 
+// SaveOverride writes a single config value to the override file and reloads.
+func (c *Config) SaveOverride(section, key string, value any) error {
+	c.loadMu.Lock()
+	defer c.loadMu.Unlock()
+
+	// Read existing override file
+	raw := map[string]any{}
+	if fileExists(c.paths.Override) {
+		if _, err := toml.DecodeFile(c.paths.Override, &raw); err != nil {
+			return fmt.Errorf("read override: %w", err)
+		}
+	}
+
+	// Ensure section map exists
+	sec, ok := raw[section].(map[string]any)
+	if !ok {
+		sec = map[string]any{}
+	}
+	sec[key] = value
+	raw[section] = sec
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(c.paths.Override), 0755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+
+	// Write back
+	f, err := os.Create(c.paths.Override)
+	if err != nil {
+		return fmt.Errorf("create override file: %w", err)
+	}
+	defer f.Close()
+	if err := toml.NewEncoder(f).Encode(raw); err != nil {
+		return fmt.Errorf("encode override: %w", err)
+	}
+
+	// Reload config in-place (without re-locking loadMu)
+	next := &Config{paths: c.paths}
+	if _, err := toml.DecodeFile(c.paths.Defaults, next); err != nil {
+		return fmt.Errorf("reload defaults: %w", err)
+	}
+	if fileExists(c.paths.Override) {
+		if err := decodeOverrideFile(c.paths.Override, next); err != nil {
+			return fmt.Errorf("reload override: %w", err)
+		}
+	}
+	c.mu.Lock()
+	c.copyFrom(next)
+	c.loaded = true
+	c.mu.Unlock()
+
+	return nil
+}
+
 func (c *Config) lookup(key string) (any, bool) {
 	if err := c.EnsureLoaded(); err != nil {
 		return nil, false

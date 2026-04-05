@@ -46,6 +46,33 @@
     </div>
   </header>
 
+  <!-- Settings Section -->
+  <div class="container mx-auto max-w-5xl px-6 pt-6">
+    <div class="bg-white rounded-lg border border-[var(--border)] p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h3 class="text-sm font-semibold">API 访问密钥</h3>
+          <p class="text-xs text-[var(--accents-4)] mt-0.5">配置调用图片生成接口 (<code class="text-xs">/v1/images/generations</code>) 所需的 Bearer Token，留空则无需认证</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="api-key-status" class="text-xs"></span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="relative flex-1">
+          <input type="text" id="api-key-input" class="geist-input font-mono text-xs pr-8" placeholder="留空表示无需认证（支持逗号分隔多个 key）">
+          <button onclick="toggleApiKeyVisibility()" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            <svg id="api-key-eye" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+        <button onclick="saveApiKey()" class="geist-button text-xs px-4">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Main Content -->
   <main class="space-y-6 flex-1 container mx-auto max-w-5xl px-6 py-8 fade-in">
     <div class="space-y-6">
