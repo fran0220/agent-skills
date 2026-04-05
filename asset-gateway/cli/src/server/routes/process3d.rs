@@ -253,20 +253,47 @@ async fn render_sprites(
     tokio::fs::write(&script_path, RENDER_SPRITES_SCRIPT).await?;
     tokio::fs::create_dir_all(&frames_dir).await?;
 
-    let render = Command::new("blender")
-        .arg("--background")
-        .arg("--python")
-        .arg(&script_path)
-        .arg("--")
-        .arg(&input_path)
-        .arg(&frames_dir)
-        .arg(frame_count.to_string())
-        .arg(resolution.to_string())
-        .arg(&camera_angle)
-        .arg(directions.to_string())
+    // Use xvfb-run on headless servers (EEVEE needs a display).
+    // Falls back to direct blender if xvfb-run is not available.
+    let has_xvfb = tokio::process::Command::new("which")
+        .arg("xvfb-run")
         .output()
         .await
-        .map_err(|error| anyhow::anyhow!("failed to spawn Blender: {}", error))?;
+        .is_ok_and(|o| o.status.success());
+
+    let render = if has_xvfb {
+        Command::new("xvfb-run")
+            .args(["-a", "--server-args=-screen 0 1024x768x24"])
+            .arg("blender")
+            .arg("--background")
+            .arg("--python")
+            .arg(&script_path)
+            .arg("--")
+            .arg(&input_path)
+            .arg(&frames_dir)
+            .arg(frame_count.to_string())
+            .arg(resolution.to_string())
+            .arg(&camera_angle)
+            .arg(directions.to_string())
+            .output()
+            .await
+            .map_err(|error| anyhow::anyhow!("failed to spawn Blender via xvfb-run: {}", error))?
+    } else {
+        Command::new("blender")
+            .arg("--background")
+            .arg("--python")
+            .arg(&script_path)
+            .arg("--")
+            .arg(&input_path)
+            .arg(&frames_dir)
+            .arg(frame_count.to_string())
+            .arg(resolution.to_string())
+            .arg(&camera_angle)
+            .arg(directions.to_string())
+            .output()
+            .await
+            .map_err(|error| anyhow::anyhow!("failed to spawn Blender: {}", error))?
+    };
 
     if !render.status.success() {
         let stderr = String::from_utf8_lossy(&render.stderr).trim().to_string();
