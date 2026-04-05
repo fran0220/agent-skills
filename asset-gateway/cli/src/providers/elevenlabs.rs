@@ -114,7 +114,11 @@ impl ElevenLabsProvider {
             body["music_length_ms"] = json!(clamped);
         }
 
-        if let Some(force) = req.params.get("force_instrumental").and_then(Value::as_bool) {
+        if let Some(force) = req
+            .params
+            .get("force_instrumental")
+            .and_then(Value::as_bool)
+        {
             body["force_instrumental"] = json!(force);
         }
 
@@ -125,10 +129,7 @@ impl ElevenLabsProvider {
             .and_then(Value::as_str)
             .filter(|s| s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
             .unwrap_or("mp3_44100_128");
-        let endpoint = format!(
-            "{}/v1/music?output_format={}",
-            self.base_url, output_format
-        );
+        let endpoint = format!("{}/v1/music?output_format={}", self.base_url, output_format);
 
         let request = self
             .http
