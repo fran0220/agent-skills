@@ -52,15 +52,7 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         providers.push(Arc::new(gpt));
     }
 
-    if !config.grok2api_key.is_empty() {
-        // Grok Image/Video (direct connection to grok2api-go)
-        let mut grok = crate::providers::grok_image::GrokImageProvider::new(
-            config.grok2api_url.clone(),
-            config.grok2api_key.clone(),
-        );
-        grok.id = "grok_image".into();
-        providers.push(Arc::new(grok));
-    }
+    // grok_image provider removed — reverse-engineered proxy too unstable for production use.
 
     if !config.elevenlabs_key.is_empty() {
         let mut el =
