@@ -213,7 +213,9 @@ impl AssetProvider for GptImageProvider {
 
         // If we have input images, use the edit endpoint
         if !req.image_inputs().is_empty() {
-            return self.generate_edit(req, model, quality, size, transparent).await;
+            return self
+                .generate_edit(req, model, quality, size, transparent)
+                .await;
         }
 
         let start = Instant::now();
@@ -325,9 +327,18 @@ mod tests {
 
     #[test]
     fn map_quality_levels() {
-        assert_eq!(GptImageProvider::map_quality(Some(QualityLevel::Draft)), "low");
-        assert_eq!(GptImageProvider::map_quality(Some(QualityLevel::Standard)), "medium");
-        assert_eq!(GptImageProvider::map_quality(Some(QualityLevel::Hd)), "high");
+        assert_eq!(
+            GptImageProvider::map_quality(Some(QualityLevel::Draft)),
+            "low"
+        );
+        assert_eq!(
+            GptImageProvider::map_quality(Some(QualityLevel::Standard)),
+            "medium"
+        );
+        assert_eq!(
+            GptImageProvider::map_quality(Some(QualityLevel::Hd)),
+            "high"
+        );
         assert_eq!(GptImageProvider::map_quality(None), "medium");
     }
 }

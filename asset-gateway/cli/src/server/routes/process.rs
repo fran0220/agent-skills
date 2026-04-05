@@ -15,6 +15,9 @@ async fn process(
     if req.operations.is_empty() {
         return Err(AppError::bad_request("operations array must not be empty"));
     }
+    if req.input.is_none() && req.inputs.is_empty() {
+        return Err(AppError::bad_request("input or inputs must be provided"));
+    }
 
     let result = Pipeline::run(&req)
         .await

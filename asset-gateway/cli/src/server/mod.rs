@@ -50,7 +50,6 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         );
         gpt.id = "gpt_image".into();
         providers.push(Arc::new(gpt));
-
     }
 
     if !config.grok2api_key.is_empty() {

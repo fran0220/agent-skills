@@ -28,6 +28,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | 语音 | TTS、多语言、指令式说话风格 | `generate tts` |
 | 声音身份 | 语音克隆、语音设计 | `voice clone`, `voice design` |
 | 3D | 文生/图生 3D，后续 rig/animate/convert | `generate model`, `process3d ...` |
+| 精灵动画 | 当前分支仍是逐帧生成 + 手动拼合；批量/compose/3D 渲染能力尚未合入 | 见“精灵动画工作流” |
 | 文本 | 单次文本生成 | `generate text` |
 | 图片工具 | 裁剪、缩放 | `process ...` |
 
@@ -52,7 +53,11 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | 生成 3D 模型 | `generate model` | `--prompt` 或 `--image`, `--output-dir` |
 | 给 3D 绑骨或加动画 | `process3d rig`, `process3d animate` | `--task-id`, `--output-dir` |
 | 转换 3D 格式 | `process3d convert` | `--task-id`, `--format`, `--output-dir` |
+| 批量生成同一角色不同姿势 | 当前分支未内置 `generate batch`；先多次执行 `generate image --ref ...` | 见“精灵动画工作流” |
+| 多图拼合为 sprite sheet | 当前分支未内置 `process compose`；先用 `convert` / `montage` | 见“精灵动画工作流” |
+| 3D 模型渲染为精灵帧 | 当前分支未内置 `process3d render-sprites`；先用外部 DCC / Blender | 见“精灵动画工作流” |
 | 裁剪/缩放透明边框、精确缩放 | `process ...` | `--input`, `--output-dir` |
+| 生成精灵动画帧 | `generate image` + `process` | 见"精灵动画工作流"章节 |
 | 单次文本生成 | `generate text` | `--prompt`, `--model`, `--output-dir` |
 
 所有 `generate`、`process`、`process3d` 示例都应带 `--output-dir`，这样产物会被保存到本地。
@@ -222,6 +227,8 @@ asset-gateway process3d texture --task-id abc-123 --prompt "bright hand-painted 
 asset-gateway process3d convert --task-id abc-123 --format FBX --output-dir ./assets
 ```
 
+并行线程里已经规划了 `process3d render-sprites`（Blender 无头渲染 GLB 动画到 PNG 帧），但当前分支尚未提供这个子命令。若要把 3D 动画转成 sprite frames，仍需在网关外部自行完成渲染。
+
 ## 文本
 
 用于单次文本生成，不适合长对话状态管理。
@@ -233,9 +240,79 @@ asset-gateway generate text --prompt "Write a backstory for a desert kingdom." -
 asset-gateway generate text --prompt "Describe a crafting system for a survival game." --model gpt-5.4 --output-dir ./assets
 ```
 
+## 精灵动画工作流
+
+当前分支仍使用手动工作流：先生成透明角色参考帧，再逐帧变换姿势，最后统一裁剪、缩放并用 ImageMagick 拼合。并行线程中设计过 `generate batch`、`process compose`、`process3d render-sprites`，但我核对当前代码后，这三个命令都还没有合入本分支，暂时不要在这里调用。
+
+### 方式一：逐帧生成（当前可用，推荐）
+
+**第 1 步：生成角色参考帧**
+
+```bash
+asset-gateway generate image --transparent --prompt "pixel art knight character, idle pose, facing right, clean edges, white outline" --size 1024x1024 --output-dir ./sprites
+```
+
+**第 2 步：上传参考帧以获取 URL**
+
+```bash
+asset-gateway upload file ./sprites/image_*.png
+# 从输出中拿到 URL，如 https://upload.xiaomao.chat/uploads/xxx.png
+```
+
+**第 3 步：逐帧生成动作姿势**
+
+每次都传 `--ref` 保持角色外观一致，只用 prompt 描述姿势变化：
+
+```bash
+asset-gateway generate image --transparent --prompt "same knight character, walk cycle frame 1, left foot forward, right arm back" --ref https://upload.xiaomao.chat/uploads/xxx.png --output-dir ./sprites
+asset-gateway generate image --transparent --prompt "same knight character, walk cycle frame 2, feet together, passing position" --ref https://upload.xiaomao.chat/uploads/xxx.png --output-dir ./sprites
+asset-gateway generate image --transparent --prompt "same knight character, walk cycle frame 3, right foot forward, left arm back" --ref https://upload.xiaomao.chat/uploads/xxx.png --output-dir ./sprites
+asset-gateway generate image --transparent --prompt "same knight character, walk cycle frame 4, feet together, returning" --ref https://upload.xiaomao.chat/uploads/xxx.png --output-dir ./sprites
+```
+
+**第 4 步：裁剪和归一化所有帧**
+
+```bash
+# 裁剪透明边框并扩展到 2 的幂次
+asset-gateway process crop --input ./sprites/image_frame1.png --mode power_of2 --output-dir ./sprites/final
+asset-gateway process crop --input ./sprites/image_frame2.png --mode power_of2 --output-dir ./sprites/final
+# ... 对每帧重复
+
+# 统一缩放到目标尺寸
+asset-gateway process resize --input ./sprites/final/frame1.png --width 64 --height 64 --output-dir ./sprites/64x64
+```
+
+**第 5 步（可选）：拼合 Sprite Sheet**
+
+asset-gateway 负责逐帧生成和处理，拼合用 ImageMagick 完成：
+
+```bash
+# 水平拼合为 sprite sheet
+magick ./sprites/64x64/*.png +append spritesheet.png
+# 或 convert（ImageMagick 6）
+convert ./sprites/64x64/*.png +append spritesheet.png
+```
+
+### 方式二：直出 Sprite Sheet（快速但精度较低）
+
+一次调用直接生成整张 sprite sheet，适合简单像素风或对帧精度要求不高的场景：
+
+```bash
+asset-gateway generate image --transparent --prompt "sprite sheet, 4 frames horizontal strip, pixel art knight walk cycle, each frame 64x64, evenly spaced, facing right" --size 1024x256 --output-dir ./sprites
+```
+
+> 注意：AI 对网格布局的精确控制不稳定，可能需要多次重试或手工微调切割位置。
+
+### Prompt 技巧
+
+- 在参考帧 prompt 中明确**风格**（pixel art / hand-drawn / chibi）和**朝向**（facing right）
+- 逐帧 prompt 以 "same character" 开头，只描述姿势变化
+- 动作拆解越细致，帧间过渡越自然（走路 4-8 帧，攻击 3-6 帧）
+- 加 "clean edges, no shadow on ground" 让后续裁剪更干净
+
 ## 图片后处理
 
-用于已有图片的尺寸调整。
+用于已有图片的尺寸调整。当前分支内置的是裁剪和缩放；`process compose` 还没有合入，所以 sprite sheet 拼合仍需外部 ImageMagick `convert` / `montage`。
 
 ### 裁剪与缩放
 
@@ -243,6 +320,15 @@ asset-gateway generate text --prompt "Describe a crafting system for a survival 
 asset-gateway process crop --input ./sprite.png --mode power_of2 --output-dir ./sprites
 asset-gateway process resize --input ./poster.png --width 1024 --height 1024 --output-dir ./assets
 ```
+
+### Sprite Sheet 拼合（当前分支的做法）
+
+```bash
+convert ./sprites/64x64/*.png +append ./sprites/spritesheet.png
+montage ./sprites/dir00_frame*.png -tile 8x -geometry 64x64+0+0 -background none ./sprites/spritesheet_grid.png
+```
+
+`process compose` 已在并行线程中设计过多输入、横向/纵向/grid 三种布局和可选 frame 归一化，但我核对当前代码时，该子命令尚未出现在 Rust CLI、npm CLI、`/api/process` 或 `pipeline.rs` 里。
 
 ## 故障排查
 

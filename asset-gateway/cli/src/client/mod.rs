@@ -1,4 +1,5 @@
 pub mod auth_cmd;
+pub mod batch_cmd;
 pub mod config;
 pub mod generate_cmd;
 pub mod http;
@@ -159,6 +160,36 @@ pub enum GenerateCommands {
         #[arg(long, default_value = ".")]
         output_dir: String,
     },
+    /// Batch generate multiple assets with shared parameters
+    Batch {
+        /// Asset type (image, video, audio, etc.)
+        #[arg(long, default_value = "image")]
+        asset_type: String,
+        /// Multiple prompts (one per frame)
+        #[arg(long = "prompt", num_args = 1..)]
+        prompts: Vec<String>,
+        /// Request transparent background
+        #[arg(long)]
+        transparent: bool,
+        /// Image size
+        #[arg(long)]
+        size: Option<String>,
+        /// Reference image URLs
+        #[arg(long = "ref", value_name = "URL")]
+        reference_images: Vec<String>,
+        /// Auto-compose direction: horizontal, vertical, grid (omit to skip)
+        #[arg(long)]
+        compose: Option<String>,
+        /// Grid columns (for compose=grid)
+        #[arg(long)]
+        columns: Option<u32>,
+        /// Frame size for compose normalization (e.g. 64x64)
+        #[arg(long)]
+        frame_size: Option<String>,
+        /// Output directory
+        #[arg(long, default_value = ".")]
+        output_dir: String,
+    },
 }
 
 // ── Provider commands ──
@@ -290,6 +321,30 @@ pub enum ProcessCommands {
         #[arg(long, default_value = ".")]
         output_dir: String,
     },
+    /// Compose multiple images into a sprite sheet
+    Compose {
+        /// Input images (URLs, file paths, or base64). Multiple values.
+        #[arg(long = "input", value_name = "PATH_OR_URL", num_args = 1..)]
+        inputs: Vec<String>,
+        /// Layout direction: horizontal, vertical, grid
+        #[arg(long, default_value = "horizontal")]
+        direction: String,
+        /// Columns for grid layout
+        #[arg(long)]
+        columns: Option<u32>,
+        /// Padding between frames in pixels
+        #[arg(long, default_value = "0")]
+        padding: u32,
+        /// Normalize frame width (auto-crop + resize each frame)
+        #[arg(long)]
+        frame_width: Option<u32>,
+        /// Normalize frame height
+        #[arg(long)]
+        frame_height: Option<u32>,
+        /// Output directory
+        #[arg(long, default_value = ".")]
+        output_dir: String,
+    },
 }
 
 // ── 3D Process commands ──
@@ -362,6 +417,27 @@ pub enum Process3dCommands {
         #[arg(long, default_value = ".")]
         output_dir: String,
     },
+    /// Render an animated 3D model to 2D sprite frames using Blender
+    RenderSprites {
+        /// Tripo task ID (from animate or generate step)
+        #[arg(long)]
+        task_id: String,
+        /// Number of animation frames to render
+        #[arg(long, default_value = "8")]
+        frame_count: u32,
+        /// Resolution of each frame in pixels (square)
+        #[arg(long, default_value = "64")]
+        resolution: u32,
+        /// Camera angle: front, side, iso, 3/4, top
+        #[arg(long, default_value = "front")]
+        camera_angle: String,
+        /// Number of rotation directions: 1, 4, or 8
+        #[arg(long, default_value = "1")]
+        directions: u32,
+        /// Output directory
+        #[arg(long, default_value = ".")]
+        output_dir: String,
+    },
     /// Reduce polygon count (high-poly to low-poly)
     Reduce {
         #[arg(long)]
@@ -418,6 +494,10 @@ pub async fn handle_auth(cmd: AuthCommands, gateway_url: &str) -> anyhow::Result
 
 pub async fn handle_generate(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<()> {
     generate_cmd::handle(cmd, gateway_url).await
+}
+
+pub async fn handle_batch(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<()> {
+    batch_cmd::handle(cmd, gateway_url).await
 }
 
 pub async fn handle_process(cmd: ProcessCommands, gateway_url: &str) -> anyhow::Result<()> {
@@ -571,6 +651,53 @@ fn describe_schemas() -> Value {
                 }
             },
             "output": { "$ref": "#/generate.image/output" }
+        },
+        "generate.batch": {
+            "input": {
+                "type": "object",
+                "required": ["prompts"],
+                "properties": {
+                    "asset_type": { "type": "string", "default": "image", "description": "Asset type to generate for each prompt" },
+                    "prompts": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": { "type": "string" },
+                        "description": "One prompt per output frame"
+                    },
+                    "transparent": { "type": "boolean", "default": false },
+                    "size": { "type": "string", "description": "Optional shared image size" },
+                    "reference_images": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Optional shared reference images (URLs or local paths)"
+                    },
+                    "compose": {
+                        "type": "string",
+                        "enum": ["horizontal", "vertical", "grid"],
+                        "description": "Compose successful image frames into a spritesheet"
+                    },
+                    "columns": { "type": "integer", "description": "Grid column count when compose=grid" },
+                    "frame_size": { "type": "string", "description": "Normalize frames before compose, e.g. 64x64" },
+                    "output_dir": { "type": "string", "default": "." }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "ok": { "type": "boolean" },
+                    "command": { "const": "generate.batch" },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "job_id": { "type": "string" },
+                            "frames": { "type": "array", "items": { "type": "object" } },
+                            "spritesheet": { "type": ["object", "null"] },
+                            "total_cost_usd": { "type": "number" },
+                            "elapsed_ms": { "type": "integer" }
+                        }
+                    }
+                }
+            }
         },
         "generate.audio": {
             "input": {
@@ -747,16 +874,26 @@ fn describe_schemas() -> Value {
         "process": {
             "input": {
                 "type": "object",
-                "required": ["input", "operations"],
+                "required": ["operations"],
                 "properties": {
-                    "input": { "type": "string", "description": "Image URL, local file path, or base64" },
+                    "input": { "type": "string", "description": "Single image URL, local file path, or base64 data URI" },
+                    "inputs": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Multiple image inputs for compose"
+                    },
                     "operations": {
                         "type": "array",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "op": { "type": "string", "enum": ["smart_crop", "resize"] },
+                                "op": { "type": "string", "enum": ["smart_crop", "resize", "compose"] },
                                 "mode": { "type": "string", "enum": ["tightest", "power_of2"] },
+                                "direction": { "type": "string", "enum": ["horizontal", "vertical", "grid"] },
+                                "columns": { "type": "integer" },
+                                "padding": { "type": "integer" },
+                                "frame_width": { "type": "integer" },
+                                "frame_height": { "type": "integer" },
                                 "width": { "type": "integer" },
                                 "height": { "type": "integer" }
                             }
@@ -781,6 +918,31 @@ fn describe_schemas() -> Value {
                     }
                 }
             }
+        },
+        "process.compose": {
+            "input": {
+                "type": "object",
+                "required": ["inputs"],
+                "properties": {
+                    "inputs": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": { "type": "string" },
+                        "description": "Input image URLs, local paths, or base64 data URIs"
+                    },
+                    "direction": {
+                        "type": "string",
+                        "enum": ["horizontal", "vertical", "grid"],
+                        "default": "horizontal"
+                    },
+                    "columns": { "type": "integer", "description": "Optional grid column count" },
+                    "padding": { "type": "integer", "default": 0, "description": "Padding between frames in pixels" },
+                    "frame_width": { "type": "integer", "description": "Normalize each frame width before composing" },
+                    "frame_height": { "type": "integer", "description": "Normalize each frame height before composing" },
+                    "output_dir": { "type": "string", "default": ".", "description": "Directory to save generated files" }
+                }
+            },
+            "output": { "$ref": "#/process/output" }
         },
         "process3d.convert": {
             "input": {
@@ -860,6 +1022,50 @@ fn describe_schemas() -> Value {
                 }
             },
             "output": { "$ref": "#/process3d.convert/output" }
+        },
+        "process3d.render_sprites": {
+            "input": {
+                "type": "object",
+                "required": ["task_id"],
+                "properties": {
+                    "task_id": { "type": "string", "description": "Completed Tripo task ID from generate, animate, rig, or import" },
+                    "frame_count": { "type": "integer", "default": 8 },
+                    "resolution": { "type": "integer", "default": 64 },
+                    "camera_angle": { "type": "string", "enum": ["front", "side", "iso", "3/4", "top"], "default": "front" },
+                    "directions": { "type": "integer", "enum": [1, 4, 8], "default": 1 },
+                    "output_dir": { "type": "string", "default": "." }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "ok": { "type": "boolean" },
+                    "command": { "const": "process3d" },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "job_id": { "type": "string" },
+                            "metadata": { "type": "object" },
+                            "frames": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "filename": { "type": "string" },
+                                        "direction": { "type": "integer" },
+                                        "frame_index": { "type": "integer" },
+                                        "source_frame": { "type": "integer" },
+                                        "local_path": { "type": ["string", "null"] }
+                                    }
+                                }
+                            },
+                            "elapsed_ms": { "type": "integer" },
+                            "output_dir": { "type": ["string", "null"] },
+                            "local_metadata_path": { "type": ["string", "null"] }
+                        }
+                    }
+                }
+            }
         },
         "process3d.reduce": {
             "input": {

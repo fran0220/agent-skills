@@ -360,19 +360,27 @@ mod tests {
     fn apply_edit_mode_prefixes_only_when_input_is_present() {
         let prompt = "replace the sky with a sunset";
 
-        let inpaint = GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Inpaint), true);
-        assert!(inpaint.starts_with("Using the provided image, change only the specific element described below."));
+        let inpaint =
+            GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Inpaint), true);
+        assert!(inpaint.starts_with(
+            "Using the provided image, change only the specific element described below."
+        ));
         assert!(inpaint.ends_with(prompt));
 
-        let restyle = GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Restyle), true);
-        assert!(restyle.starts_with("Transform the provided image into a new artistic style as described below."));
+        let restyle =
+            GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Restyle), true);
+        assert!(restyle.starts_with(
+            "Transform the provided image into a new artistic style as described below."
+        ));
         assert!(restyle.ends_with(prompt));
 
-        let expand = GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Expand), true);
+        let expand =
+            GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Expand), true);
         assert!(expand.starts_with("Expand the provided image outward, extending the scene naturally beyond its current borders while maintaining visual consistency."));
         assert!(expand.ends_with(prompt));
 
-        let unchanged = GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Inpaint), false);
+        let unchanged =
+            GeminiImageProvider::apply_edit_mode(prompt, Some(ImageEditMode::Inpaint), false);
         assert_eq!(unchanged, prompt);
     }
 }

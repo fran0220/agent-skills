@@ -25,7 +25,7 @@ function saveProcessOutput(data: Record<string, unknown>, outputDir: string): st
 }
 
 export function createProcessCommand(): Command {
-  const command = new Command("process").description("Post-process images (crop, resize)");
+  const command = new Command("process").description("Post-process images (crop, resize, compose)");
 
   command.addCommand(
     new Command("crop")
@@ -70,6 +70,41 @@ export function createProcessCommand(): Command {
           printSuccess("process.resize", data, ctx);
         } catch (error) {
           printError("process.resize", error);
+        }
+      })
+  );
+
+  command.addCommand(
+    new Command("compose")
+      .description("Compose multiple images into a sprite sheet")
+      .requiredOption("--input <paths...>", "Input images (files or URLs)")
+      .option("--direction <dir>", "Layout: horizontal, vertical, grid", "horizontal")
+      .option("--columns <n>", "Columns for grid layout")
+      .option("--padding <n>", "Padding between frames in px", "0")
+      .option("--frame-width <n>", "Normalize each frame to this width")
+      .option("--frame-height <n>", "Normalize each frame to this height")
+      .option("--output-dir <dir>", "Directory to save output", ".")
+      .action(async function (options) {
+        try {
+          const ctx = createContext(this);
+          const inputs = Array.isArray(options.input) ? options.input : [options.input];
+          const data = await ctx.client.post("/api/process", {
+            inputs: inputs.map(readInputAsBase64),
+            operations: [{
+              op: "compose",
+              direction: options.direction,
+              columns: options.columns ? Number(options.columns) : undefined,
+              padding: Number(options.padding),
+              frame_width: options.frameWidth ? Number(options.frameWidth) : undefined,
+              frame_height: options.frameHeight ? Number(options.frameHeight) : undefined,
+            }],
+          }) as Record<string, unknown>;
+
+          const localPath = saveProcessOutput(data, options.outputDir);
+          if (localPath) data.local_path = localPath;
+          printSuccess("process.compose", data, ctx);
+        } catch (error) {
+          printError("process.compose", error);
         }
       })
   );

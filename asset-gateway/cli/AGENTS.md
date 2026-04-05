@@ -37,6 +37,8 @@
 | 文本 | LLM Proxy | `generate text` |
 | 图片后处理 | 内置管线 | `process crop` / `resize` |
 
+精灵动画仍是跨命令工作流：当前分支依赖 `generate image` + `process crop` / `resize` + 外部 ImageMagick 拼合。并行线程里设计过 `generate batch`、`process compose`、`process3d render-sprites`，但我核对当前代码后，这三项都还没有合入本分支。
+
 ## 技术栈选择
 
 本项目使用 **Rust**（非 TypeScript），原因：
@@ -65,6 +67,7 @@
 | 工具 | 用途 | 安装方式 |
 |------|------|---------|
 | ImageMagick 6 | 裁剪/缩放/合成 | `dnf install ImageMagick`（用 `convert`/`identify`，非 `magick`） |
+| Blender | 3D 动画渲染到 sprite frames（`process3d render-sprites` 线程规划中） | 当前分支未接入；待命令合入后再补安装步骤 |
 
 ### 配置优先级
 
@@ -114,8 +117,11 @@ asset-gateway auth set <token>
 |--------|--------|
 | `auth` | `set`, `status`, `clear` |
 | `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text` |
+| `generate` | `batch`（并行线程规划中，当前分支未合入） |
 | `process` | `crop`, `resize` |
+| `process` | `compose`（并行线程规划中，当前分支未合入） |
 | `process3d` | `convert`, `texture`, `rig`, `animate`, `reduce`, `stylize`, `segment`, `prerigcheck`, `refine`, `import` |
+| `process3d` | `render-sprites`（并行线程规划中，当前分支未合入） |
 | `voice` | `clone`, `design`, `list`, `delete` |
 | `upload` | `file`, `list`, `delete` |
 | `provider` | `list`, `health` |
@@ -124,7 +130,9 @@ asset-gateway auth set <token>
 
 Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 
-## 当前实现状态 — ~6860 行 Rust, 18 测试通过
+## 当前实现状态 — 以当前分支代码为准
+
+下面的状态按当前工作树核对；`generate batch`、`process compose`、`process3d render-sprites` 仅在并行线程里有设计/草案，当前分支并未出现对应文件、CLI 子命令或路由挂载。
 
 ### 命令面（当前能力覆盖）
 
@@ -133,8 +141,11 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | `serve` | `--host --port --db --config` | 启动网关服务 | ✅ 完整 |
 | `auth` | `login`, `logout`, `whoami` | 认证入口 | ✅ 完整 |
 | `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text` | 资产生成 | ✅ 完整 |
+| `generate` | `batch` | 批量生成 + 可选自动拼合 | ⏳ 线程规格已明确，当前分支未合入 |
 | `process` | `crop`, `resize` | 图像后处理 | ✅ 完整 |
+| `process` | `compose` | 多图拼合 sprite sheet | ⏳ 线程规格已明确，当前分支未合入 |
 | `process3d` | `convert`, `texture`, `rig`, `animate`, `reduce`, `stylize`, `segment`, `prerigcheck`, `refine`, `import` | 3D 后处理管线 | ✅ 完整 |
+| `process3d` | `render-sprites` | Blender 无头渲染动画 GLB 到 PNG 帧 | ⏳ 线程规格已明确，当前分支未合入 |
 | `voice` | `clone`, `design`, `list`, `delete` | 自定义语音管理 | ✅ 完整 |
 | `provider` | `list`, `health` | Provider 发现与健康检查 | ✅ 完整 |
 | `job` | `list`, `status`, `cancel` | 任务管理 | ✅ 完整 |
@@ -154,8 +165,11 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | Assets | `POST /api/assets/upload`, `GET /api/assets`, `DELETE /api/assets/:name` | ✅ 文件上传 + 列表 + 删除 |
 | Static | `GET /uploads/:filename` | ✅ 上传文件静态访问（无需认证） |
 | Generate | `POST /api/generate` | ✅ Job 持久化 + Dispatcher 路由 |
-| Process | `POST /api/process` | ✅ Pipeline 引擎（ImageMagick） |
-| Process3d | `POST /api/process3d` | ✅ Tripo 3D 后处理管线 |
+| Generate Batch | `POST /api/generate/batch` | ⏳ 线程设计为单 job + `buffer_unordered(4)`，当前分支未挂载 |
+| Process | `POST /api/process` | ✅ Pipeline 引擎（当前仅 `smart_crop` / `resize`） |
+| Process Compose | `POST /api/process` | ⏳ 线程设计复用同一路由处理 `compose`，当前分支未支持 |
+| Process3d | `POST /api/process3d` | ✅ Tripo 3D 后处理管线（当前不含 `render-sprites`） |
+| Process3d Render Sprites | `POST /api/process3d` | ⏳ 线程设计在同一路由上分支到 Blender，当前分支未支持 |
 | Jobs | `GET /api/jobs`, `GET /api/jobs/:id`, `POST /api/jobs/:id/cancel` | ✅ 分页 + 筛选 + 详情 + 取消 |
 | Health | `GET /api/health` | ✅ |
 | Frontend | `GET /`, `GET /admin` | ✅ 内嵌 HTML 管理面板 |
@@ -173,15 +187,17 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 
 > `llm_proxy` / `gemini_image` / `grok_image` 继续通过 LLM proxy（api.xiaomao.chat）接入；`qwen_tts` 使用独立 DashScope 国际站 `https://dashscope-intl.aliyuncs.com`。
 
-### 后处理管线（本地工具）
+### 后处理与渲染管线（本地工具）
 
 | 操作 | 工具 | 说明 | 测试状态 |
 |------|------|------|:--------:|
 | `smart_crop` (tightest) | ImageMagick `-trim +repage` | 裁剪透明边框 | ✅ 36ms |
 | `smart_crop` (power_of2) | ImageMagick trim + extent | 裁剪后扩展到 2^n 尺寸 | ✅ 36ms |
 | `resize` | ImageMagick `-resize` | 精确缩放 | ✅ 48ms |
+| `compose` | ImageMagick `convert` / `montage` | 多图横向 / 纵向 / grid 拼合 sprite sheet | ⏳ 线程规格已明确，当前分支未合入 |
+| `render_sprites` | Blender `--background --python` | 动画 GLB 渲染为 `dirNN_frameNNNN.png` 帧序列 | ⏳ 线程规格已明确，当前分支未合入 |
 
-操作可链式组合：`smart_crop → resize`。
+当前分支可链式组合的是 `smart_crop → resize`。并行线程计划把 `compose` 加入 `Pipeline::run()`，并让 `render_sprites` 在 `process3d` 内走 Blender 支路。
 
 ### 核心层
 
@@ -190,7 +206,7 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | Config | TOML 配置文件 + env var 覆盖 + 热重载 | ✅ |
 | Registry | Provider 注册/发现/按类型查询 | ✅ |
 | Dispatcher | 智能路由：能力匹配 → 健康过滤 → 优先级排序 → 自动 fallback | ✅ + 3 测试 |
-| Pipeline | 后处理引擎：tokio::process::Command 调 ImageMagick | ✅ |
+| Pipeline | 后处理引擎：当前为 `smart_crop` / `resize`；线程中计划加入 `Compose` 和多输入 `ProcessRequest` | ✅ 当前分支 / ⏳ 线程中 |
 | Vault | AES-256-GCM 加解密（保留但不再用于 provider key） | ✅ + 测试 |
 
 ### PostgreSQL 表
@@ -243,7 +259,7 @@ Dispatcher 选择链：
 1. 在 `src/core/pipeline.rs` 的 `ProcessOp` 枚举增加变体
 2. 在 `Pipeline::run()` 的 match 中增加执行分支
 3. 实现对应的 `async fn`（调用外部 CLI 工具）
-4. 确认服务器已安装所需工具
+4. 确认服务器已安装所需工具；图片类后处理默认走 ImageMagick，`render_sprites` 这类 3D 渲染需要 Blender
 5. 更新 `src/client/mod.rs` 的 `ProcessCommands` 和 describe schema
 6. 更新 `src/client/process_cmd.rs` 的 handler
 7. 更新 npm `src/commands/process.ts`
@@ -287,53 +303,53 @@ Dispatcher 选择链：
 
 ```
 src/
-├── main.rs           (138)  CLI 入口：clap 解析 serve / client / process3d 命令
+├── main.rs           (145)  CLI 入口：clap 解析 serve / client / process3d 命令
 ├── lib.rs              (9)  库入口
-├── config.rs         (162)  TOML 配置文件 + env var 覆盖
+├── config.rs         (203)  TOML 配置文件 + env var 覆盖
 ├── db.rs              (10)  PostgreSQL 连接 + migration
 ├── error.rs          (225)  AppError 统一错误 + IntoResponse
 ├── output.rs          (32)  JSON 信封 success/error/print
 │
 ├── core/
-│   ├── mod.rs        (177)  AssetType, ProviderCapabilities, GenerateRequest/Response, trait AssetProvider
-│   ├── pipeline.rs   (284)  后处理管线：ImageMagick via tokio::process::Command
+│   ├── mod.rs        (210)  AssetType, ProviderCapabilities, GenerateRequest/Response, trait AssetProvider
+│   ├── pipeline.rs   (235)  后处理管线：当前仅 smart_crop / resize
 │   ├── vault.rs       (66)  AES-256-GCM 加解密
-│   ├── registry.rs    (46)  ProviderRegistry（线程安全注册表）
-│   ├── dispatcher.rs (384)  策略路由 + 健康缓存(60s TTL) + 自动 fallback + 测试
+│   ├── registry.rs    (51)  ProviderRegistry（线程安全注册表）
+│   ├── dispatcher.rs (480)  策略路由 + 健康缓存(60s TTL) + 自动 fallback + 测试
 │   └── queue.rs        (3)  异步队列占位
 │
 ├── providers/
 │   ├── mod.rs          (7)  pub mod 声明
-│   ├── llm_proxy.rs  (343)  LLM 双协议 + streaming
-│   ├── gemini_image.rs(152) Google 图像
-│   ├── grok_image.rs (409)  Grok 图片生成/编辑 + 视频（OpenAI 兼容）+ URL 提取 11 测试
+│   ├── llm_proxy.rs  (359)  LLM 双协议 + streaming
+│   ├── gemini_image.rs(378) Google 图像
+│   ├── grok_image.rs (249)  Grok 视频与 URL 提取
 │   ├── qwen_tts.rs   (548)  Qwen3-TTS：标准合成 + instruct + Voice Clone + Voice Design
-│   ├── elevenlabs.rs (202)  音频 (BGM/SFX)
-│   └── tripo3d.rs    (773)  TripoClient + 全链路 3D 管线（14 task types）+ 3 测试
+│   ├── elevenlabs.rs (251)  音频 / 音乐
+│   └── tripo3d.rs   (1045)  TripoClient + 全链路 3D 管线
 │
 ├── server/
-│   ├── mod.rs        (142)  ServerState + RwLock<AppConfig> + Provider 构建 + run()
+│   ├── mod.rs        (144)  ServerState + RwLock<AppConfig> + Provider 构建 + run()
 │   └── routes/
-│       ├── mod.rs     (29)  路由挂载
-│       ├── auth.rs   (346)  注册/登录/JWT/CurrentUser extractor
-│       ├── config_api.rs(87) GET/PUT /api/config (TOML 读写 + 热重载)
-│       ├── generate.rs(136) 生成 + Job 持久化
-│       ├── process.rs  (32) POST /api/process — 后处理管线
-│       ├── process3d.rs(131)  POST /api/process3d — 3D 后处理管线
-│       ├── assets.rs  (120) 文件上传 + 列表 + 删除
-│       ├── providers.rs(121) Provider 列表 + 健康检查 + reload
-│       ├── jobs.rs   (199)  Job 列表/详情/取消
-│       ├── users.rs  (325)  用户管理 CRUD
-│       └── health.rs  (15)  健康检查
+│       ├── mod.rs      (35)  路由挂载
+│       ├── auth.rs    (221)  注册/登录/JWT/CurrentUser extractor
+│       ├── config_api.rs(82) GET/PUT /api/config (TOML 读写 + 热重载)
+│       ├── generate.rs(236)  生成 + Job 持久化 + image session
+│       ├── process.rs   (32) POST /api/process — 当前仅 smart_crop / resize
+│       ├── process3d.rs(131)  POST /api/process3d — 当前 Tripo 3D 后处理
+│       ├── assets.rs   (172) 文件上传 + 列表 + 删除
+│       ├── providers.rs(127) Provider 列表 + 健康检查 + reload
+│       ├── jobs.rs    (199) Job 列表/详情/取消
+│       ├── users.rs   (396) 用户管理 CRUD
+│       └── health.rs   (15) 健康检查
 │
 ├── client/
-│   ├── mod.rs        (860)  命令定义 + describe schema + handler 入口
+│   ├── mod.rs        (971)  命令定义 + describe schema + handler 入口
 │   ├── config.rs     (143)  Token 持久化（多网关 URL + 0600 权限）
 │   ├── http.rs        (27)  authenticated_client（自动 Bearer 注入）
-│   ├── auth_cmd.rs   (101)  登录/登出/whoami + token 写盘
-│   ├── generate_cmd.rs(254) 生成 + 文件落盘（base64/URL → 本地文件，含 data URI strip）
-│   ├── process_cmd.rs(110)  后处理 + 文件落盘
-│   ├── process3d_cmd.rs(280)  3D 后处理命令 + 文件下载
+│   ├── auth_cmd.rs    (86)  登录/登出/whoami + token 写盘
+│   ├── generate_cmd.rs(397) 生成 + 文件落盘（base64/URL → 本地文件）
+│   ├── process_cmd.rs (90)  后处理 + 文件落盘
+│   ├── process3d_cmd.rs(356) 3D 后处理命令 + 文件下载
 │   ├── provider_cmd.rs(28)  Provider 列表/健康检查
 │   └── job_cmd.rs     (47)  Job 列表/状态/取消
 │
@@ -341,8 +357,10 @@ src/
     ├── mod.rs         (16)  内嵌 HTML 路由
     └── pages/
         ├── mod.rs      (1)
-        └── admin.html(1290) 管理面板 SPA（Users/Config/Providers/Jobs）
+        └── admin.html(1363) 管理面板 SPA（Users/Config/Providers/Jobs）
 ```
+
+并行线程目标中的以下文件当前分支尚不存在：`src/server/routes/generate_batch.rs`、`src/client/batch_cmd.rs`、`scripts/render_sprites.py`。
 
 ## 技术栈
 
@@ -357,6 +375,7 @@ src/
 | HTTP 客户端 | reqwest 0.12 |
 | 序列化 | serde + serde_json |
 | 后处理 | ImageMagick 6 |
+| 3D 精灵渲染 | Blender（`render-sprites` 线程规划中，当前分支未接入） |
 | 前端 | 内嵌 HTML SPA（Vanilla JS） |
 
 ## 已知问题

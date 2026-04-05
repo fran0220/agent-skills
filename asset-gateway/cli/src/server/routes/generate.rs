@@ -29,7 +29,7 @@ pub struct GenerateReq {
     pub params: serde_json::Value,
 }
 
-async fn enforce_quota(state: &ServerState, user_id: &str) -> AppResult<()> {
+pub(crate) async fn enforce_quota(state: &ServerState, user_id: &str) -> AppResult<()> {
     let row = sqlx::query("SELECT api_key_quota, api_key_quota_used FROM users WHERE id = $1")
         .bind(user_id)
         .fetch_optional(&state.db)

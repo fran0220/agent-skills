@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Command } from "commander";
 import { createContext, printError, printSuccess } from "./common.js";
 
@@ -46,6 +46,46 @@ async function saveOutput(
   }
 
   return null;
+}
+
+async function saveNamedOutput(
+  result: Record<string, unknown>,
+  assetType: string,
+  filePath: string
+): Promise<string | null> {
+  mkdirSync(dirname(filePath), { recursive: true });
+
+  if (result.output_data) {
+    const raw = String(result.output_data);
+    if (assetType === "text") {
+      writeFileSync(filePath, raw, "utf8");
+    } else {
+      writeFileSync(filePath, Buffer.from(stripDataUri(raw), "base64"));
+    }
+    return filePath;
+  }
+
+  if (result.output_url) {
+    const response = await fetch(String(result.output_url));
+    if (!response.ok) {
+      return null;
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    writeFileSync(filePath, buffer);
+    return filePath;
+  }
+
+  return null;
+}
+
+function parseFrameSize(raw: string): { frame_width: number; frame_height: number } {
+  const [width, height] = raw.split("x");
+  const frameWidth = Number(width);
+  const frameHeight = Number(height);
+  if (!Number.isFinite(frameWidth) || !Number.isFinite(frameHeight)) {
+    throw new Error("frame size must be formatted as WIDTHxHEIGHT");
+  }
+  return { frame_width: frameWidth, frame_height: frameHeight };
 }
 
 export function createGenerateCommand(): Command {
@@ -111,6 +151,74 @@ export function createGenerateCommand(): Command {
           printSuccess("generate.video", data, ctx);
         } catch (error) {
           printError("generate.video", error);
+        }
+      })
+  );
+
+  command.addCommand(
+    new Command("batch")
+      .description("Batch generate multiple assets with shared parameters")
+      .requiredOption("--prompt <texts...>", "Multiple prompts (one per frame)")
+      .option("--asset-type <type>", "Asset type", "image")
+      .option("--transparent", "Request transparent background")
+      .option("--size <size>", "Image size")
+      .option("--ref <urls...>", "Reference image URLs")
+      .option("--compose <direction>", "Auto-compose: horizontal, vertical, grid")
+      .option("--columns <n>", "Grid columns for compose")
+      .option("--frame-size <size>", "Frame size for compose (e.g. 64x64)")
+      .option("--output-dir <dir>", "Directory to save output", ".")
+      .action(async function (options) {
+        try {
+          const ctx = createContext(this);
+          const shared: Record<string, unknown> = {};
+          if (options.transparent) shared.transparent = true;
+          if (options.size) shared.size = options.size;
+          if (options.ref && options.ref.length > 0) shared.reference_images = options.ref;
+
+          const body: Record<string, unknown> = {
+            asset_type: options.assetType,
+            prompts: options.prompt,
+            shared,
+          };
+
+          if (options.compose) {
+            const compose: Record<string, unknown> = { direction: options.compose };
+            if (options.columns) compose.columns = Number(options.columns);
+            if (options.frameSize) Object.assign(compose, parseFrameSize(options.frameSize));
+            body.compose = compose;
+          }
+
+          const data = await ctx.client.post("/api/generate/batch", body) as Record<string, unknown>;
+          const assetType = String(options.assetType);
+          mkdirSync(options.outputDir, { recursive: true });
+
+          if (Array.isArray(data.frames)) {
+            for (const frame of data.frames) {
+              if (typeof frame !== "object" || frame === null) continue;
+              const record = frame as Record<string, unknown>;
+              const index = typeof record.index === "number" ? record.index : 0;
+              const localPath = await saveNamedOutput(
+                record,
+                assetType,
+                join(options.outputDir, `frame_${String(index).padStart(3, "0")}.${inferExtension(assetType)}`)
+              );
+              if (localPath) record.local_path = localPath;
+            }
+          }
+
+          if (typeof data.spritesheet === "object" && data.spritesheet !== null) {
+            const record = data.spritesheet as Record<string, unknown>;
+            const localPath = await saveNamedOutput(
+              record,
+              "image",
+              join(options.outputDir, "spritesheet.png")
+            );
+            if (localPath) record.local_path = localPath;
+          }
+
+          printSuccess("generate.batch", data, ctx);
+        } catch (error) {
+          printError("generate.batch", error);
         }
       })
   );

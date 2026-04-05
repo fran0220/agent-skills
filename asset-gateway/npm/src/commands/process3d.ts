@@ -41,6 +41,59 @@ async function saveProcess3dOutput(
   return filePath;
 }
 
+function decodeBase64Payload(payload: string): Buffer {
+  const marker = ";base64,";
+  const index = payload.indexOf(marker);
+  const raw = index >= 0 ? payload.slice(index + marker.length) : payload;
+  return Buffer.from(raw, "base64");
+}
+
+async function saveRenderSpritesOutput(
+  data: Record<string, unknown>,
+  outputDir: string
+): Promise<void> {
+  const frames = Array.isArray(data.frames) ? data.frames : null;
+  if (!frames) {
+    return;
+  }
+
+  mkdirSync(outputDir, { recursive: true });
+  const localPaths: string[] = [];
+
+  for (let index = 0; index < frames.length; index += 1) {
+    const frame = frames[index];
+    if (!isRecord(frame)) {
+      continue;
+    }
+
+    const filename = typeof frame.filename === "string"
+      ? frame.filename
+      : `frame_${String(index).padStart(4, "0")}.png`;
+    if (typeof frame.image_base64 !== "string") {
+      continue;
+    }
+
+    const outputPath = join(outputDir, filename);
+    writeFileSync(outputPath, decodeBase64Payload(frame.image_base64));
+    delete frame.image_base64;
+    frame.local_path = outputPath;
+    localPaths.push(outputPath);
+  }
+
+  if (isRecord(data.metadata)) {
+    const metadataPath = join(outputDir, "metadata.json");
+    writeFileSync(metadataPath, `${JSON.stringify(data.metadata, null, 2)}\n`);
+    data.local_metadata_path = metadataPath;
+  }
+
+  data.output_dir = outputDir;
+  data.local_paths = localPaths;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function createProcess3dCommand(): Command {
   const command = new Command("process3d").description("3D model post-processing via Tripo pipeline");
 
@@ -178,6 +231,35 @@ export function createProcess3dCommand(): Command {
           printSuccess("process3d.animate", data, ctx);
         } catch (error) {
           printError("process3d.animate", error);
+        }
+      })
+  );
+
+  command.addCommand(
+    new Command("render-sprites")
+      .description("Render animated 3D model to 2D sprite frames via Blender")
+      .requiredOption("--task-id <id>", "Tripo task ID")
+      .option("--frame-count <n>", "Number of frames", "8")
+      .option("--resolution <n>", "Frame resolution in pixels", "64")
+      .option("--camera-angle <angle>", "Camera: front, side, iso, 3/4, top", "front")
+      .option("--directions <n>", "Rotation directions: 1, 4, 8", "1")
+      .option("--output-dir <dir>", "Output directory", ".")
+      .action(async function (options) {
+        try {
+          const ctx = createContext(this);
+          const data = await ctx.client.post("/api/process3d", {
+            task_id: options.taskId,
+            operation: "render_sprites",
+            frame_count: Number(options.frameCount),
+            resolution: Number(options.resolution),
+            camera_angle: options.cameraAngle,
+            directions: Number(options.directions),
+          }) as Record<string, unknown>;
+
+          await saveRenderSpritesOutput(data, options.outputDir);
+          printSuccess("process3d.render_sprites", data, ctx);
+        } catch (error) {
+          printError("process3d.render_sprites", error);
         }
       })
   );

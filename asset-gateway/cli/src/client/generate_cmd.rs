@@ -6,7 +6,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-fn infer_extension(asset_type: &str) -> &'static str {
+pub(crate) fn infer_extension(asset_type: &str) -> &'static str {
     match asset_type {
         "image" => "png",
         "audio" | "tts" => "mp3",
@@ -29,7 +29,7 @@ fn resolve_output_path(output_dir: &Path, job_id: Option<&str>, asset_type: &str
     output_dir.join(default_output_path(job_id, asset_type))
 }
 
-async fn write_output(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+pub(crate) async fn write_output(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             tokio::fs::create_dir_all(parent).await.with_context(|| {
@@ -56,7 +56,9 @@ fn infer_input_mime(path: &Path) -> &'static str {
     }
 }
 
-async fn maybe_encode_local_input(input: Option<String>) -> anyhow::Result<Option<String>> {
+pub(crate) async fn maybe_encode_local_input(
+    input: Option<String>,
+) -> anyhow::Result<Option<String>> {
     let Some(input) = input else {
         return Ok(None);
     };
@@ -77,7 +79,7 @@ async fn maybe_encode_local_input(input: Option<String>) -> anyhow::Result<Optio
     )))
 }
 
-async fn maybe_encode_local_inputs(
+pub(crate) async fn maybe_encode_local_inputs(
     inputs: Option<Vec<String>>,
 ) -> anyhow::Result<Option<Vec<String>>> {
     let Some(inputs) = inputs else {
@@ -95,7 +97,7 @@ async fn maybe_encode_local_inputs(
     Ok(Some(encoded))
 }
 
-fn decode_output_data(asset_type: &str, output_data: &str) -> anyhow::Result<Vec<u8>> {
+pub(crate) fn decode_output_data(asset_type: &str, output_data: &str) -> anyhow::Result<Vec<u8>> {
     if asset_type == "text" {
         return Ok(output_data.as_bytes().to_vec());
     }
@@ -110,6 +112,32 @@ fn decode_output_data(asset_type: &str, output_data: &str) -> anyhow::Result<Vec
     STANDARD
         .decode(raw)
         .with_context(|| format!("failed to decode base64 output for asset type {asset_type}"))
+}
+
+pub(crate) async fn load_output_bytes(
+    asset_type: &str,
+    output_data: Option<&str>,
+    output_url: Option<&str>,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    if let Some(raw_data) = output_data.map(str::trim).filter(|raw| !raw.is_empty()) {
+        return decode_output_data(asset_type, raw_data).map(Some);
+    }
+
+    if let Some(url) = output_url.map(str::trim).filter(|url| !url.is_empty()) {
+        let resp = reqwest::Client::new()
+            .get(url)
+            .send()
+            .await
+            .with_context(|| format!("failed to download output from {url}"))?;
+        return Ok(Some(
+            resp.bytes()
+                .await
+                .with_context(|| format!("failed to read bytes from {url}"))?
+                .to_vec(),
+        ));
+    }
+
+    Ok(None)
 }
 
 async fn save_generated_file(
@@ -146,21 +174,9 @@ async fn save_generated_file(
     let job_id = data.get("job_id").and_then(Value::as_str);
     let output_path = resolve_output_path(Path::new(&output_dir), job_id, asset_type);
 
-    let bytes = if let Some(raw_data) = output_data {
-        decode_output_data(asset_type, &raw_data)?
-    } else if let Some(url) = output_url {
-        let resp = reqwest::Client::new()
-            .get(&url)
-            .send()
-            .await
-            .with_context(|| format!("failed to download output from {url}"))?;
-        resp.bytes()
-            .await
-            .with_context(|| format!("failed to read bytes from {url}"))?
-            .to_vec()
-    } else {
-        Vec::new()
-    };
+    let bytes = load_output_bytes(asset_type, output_data.as_deref(), output_url.as_deref())
+        .await?
+        .unwrap_or_default();
 
     write_output(&output_path, &bytes).await?;
     let output_path_string = output_path.to_string_lossy().to_string();
@@ -188,7 +204,7 @@ fn response_snippet(body: &str) -> String {
     }
 }
 
-async fn parse_generate_response(resp: reqwest::Response) -> anyhow::Result<Value> {
+pub(crate) async fn parse_generate_response(resp: reqwest::Response) -> anyhow::Result<Value> {
     let status = resp.status();
     let body = resp
         .text()
@@ -380,6 +396,9 @@ pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<
             }),
             output_dir,
         ),
+        GenerateCommands::Batch { .. } => {
+            bail!("generate batch must be handled by the batch command handler")
+        }
     };
 
     let (client, gateway_url) = authenticated_client(gateway_url)?;

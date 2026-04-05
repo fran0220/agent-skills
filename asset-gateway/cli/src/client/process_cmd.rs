@@ -7,15 +7,28 @@ use base64::Engine as _;
 use serde_json::{json, Value};
 use std::path::Path;
 
+async fn encode_input(input: &str) -> anyhow::Result<String> {
+    if Path::new(input).exists() {
+        let bytes = tokio::fs::read(input)
+            .await
+            .context("failed to read input file")?;
+        Ok(format!("data:image/png;base64,{}", STANDARD.encode(&bytes)))
+    } else {
+        Ok(input.to_string())
+    }
+}
+
 pub async fn handle(cmd: ProcessCommands, gateway_url: &str) -> anyhow::Result<()> {
-    let (operations, input, output_dir) = match &cmd {
+    let (body, output_dir) = match &cmd {
         ProcessCommands::Crop {
             input,
             mode,
             output_dir,
         } => (
-            vec![json!({"op": "smart_crop", "mode": mode})],
-            input.clone(),
+            json!({
+                "input": encode_input(input).await?,
+                "operations": [{"op": "smart_crop", "mode": mode}],
+            }),
             output_dir.clone(),
         ),
         ProcessCommands::Resize {
@@ -24,26 +37,42 @@ pub async fn handle(cmd: ProcessCommands, gateway_url: &str) -> anyhow::Result<(
             height,
             output_dir,
         } => (
-            vec![json!({"op": "resize", "width": width, "height": height})],
-            input.clone(),
+            json!({
+                "input": encode_input(input).await?,
+                "operations": [{"op": "resize", "width": width, "height": height}],
+            }),
             output_dir.clone(),
         ),
-    };
+        ProcessCommands::Compose {
+            inputs,
+            direction,
+            columns,
+            padding,
+            frame_width,
+            frame_height,
+            output_dir,
+        } => {
+            let mut encoded_inputs = Vec::with_capacity(inputs.len());
+            for input in inputs {
+                encoded_inputs.push(encode_input(input).await?);
+            }
 
-    // If input is a local file, read and base64 encode it
-    let input_value = if Path::new(&input).exists() {
-        let bytes = tokio::fs::read(&input)
-            .await
-            .context("failed to read input file")?;
-        format!("data:image/png;base64,{}", STANDARD.encode(&bytes))
-    } else {
-        input
+            (
+                json!({
+                    "inputs": encoded_inputs,
+                    "operations": [{
+                        "op": "compose",
+                        "direction": direction,
+                        "columns": columns,
+                        "padding": padding,
+                        "frame_width": frame_width,
+                        "frame_height": frame_height,
+                    }],
+                }),
+                output_dir.clone(),
+            )
+        }
     };
-
-    let body = json!({
-        "input": input_value,
-        "operations": operations,
-    });
 
     let (client, gateway_url) = authenticated_client(gateway_url)?;
     let resp = client

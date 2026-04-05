@@ -2,6 +2,7 @@ pub mod assets;
 pub mod auth;
 pub mod config_api;
 pub mod generate;
+pub mod generate_batch;
 pub mod health;
 pub mod jobs;
 pub mod process;
@@ -20,6 +21,7 @@ pub fn api_router() -> Router<Arc<ServerState>> {
         .route("/health", get(health::health_check))
         .merge(config_api::router())
         .merge(generate::router())
+        .merge(generate_batch::router())
         .merge(process::router())
         .merge(process3d::router())
         .merge(voice::router())

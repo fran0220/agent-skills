@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 mod config;
 mod db;
 mod error;
@@ -67,7 +69,7 @@ enum Commands {
     #[command(subcommand)]
     Generate(client::GenerateCommands),
 
-    /// Post-process images (crop, resize)
+    /// Post-process images (crop, resize, compose)
     #[command(subcommand)]
     Process(client::ProcessCommands),
 
@@ -118,9 +120,14 @@ async fn main() -> anyhow::Result<()> {
         Commands::Auth(cmd) => {
             client::handle_auth(cmd, &cli.gateway_url).await?;
         }
-        Commands::Generate(cmd) => {
-            client::handle_generate(cmd, &cli.gateway_url).await?;
-        }
+        Commands::Generate(cmd) => match cmd {
+            client::GenerateCommands::Batch { .. } => {
+                client::handle_batch(cmd, &cli.gateway_url).await?;
+            }
+            _ => {
+                client::handle_generate(cmd, &cli.gateway_url).await?;
+            }
+        },
         Commands::Process(cmd) => {
             client::handle_process(cmd, &cli.gateway_url).await?;
         }

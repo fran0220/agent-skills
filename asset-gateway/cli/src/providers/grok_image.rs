@@ -154,12 +154,8 @@ impl AssetProvider for GrokImageProvider {
         let payload: Value = serde_json::from_str(&text)?;
 
         let output_url = match req.asset_type {
-            AssetType::Video => payload["url"]
-                .as_str()
-                .map(String::from),
-            _ => payload["data"][0]["url"]
-                .as_str()
-                .map(String::from),
+            AssetType::Video => payload["url"].as_str().map(String::from),
+            _ => payload["data"][0]["url"].as_str().map(String::from),
         };
 
         let output_url = output_url

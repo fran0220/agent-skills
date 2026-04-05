@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 
 use super::http::authenticated_client;
@@ -129,6 +130,85 @@ async fn save_output_file(
     Ok(())
 }
 
+fn decode_base64_payload(payload: &str) -> anyhow::Result<Vec<u8>> {
+    let raw = if let Some(pos) = payload.find(";base64,") {
+        &payload[pos + 8..]
+    } else {
+        payload
+    };
+
+    STANDARD
+        .decode(raw)
+        .context("failed to decode sprite frame base64")
+}
+
+async fn save_render_sprites_output(result: &mut Value, output_dir: &str) -> anyhow::Result<()> {
+    if !result.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+        return Ok(());
+    }
+
+    let Some(data) = result.get_mut("data").and_then(Value::as_object_mut) else {
+        return Ok(());
+    };
+    if data.get("frames").and_then(Value::as_array).is_none() {
+        return Ok(());
+    }
+
+    let base_dir = Path::new(output_dir);
+    tokio::fs::create_dir_all(base_dir).await?;
+
+    let metadata_path = base_dir.join("metadata.json");
+    if let Some(metadata) = data.get("metadata") {
+        let bytes = serde_json::to_vec_pretty(metadata)?;
+        tokio::fs::write(&metadata_path, bytes).await?;
+        data.insert(
+            "local_metadata_path".into(),
+            Value::String(metadata_path.to_string_lossy().to_string()),
+        );
+    }
+
+    let mut local_paths = Vec::new();
+    if let Some(frames) = data.get_mut("frames").and_then(Value::as_array_mut) {
+        for (index, frame) in frames.iter_mut().enumerate() {
+            let Some(frame_obj) = frame.as_object_mut() else {
+                continue;
+            };
+            let filename = frame_obj
+                .get("filename")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("frame_{index:04}.png"));
+            let Some(Value::String(image_base64)) = frame_obj.remove("image_base64") else {
+                continue;
+            };
+
+            let output_path = base_dir.join(&filename);
+            if let Some(parent) = output_path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    tokio::fs::create_dir_all(parent).await?;
+                }
+            }
+            let bytes = decode_base64_payload(&image_base64)?;
+            tokio::fs::write(&output_path, bytes).await?;
+
+            let output_path_string = output_path.to_string_lossy().to_string();
+            frame_obj.insert(
+                "local_path".into(),
+                Value::String(output_path_string.clone()),
+            );
+            local_paths.push(Value::String(output_path_string));
+        }
+    }
+
+    data.insert(
+        "output_dir".into(),
+        Value::String(base_dir.to_string_lossy().to_string()),
+    );
+    data.insert("local_paths".into(), Value::Array(local_paths));
+
+    Ok(())
+}
+
 pub async fn handle(cmd: Process3dCommands, gateway_url: &str) -> anyhow::Result<()> {
     let (body, output_dir, format_hint) = match cmd {
         Process3dCommands::Convert {
@@ -253,6 +333,25 @@ pub async fn handle(cmd: Process3dCommands, gateway_url: &str) -> anyhow::Result
             Some(output_dir),
             Some(format),
         ),
+        Process3dCommands::RenderSprites {
+            task_id,
+            frame_count,
+            resolution,
+            camera_angle,
+            directions,
+            output_dir,
+        } => (
+            json!({
+                "task_id": task_id,
+                "operation": "render_sprites",
+                "frame_count": frame_count,
+                "resolution": resolution,
+                "camera_angle": camera_angle,
+                "directions": directions,
+            }),
+            Some(output_dir),
+            None,
+        ),
         Process3dCommands::Reduce {
             task_id,
             face_limit,
@@ -348,6 +447,7 @@ pub async fn handle(cmd: Process3dCommands, gateway_url: &str) -> anyhow::Result
 
     let mut result = parse_process3d_response(resp).await?;
     if let Some(output_dir) = output_dir.as_deref() {
+        save_render_sprites_output(&mut result, output_dir).await?;
         save_output_file(&mut result, output_dir, format_hint.as_deref()).await?;
     }
     output::print_json(&result);
