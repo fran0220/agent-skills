@@ -29,7 +29,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | 声音身份 | 语音克隆、语音设计 | `voice clone`, `voice design` |
 | 3D | 文生/图生 3D，后续 rig/animate/convert | `generate model`, `process3d ...` |
 | 文本 | 单次文本生成 | `generate text` |
-| 图片工具 | 去背景、裁剪、缩放、超分 | `process ...` |
+| 图片工具 | 裁剪、缩放 | `process ...` |
 
 ### Decision Guide
 
@@ -52,7 +52,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | 生成 3D 模型 | `generate model` | `--prompt` 或 `--image`, `--output-dir` |
 | 给 3D 绑骨或加动画 | `process3d rig`, `process3d animate` | `--task-id`, `--output-dir` |
 | 转换 3D 格式 | `process3d convert` | `--task-id`, `--format`, `--output-dir` |
-| 去背景/裁剪/缩放/超分 | `process ...` | `--input`, `--output-dir` |
+| 裁剪/缩放透明边框、精确缩放 | `process ...` | `--input`, `--output-dir` |
 | 单次文本生成 | `generate text` | `--prompt`, `--model`, `--output-dir` |
 
 所有 `generate`、`process`、`process3d` 示例都应带 `--output-dir`，这样产物会被保存到本地。
@@ -235,15 +235,13 @@ asset-gateway generate text --prompt "Describe a crafting system for a survival 
 
 ## 图片后处理
 
-用于已有图片的工具链处理，不负责重新生成内容。
+用于已有图片的尺寸调整。
 
-### 去背景、裁剪、缩放、超分
+### 裁剪与缩放
 
 ```bash
-asset-gateway process remove-bg --input ./character.png --smart-crop --output-dir ./sprites
 asset-gateway process crop --input ./sprite.png --mode power_of2 --output-dir ./sprites
 asset-gateway process resize --input ./poster.png --width 1024 --height 1024 --output-dir ./assets
-asset-gateway process upscale --input ./low_res.png --scale 4 --output-dir ./assets
 ```
 
 ## 故障排查

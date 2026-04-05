@@ -67,7 +67,7 @@ enum Commands {
     #[command(subcommand)]
     Generate(client::GenerateCommands),
 
-    /// Post-process images (remove-bg, crop, resize, upscale)
+    /// Post-process images (crop, resize)
     #[command(subcommand)]
     Process(client::ProcessCommands),
 

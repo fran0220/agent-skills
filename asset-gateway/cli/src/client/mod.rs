@@ -269,18 +269,6 @@ pub enum JobCommands {
 
 #[derive(Subcommand)]
 pub enum ProcessCommands {
-    /// Remove background from an image
-    RemoveBg {
-        /// Input image (file path or URL)
-        #[arg(long)]
-        input: String,
-        /// Also smart-crop to power-of-2 after removing background
-        #[arg(long)]
-        smart_crop: bool,
-        /// Output directory
-        #[arg(long, default_value = ".")]
-        output_dir: String,
-    },
     /// Smart crop an image (trim transparent borders)
     Crop {
         #[arg(long)]
@@ -299,16 +287,6 @@ pub enum ProcessCommands {
         width: u32,
         #[arg(long)]
         height: u32,
-        #[arg(long, default_value = ".")]
-        output_dir: String,
-    },
-    /// AI upscale an image (2x or 4x via Real-ESRGAN)
-    Upscale {
-        #[arg(long)]
-        input: String,
-        /// Scale factor (2 or 4)
-        #[arg(long, default_value_t = 4)]
-        scale: u32,
         #[arg(long, default_value = ".")]
         output_dir: String,
     },
@@ -777,11 +755,10 @@ fn describe_schemas() -> Value {
                         "items": {
                             "type": "object",
                             "properties": {
-                                "op": { "type": "string", "enum": ["remove_bg", "smart_crop", "resize", "upscale"] },
+                                "op": { "type": "string", "enum": ["smart_crop", "resize"] },
                                 "mode": { "type": "string", "enum": ["tightest", "power_of2"] },
                                 "width": { "type": "integer" },
-                                "height": { "type": "integer" },
-                                "scale": { "type": "integer", "enum": [2, 4] }
+                                "height": { "type": "integer" }
                             }
                         }
                     }

@@ -35,7 +35,7 @@
 | 语音克隆 / 语音设计 | Qwen / DashScope | `voice clone` / `voice design` |
 | 3D 模型 | Tripo3D | `generate model` + `process3d` |
 | 文本 | LLM Proxy | `generate text` |
-| 图片后处理 | 内置管线 | `process remove-bg` / `crop` / `resize` / `upscale` |
+| 图片后处理 | 内置管线 | `process crop` / `resize` |
 
 ## 技术栈选择
 
@@ -64,9 +64,7 @@
 
 | 工具 | 用途 | 安装方式 |
 |------|------|---------|
-| `rembg` + BiRefNet | AI 背景移除 | `pip3 install --user rembg[cli] onnxruntime`（通过 python3 -c 调用，避免 CLI gradio 冲突） |
 | ImageMagick 6 | 裁剪/缩放/合成 | `dnf install ImageMagick`（用 `convert`/`identify`，非 `magick`） |
-| Real-ESRGAN | AI 图像放大 | `realesrgan-ncnn-vulkan`（尚未安装，按需部署） |
 
 ### 配置优先级
 
@@ -116,7 +114,7 @@ asset-gateway auth set <token>
 |--------|--------|
 | `auth` | `set`, `status`, `clear` |
 | `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text` |
-| `process` | `remove-bg`, `crop`, `resize`, `upscale` |
+| `process` | `crop`, `resize` |
 | `process3d` | `convert`, `texture`, `rig`, `animate`, `reduce`, `stylize`, `segment`, `prerigcheck`, `refine`, `import` |
 | `voice` | `clone`, `design`, `list`, `delete` |
 | `upload` | `file`, `list`, `delete` |
@@ -135,7 +133,7 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | `serve` | `--host --port --db --config` | 启动网关服务 | ✅ 完整 |
 | `auth` | `login`, `logout`, `whoami` | 认证入口 | ✅ 完整 |
 | `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text` | 资产生成 | ✅ 完整 |
-| `process` | `remove-bg`, `crop`, `resize`, `upscale` | 图像后处理 | ✅ 完整 |
+| `process` | `crop`, `resize` | 图像后处理 | ✅ 完整 |
 | `process3d` | `convert`, `texture`, `rig`, `animate`, `reduce`, `stylize`, `segment`, `prerigcheck`, `refine`, `import` | 3D 后处理管线 | ✅ 完整 |
 | `voice` | `clone`, `design`, `list`, `delete` | 自定义语音管理 | ✅ 完整 |
 | `provider` | `list`, `health` | Provider 发现与健康检查 | ✅ 完整 |
@@ -156,7 +154,7 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | Assets | `POST /api/assets/upload`, `GET /api/assets`, `DELETE /api/assets/:name` | ✅ 文件上传 + 列表 + 删除 |
 | Static | `GET /uploads/:filename` | ✅ 上传文件静态访问（无需认证） |
 | Generate | `POST /api/generate` | ✅ Job 持久化 + Dispatcher 路由 |
-| Process | `POST /api/process` | ✅ Pipeline 引擎（rembg + ImageMagick + Real-ESRGAN） |
+| Process | `POST /api/process` | ✅ Pipeline 引擎（ImageMagick） |
 | Process3d | `POST /api/process3d` | ✅ Tripo 3D 后处理管线 |
 | Jobs | `GET /api/jobs`, `GET /api/jobs/:id`, `POST /api/jobs/:id/cancel` | ✅ 分页 + 筛选 + 详情 + 取消 |
 | Health | `GET /api/health` | ✅ |
@@ -179,13 +177,11 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 
 | 操作 | 工具 | 说明 | 测试状态 |
 |------|------|------|:--------:|
-| `remove_bg` | rembg + BiRefNet-general | AI 背景移除，通过 python3 -c 调用 | ✅ ~38s |
 | `smart_crop` (tightest) | ImageMagick `-trim +repage` | 裁剪透明边框 | ✅ 36ms |
 | `smart_crop` (power_of2) | ImageMagick trim + extent | 裁剪后扩展到 2^n 尺寸 | ✅ 36ms |
 | `resize` | ImageMagick `-resize` | 精确缩放 | ✅ 48ms |
-| `upscale` | Real-ESRGAN ncnn-vulkan | AI 2x/4x 放大 | ⚠️ 未安装 |
 
-操作可链式组合：`remove_bg → smart_crop → resize`。
+操作可链式组合：`smart_crop → resize`。
 
 ### 核心层
 
@@ -194,7 +190,7 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | Config | TOML 配置文件 + env var 覆盖 + 热重载 | ✅ |
 | Registry | Provider 注册/发现/按类型查询 | ✅ |
 | Dispatcher | 智能路由：能力匹配 → 健康过滤 → 优先级排序 → 自动 fallback | ✅ + 3 测试 |
-| Pipeline | 后处理引擎：tokio::process::Command 调 rembg/ImageMagick/ESRGAN | ✅ |
+| Pipeline | 后处理引擎：tokio::process::Command 调 ImageMagick | ✅ |
 | Vault | AES-256-GCM 加解密（保留但不再用于 provider key） | ✅ + 测试 |
 
 ### PostgreSQL 表
@@ -300,7 +296,7 @@ src/
 │
 ├── core/
 │   ├── mod.rs        (177)  AssetType, ProviderCapabilities, GenerateRequest/Response, trait AssetProvider
-│   ├── pipeline.rs   (284)  后处理管线：rembg/ImageMagick/ESRGAN via tokio::process::Command
+│   ├── pipeline.rs   (284)  后处理管线：ImageMagick via tokio::process::Command
 │   ├── vault.rs       (66)  AES-256-GCM 加解密
 │   ├── registry.rs    (46)  ProviderRegistry（线程安全注册表）
 │   ├── dispatcher.rs (384)  策略路由 + 健康缓存(60s TTL) + 自动 fallback + 测试
@@ -360,14 +356,12 @@ src/
 | 认证 | jsonwebtoken + argon2 + admin token |
 | HTTP 客户端 | reqwest 0.12 |
 | 序列化 | serde + serde_json |
-| 后处理 | rembg (BiRefNet) + ImageMagick 6 + Real-ESRGAN |
+| 后处理 | ImageMagick 6 |
 | 前端 | 内嵌 HTML SPA（Vanilla JS） |
 
 ## 已知问题
 
 - **Grok Image**: 通过 proxy 调用时偶发 502 upstream error，proxy 侧问题
-- **Real-ESRGAN**: 服务器尚未安装 `realesrgan-ncnn-vulkan`，upscale 操作暂不可用
-- **rembg 首次调用**: BiRefNet 模型 973MB，首次加载 ~40s，后续请求复用 Python 进程无缓存仍需 ~30s（每次 spawn 新进程）。计划改为持久 FastAPI 服务
 - **Nginx Timeout**: 长时间后处理请求可能触发 Nginx 60s 超时，需调整 `proxy_read_timeout`
 
 ## 已完成优化（2026-03-30）

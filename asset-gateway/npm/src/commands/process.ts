@@ -25,35 +25,7 @@ function saveProcessOutput(data: Record<string, unknown>, outputDir: string): st
 }
 
 export function createProcessCommand(): Command {
-  const command = new Command("process").description("Post-process images (remove-bg, crop, resize, upscale)");
-
-  command.addCommand(
-    new Command("remove-bg")
-      .description("Remove background from an image (AI-powered, BiRefNet)")
-      .requiredOption("--input <path>", "Input image (file path or URL)")
-      .option("--smart-crop", "Also crop to power-of-2 after removing background")
-      .option("--output-dir <dir>", "Directory to save output", ".")
-      .action(async function (options) {
-        try {
-          const ctx = createContext(this);
-          const ops: Record<string, unknown>[] = [{ op: "remove_bg" }];
-          if (options.smartCrop) {
-            ops.push({ op: "smart_crop", mode: "power_of2" });
-          }
-
-          const data = await ctx.client.post("/api/process", {
-            input: readInputAsBase64(options.input),
-            operations: ops,
-          }) as Record<string, unknown>;
-
-          const localPath = saveProcessOutput(data, options.outputDir);
-          if (localPath) data.local_path = localPath;
-          printSuccess("process.remove-bg", data, ctx);
-        } catch (error) {
-          printError("process.remove-bg", error);
-        }
-      })
-  );
+  const command = new Command("process").description("Post-process images (crop, resize)");
 
   command.addCommand(
     new Command("crop")
@@ -98,29 +70,6 @@ export function createProcessCommand(): Command {
           printSuccess("process.resize", data, ctx);
         } catch (error) {
           printError("process.resize", error);
-        }
-      })
-  );
-
-  command.addCommand(
-    new Command("upscale")
-      .description("AI upscale an image (2x or 4x via Real-ESRGAN)")
-      .requiredOption("--input <path>", "Input image (file path or URL)")
-      .option("--scale <n>", "Scale factor (2 or 4)", "4")
-      .option("--output-dir <dir>", "Directory to save output", ".")
-      .action(async function (options) {
-        try {
-          const ctx = createContext(this);
-          const data = await ctx.client.post("/api/process", {
-            input: readInputAsBase64(options.input),
-            operations: [{ op: "upscale", scale: Number(options.scale) }],
-          }) as Record<string, unknown>;
-
-          const localPath = saveProcessOutput(data, options.outputDir);
-          if (localPath) data.local_path = localPath;
-          printSuccess("process.upscale", data, ctx);
-        } catch (error) {
-          printError("process.upscale", error);
         }
       })
   );
