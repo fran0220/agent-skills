@@ -78,9 +78,8 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
     }
 
     if !config.pixelengine_key.is_empty() {
-        let mut pe = crate::providers::pixelengine::PixelEngineProvider::new(
-            config.pixelengine_key.clone(),
-        );
+        let mut pe =
+            crate::providers::pixelengine::PixelEngineProvider::new(config.pixelengine_key.clone());
         pe.id = "pixelengine".into();
         providers.push(Arc::new(pe));
     }

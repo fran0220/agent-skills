@@ -79,7 +79,10 @@ impl PixelEngineProvider {
             .await?;
 
         if !status.success() {
-            anyhow::bail!("ImageMagick resize failed with exit code {:?}", status.code());
+            anyhow::bail!(
+                "ImageMagick resize failed with exit code {:?}",
+                status.code()
+            );
         }
 
         Ok(tokio::fs::read(&output_path).await?)
@@ -158,7 +161,9 @@ impl AssetProvider for PixelEngineProvider {
             .input_file
             .as_deref()
             .or_else(|| req.params.get("image").and_then(Value::as_str))
-            .ok_or_else(|| anyhow::anyhow!("PixelEngine requires an input image (input_file or params.image)"))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("PixelEngine requires an input image (input_file or params.image)")
+            })?;
 
         let model = req
             .model
@@ -183,7 +188,11 @@ impl AssetProvider for PixelEngineProvider {
         };
 
         // Auto-resize for pixel-engine-v1.1 (max 256×256)
-        let max_dim: u32 = if model == "pixel-engine-v1.1" { 256 } else { 2048 };
+        let max_dim: u32 = if model == "pixel-engine-v1.1" {
+            256
+        } else {
+            2048
+        };
         if let Some((w, h)) = Self::png_dimensions(&image_bytes) {
             if w > max_dim || h > max_dim {
                 tracing::info!(w, h, max_dim, "resizing image for PixelEngine");
@@ -277,9 +286,7 @@ impl AssetProvider for PixelEngineProvider {
                     break;
                 }
                 "failure" => {
-                    let err = job["error"]
-                        .as_str()
-                        .unwrap_or("unknown error");
+                    let err = job["error"].as_str().unwrap_or("unknown error");
                     anyhow::bail!("PixelEngine job {} failed: {}", job_id, err);
                 }
                 "cancelled" => {
@@ -287,15 +294,18 @@ impl AssetProvider for PixelEngineProvider {
                 }
                 "queued" | "pending" => continue,
                 other => {
-                    tracing::debug!(job_id, status = other, "unexpected job status, continuing poll");
+                    tracing::debug!(
+                        job_id,
+                        status = other,
+                        "unexpected job status, continuing poll"
+                    );
                     continue;
                 }
             }
         }
 
-        let job = output.ok_or_else(|| {
-            anyhow::anyhow!("PixelEngine job {} timed out after 160s", job_id)
-        })?;
+        let job = output
+            .ok_or_else(|| anyhow::anyhow!("PixelEngine job {} timed out after 160s", job_id))?;
 
         // Download the output asset
         let download_url = job["output"]["url"]
@@ -304,10 +314,7 @@ impl AssetProvider for PixelEngineProvider {
 
         let dl_resp = self.http.get(download_url).send().await?;
         if !dl_resp.status().is_success() {
-            anyhow::bail!(
-                "PixelEngine download failed with {}",
-                dl_resp.status()
-            );
+            anyhow::bail!("PixelEngine download failed with {}", dl_resp.status());
         }
 
         let content_type = dl_resp
