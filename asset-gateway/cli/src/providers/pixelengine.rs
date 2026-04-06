@@ -33,6 +33,58 @@ impl PixelEngineProvider {
         self
     }
 
+    /// Read width and height from PNG IHDR chunk (bytes 16..24).
+    fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
+        if data.len() < 24 || &data[0..8] != b"\x89PNG\r\n\x1a\n" {
+            return None;
+        }
+        let w = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
+        let h = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
+        Some((w, h))
+    }
+
+    /// Resize PNG bytes to fit within max_dim using ImageMagick.
+    async fn resize_png(data: &[u8], max_dim: u32) -> anyhow::Result<Vec<u8>> {
+        let tmp_dir = tempfile::tempdir()?;
+        let input_path = tmp_dir.path().join("input.png");
+        let output_path = tmp_dir.path().join("output.png");
+        tokio::fs::write(&input_path, data).await?;
+
+        // Detect magick (v7) vs convert (v6)
+        let cmd = if std::process::Command::new("magick")
+            .arg("--version")
+            .output()
+            .is_ok()
+        {
+            "magick"
+        } else {
+            "convert"
+        };
+
+        let size_arg = format!("{max_dim}x{max_dim}");
+        let status = tokio::process::Command::new(cmd)
+            .args([
+                input_path.to_str().unwrap(),
+                "-resize",
+                &size_arg,
+                "-background",
+                "none",
+                "-gravity",
+                "center",
+                "-extent",
+                &size_arg,
+                output_path.to_str().unwrap(),
+            ])
+            .status()
+            .await?;
+
+        if !status.success() {
+            anyhow::bail!("ImageMagick resize failed with exit code {:?}", status.code());
+        }
+
+        Ok(tokio::fs::read(&output_path).await?)
+    }
+
     /// Call POST /enhance-prompt to rewrite a prompt for the generation model.
     pub async fn enhance_prompt(
         &self,
@@ -108,32 +160,38 @@ impl AssetProvider for PixelEngineProvider {
             .or_else(|| req.params.get("image").and_then(Value::as_str))
             .ok_or_else(|| anyhow::anyhow!("PixelEngine requires an input image (input_file or params.image)"))?;
 
-        // PixelEngine API requires base64 or data URL — convert URLs/paths to base64
-        let image_b64 = if image_raw.starts_with("data:") || (!image_raw.contains("://") && !image_raw.starts_with("http")) {
-            // Already base64 data URI or raw base64
-            image_raw.to_string()
-        } else {
-            // URL — download and convert to base64
-            tracing::debug!(url = image_raw, "downloading image for PixelEngine");
-            let dl = self.http.get(image_raw).send().await?;
-            if !dl.status().is_success() {
-                anyhow::bail!("failed to download input image: HTTP {}", dl.status());
-            }
-            let content_type = dl
-                .headers()
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("image/png")
-                .to_string();
-            let bytes = dl.bytes().await?;
-            format!("data:{};base64,{}", content_type, STANDARD.encode(&bytes))
-        };
-
         let model = req
             .model
             .as_deref()
             .or_else(|| req.params.get("model").and_then(Value::as_str))
             .unwrap_or("pixel-engine-v1.1");
+
+        // Resolve image to raw bytes
+        let mut image_bytes = if image_raw.starts_with("data:") {
+            let raw = image_raw.splitn(2, ",").nth(1).unwrap_or(image_raw);
+            STANDARD.decode(raw)?
+        } else if image_raw.starts_with("http://") || image_raw.starts_with("https://") {
+            tracing::debug!(url = image_raw, "downloading image for PixelEngine");
+            let dl = self.http.get(image_raw).send().await?;
+            if !dl.status().is_success() {
+                anyhow::bail!("failed to download input image: HTTP {}", dl.status());
+            }
+            dl.bytes().await?.to_vec()
+        } else {
+            // Raw base64
+            STANDARD.decode(image_raw)?
+        };
+
+        // Auto-resize for pixel-engine-v1.1 (max 256×256)
+        let max_dim: u32 = if model == "pixel-engine-v1.1" { 256 } else { 2048 };
+        if let Some((w, h)) = Self::png_dimensions(&image_bytes) {
+            if w > max_dim || h > max_dim {
+                tracing::info!(w, h, max_dim, "resizing image for PixelEngine");
+                image_bytes = Self::resize_png(&image_bytes, max_dim).await?;
+            }
+        }
+
+        let image_b64 = format!("data:image/png;base64,{}", STANDARD.encode(&image_bytes));
 
         let output_format = req
             .params
