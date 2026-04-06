@@ -13,6 +13,7 @@ pub(crate) fn infer_extension(asset_type: &str) -> &'static str {
         "video" => "mp4",
         "model3d" => "glb",
         "text" => "txt",
+        "sprite" => "png",
         _ => "bin",
     }
 }
@@ -401,6 +402,48 @@ pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<
             }),
             output_dir,
         ),
+        GenerateCommands::Sprite {
+            prompt,
+            input,
+            model,
+            output_frames,
+            output_format,
+            colors,
+            negative_prompt,
+            seed,
+            matte_color,
+            enhance_prompt: _,
+            output_dir,
+        } => {
+            let input = maybe_encode_local_input(Some(input)).await?;
+            let mut params = serde_json::json!({
+                "output_frames": output_frames,
+                "output_format": output_format,
+            });
+            if let Some(colors) = colors {
+                params["pixel_config"] = serde_json::json!({ "colors": colors });
+            }
+            if let Some(np) = negative_prompt {
+                params["negative_prompt"] = serde_json::json!(np);
+            }
+            if let Some(s) = seed {
+                params["seed"] = serde_json::json!(s);
+            }
+            if let Some(mc) = matte_color {
+                params["matte_color"] = serde_json::json!(mc);
+            }
+            (
+                "sprite",
+                serde_json::json!({
+                    "asset_type": "sprite",
+                    "prompt": prompt,
+                    "model": model,
+                    "input_file": input,
+                    "params": params,
+                }),
+                output_dir,
+            )
+        }
         GenerateCommands::Batch { .. } => {
             bail!("generate batch must be handled by the batch command handler")
         }

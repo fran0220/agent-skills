@@ -28,7 +28,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Speech | TTS, multilingual, instructed style | `generate tts` |
 | Voice Identity | Voice clone, voice design | `voice clone`, `voice design` |
 | 3D Model | Text/image → 3D, rig/animate/convert | `generate model`, `process3d ...` |
-| Sprite Animation | Frame-by-frame generation → remove bg → compose (video approach unavailable) | See reference/sprite-workflow.md |
+| Sprite Animation | Image → animated spritesheet/webp/gif via PixelEngine AI | `generate sprite` |
 | Text | Single-shot LLM text generation | `generate text` |
 | Image/Video Tools | Crop, resize, compose, extract frames, remove background | `process ...` |
 
@@ -57,7 +57,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Compose sprite sheet | `process compose` | `--input <files...>`, `--direction`, `--output-dir` |
 | Extract video frames | `process extract-frames` | `--input`, `--count`, `--output-dir` |
 | Remove background | `process remove-bg` | `--input <files...>`, `--output-dir` |
-| Make sprite animation | See reference/sprite-workflow.md | Full pipeline walkthrough |
+| Animate a sprite | `generate sprite` | `--prompt`, `--input <image>`, `--output-dir` |
 | Generate text | `generate text` | `--prompt`, `--model`, `--output-dir` |
 
 All `generate`, `process`, `process3d` commands should include `--output-dir` to save output locally.

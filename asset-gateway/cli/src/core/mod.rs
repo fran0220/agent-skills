@@ -21,6 +21,7 @@ pub enum AssetType {
     Music,
     Tts,
     Model3d,
+    Sprite,
 }
 
 impl AssetType {
@@ -33,6 +34,7 @@ impl AssetType {
             Self::Music => "music",
             Self::Tts => "tts",
             Self::Model3d => "model3d",
+            Self::Sprite => "sprite",
         }
     }
 }
@@ -52,6 +54,7 @@ impl AssetType {
             Self::Audio | Self::Music | Self::Tts => "mp3",
             Self::Video => "mp4",
             Self::Model3d => "glb",
+            Self::Sprite => "png",
             Self::Text => "txt",
         }
     }

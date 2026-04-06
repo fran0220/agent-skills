@@ -36,8 +36,9 @@
 | 3D 模型 | Tripo3D | `generate model` + `process3d` |
 | 文本 | LLM Proxy | `generate text` |
 | 图片后处理 | 内置管线 | `process crop` / `resize` |
+| 精灵动画 | PixelEngine | `generate sprite` |
 
-精灵动画仍是跨命令工作流：当前分支依赖 `generate image` + `process crop` / `resize` + 外部 ImageMagick 拼合。并行线程里设计过 `generate batch`、`process compose`、`process3d render-sprites`，但我核对当前代码后，这三项都还没有合入本分支。
+精灵动画通过 PixelEngine AI 一步完成：`generate sprite` 接受静态图片 + 动作描述，输出 spritesheet/webp/gif。
 
 ## 技术栈选择
 
@@ -97,6 +98,9 @@ key = "..."
 [jimeng]
 url = "http://127.0.0.1:5100"
 token = "..."
+
+[pixelengine]
+key = "pe_sk_..."
 ```
 
 ### 部署流程
@@ -146,6 +150,7 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | `auth` | `login`, `logout`, `whoami` | 认证入口 | ✅ 完整 |
 | `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text` | 资产生成 | ✅ 完整 |
 | `generate` | `batch` | 批量生成 + 可选自动拼合 | ⏳ 线程规格已明确，当前分支未合入 |
+| `generate` | `sprite` | 精灵动画生成（PixelEngine） | ✅ 完整 |
 | `process` | `crop`, `resize` | 图像后处理 | ✅ 完整 |
 | `process` | `compose` | 多图拼合 sprite sheet | ⏳ 线程规格已明确，当前分支未合入 |
 | `process3d` | `convert`, `texture`, `rig`, `animate`, `reduce`, `stylize`, `segment`, `prerigcheck`, `refine`, `import` | 3D 后处理管线 | ✅ 完整 |
@@ -188,6 +193,7 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | `qwen_tts` | Tts/Voice | Qwen3-TTS via DashScope Intl：49+ 系统音色、指令控制、VC/VD | ✅ ~97ms 首包 |
 | `elevenlabs` | Audio/Music | sound-generation（BGM/SFX）+ music-generation | ✅ 1.5s |
 | `tripo3d` | Model3d | 完整 3D 管线：text/image/multiview → model, texture, rig, animate, convert, reduce, stylize, segment, prerigcheck, refine, import | ✅ |
+| `pixelengine` | Sprite | 图片→动画精灵（pixel-engine-v1.1 像素画 / frame-engine-v1.1 HD），输出 spritesheet/webp/gif | ⬚ 待测试 |
 
 > `llm_proxy` / `gemini_image` 通过 LLM proxy（api.xiaomao.chat）接入；`jimeng` 通过本地 jimeng-api Docker 容器（127.0.0.1:5100）接入；`qwen_tts` 使用独立 DashScope 国际站。
 

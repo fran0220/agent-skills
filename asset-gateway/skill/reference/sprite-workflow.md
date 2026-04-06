@@ -1,140 +1,103 @@
 # Sprite Animation Workflow
 
-Complete pipeline for generating consistent sprite animation frames using asset-gateway.
+Generate sprite animations from a static image using PixelEngine AI.
 
-## Recommended: Video-Based Pipeline
-
-This approach produces **perfectly consistent** animation frames (same character across all frames) by generating a video first, then extracting frames.
-
-### Step 1: Generate Transparent Reference Character
+## Quick Start
 
 ```bash
-asset-gateway generate image --transparent \
-  --prompt "pixel art knight character, idle pose, facing right, clean edges, white outline" \
-  --size 1024x1024 --output-dir ./sprites
-```
+# Animate a pixel art character (≤256×256 PNG)
+asset-gateway generate sprite \
+  --prompt "walk cycle animation, smooth movement" \
+  --input ./character.png \
+  --output-dir ./sprites
 
-### Step 2: Upload Reference Image
-
-```bash
-asset-gateway upload file ./sprites/image_*.png
-# Get URL: https://upload.xiaomao.chat/uploads/xxx.png
-```
-
-### Step 3: Generate Animation Video (Image-to-Video)
-
-Use the reference image as input for Seedance image-to-video. The character stays perfectly consistent across all frames.
-
-```bash
-asset-gateway generate video \
-  --prompt "walk cycle animation, smooth movement, side view" \
-  --input https://upload.xiaomao.chat/uploads/xxx.png \
+# Animate an HD illustration (256-2048px)
+asset-gateway generate sprite \
+  --prompt "idle breathing animation" \
+  --input ./hero.png \
+  --model frame-engine-v1.1 \
   --output-dir ./sprites
 ```
 
-### Step 4: Extract Frames
+## Models
 
-Extract evenly-spaced frames from the video:
+| Model | Best for | Input | Max size | Frames |
+|-------|----------|-------|----------|--------|
+| `pixel-engine-v1.1` | Pixel art sprites | PNG only | ≤256×256 | 2-16 (even) |
+| `frame-engine-v1.1` | HD illustrations | PNG or JPEG | 256-2048px | 2-24 (even) |
 
-```bash
-asset-gateway process extract-frames \
-  --input ./sprites/*.mp4 \
-  --count 8 \
-  --output-dir ./sprites/frames
-```
+## Output Formats
 
-### Step 5: Remove Backgrounds
+| Format | Description | Use case |
+|--------|-------------|----------|
+| `spritesheet` (default) | Horizontal strip PNG: `width = frame_count × frame_w` | Game engines (Godot, Unity) |
+| `webp` | Animated WebP | Web previews |
+| `gif` | Animated GIF | Sharing, documentation |
 
-Remove the video background from all frames (bgsweep AI):
+## Parameters
 
-```bash
-asset-gateway process remove-bg \
-  --input ./sprites/frames/frame_*.png \
-  --output-dir ./sprites/nobg
-```
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--prompt` | required | Motion description (e.g. "walk cycle", "attack swing") |
+| `--input` | required | Source sprite image (local path or URL) |
+| `--model` | `pixel-engine-v1.1` | Animation model |
+| `--output-frames` | `8` | Number of frames (must be even) |
+| `--output-format` | `spritesheet` | Output: spritesheet, webp, gif |
+| `--colors` | `24` | Pixel palette size (pixel model only, 2-256) |
+| `--negative-prompt` | — | What to avoid |
+| `--seed` | random | Reproducibility seed |
+| `--matte-color` | — | Hex color for alpha flattening |
+| `--enhance-prompt` | off | AI-enhance the prompt before generation |
 
-### Step 6: Compose Sprite Sheet
+## Typical Workflows
 
-Combine frames into a horizontal sprite strip:
-
-```bash
-asset-gateway process compose \
-  --input ./sprites/nobg/frame_*.png \
-  --direction horizontal \
-  --frame-width 64 --frame-height 64 \
-  --output-dir ./sprites/final
-```
-
-Or a grid layout:
-
-```bash
-asset-gateway process compose \
-  --input ./sprites/nobg/frame_*.png \
-  --direction grid --columns 4 \
-  --frame-width 64 --frame-height 64 \
-  --output-dir ./sprites/final
-```
-
-## Alternative: Frame-by-Frame Generation
-
-For cases where video generation isn't suitable (e.g., very specific poses). Less consistent but more controllable per-frame.
-
-### Step 1: Generate Reference
+### Character Walk Cycle
 
 ```bash
+# 1. Generate the reference character (via image generation)
 asset-gateway generate image --transparent \
-  --prompt "pixel art knight, idle pose, facing right, clean edges" \
-  --size 1024x1024 --output-dir ./sprites
-```
+  --prompt "pixel art knight character, idle pose, facing right" \
+  --size 128x128 --output-dir ./sprites
 
-### Step 2: Upload & Get URL
-
-```bash
-asset-gateway upload file ./sprites/image_*.png
-```
-
-### Step 3: Generate Each Frame
-
-Pass `--ref` to maintain character consistency:
-
-```bash
-asset-gateway generate image --transparent \
-  --prompt "same knight, walk frame 1, left foot forward" \
-  --ref https://upload.xiaomao.chat/uploads/xxx.png --output-dir ./sprites
-
-asset-gateway generate image --transparent \
-  --prompt "same knight, walk frame 2, feet together" \
-  --ref https://upload.xiaomao.chat/uploads/xxx.png --output-dir ./sprites
-
-asset-gateway generate image --transparent \
-  --prompt "same knight, walk frame 3, right foot forward" \
-  --ref https://upload.xiaomao.chat/uploads/xxx.png --output-dir ./sprites
-```
-
-### Step 4: Crop, Resize, Compose
-
-```bash
-# Compose with auto-normalization
-asset-gateway process compose \
+# 2. Animate it
+asset-gateway generate sprite \
+  --prompt "walk cycle, smooth left-right movement, feet alternating" \
   --input ./sprites/image_*.png \
-  --direction horizontal \
-  --frame-width 64 --frame-height 64 \
-  --output-dir ./sprites/final
+  --output-frames 8 \
+  --output-dir ./sprites
 ```
 
-## Prompt Tips
+### Attack Animation
 
-- Reference frame: specify **style** (pixel art / hand-drawn / chibi) and **direction** (facing right)
-- Per-frame prompts: start with "same character" and only describe the pose change
-- More frames = smoother animation (walk: 4-8 frames, attack: 3-6 frames)
-- Add "clean edges, no shadow on ground" for cleaner crop results
-- Video approach: describe the motion type ("walk cycle", "attack swing", "idle breathing")
+```bash
+asset-gateway generate sprite \
+  --prompt "sword slash attack, wind up then swing, motion blur on blade" \
+  --input ./sprites/knight.png \
+  --output-frames 6 \
+  --output-dir ./sprites
+```
 
-## Why Video-Based is Better
+### HD Character Idle
 
-| Aspect | Video-Based | Frame-by-Frame |
-|--------|-------------|----------------|
-| Character consistency | Perfect (same model across frames) | Variable (AI may alter proportions) |
-| Speed | ~1 video gen + pipeline | N × image gen calls |
-| Control per frame | Less (auto motion) | Full (specific pose per frame) |
-| Best for | Walk/run/idle cycles, simple motions | Specific pose sequences, complex actions |
+```bash
+asset-gateway generate sprite \
+  --prompt "gentle idle breathing animation, subtle movement" \
+  --input ./hero_illustration.png \
+  --model frame-engine-v1.1 \
+  --output-frames 12 \
+  --output-format webp \
+  --output-dir ./sprites
+```
+
+## Cost
+
+- 20 credits per animation (~$0.10 at monthly rate)
+- Free: prompt enhancement, balance check, job cancellation
+
+## Notes
+
+- Input image aspect ratio must be between 1:2 and 2:1
+- Max decoded image size: 5 MB
+- Generation takes ~90 seconds
+- Output files are available for 24 hours after generation
+- Spritesheets are horizontal strips: `width = frame_count × frame_w`

@@ -4,7 +4,7 @@ import { Command } from "commander";
 import { createContext, printError, printSuccess } from "./common.js";
 
 function inferExtension(assetType: string): string {
-  const map: Record<string, string> = { image: "png", audio: "mp3", music: "mp3", tts: "mp3", video: "mp4", model3d: "glb", text: "txt" };
+  const map: Record<string, string> = { image: "png", audio: "mp3", music: "mp3", tts: "mp3", video: "mp4", model3d: "glb", text: "txt", sprite: "png" };
   return map[assetType] ?? "bin";
 }
 
@@ -401,6 +401,50 @@ export function createGenerateCommand(): Command {
           printSuccess("generate.text", data, ctx);
         } catch (error) {
           printError("generate.text", error);
+        }
+      })
+  );
+
+  command.addCommand(
+    new Command("sprite")
+      .description("Animate a sprite image using PixelEngine AI")
+      .requiredOption("--prompt <text>", "Animation prompt describing the desired motion")
+      .requiredOption("--input <path>", "Input sprite image (local path or URL)")
+      .option("--model <model>", "Model: pixel-engine-v1.1 or frame-engine-v1.1", "pixel-engine-v1.1")
+      .option("--output-frames <n>", "Number of animation frames (even integer)", "8")
+      .option("--output-format <fmt>", "Output format: spritesheet, webp, gif", "spritesheet")
+      .option("--colors <n>", "Pixel palette color count (2-256, pixel model only)")
+      .option("--negative-prompt <text>", "What to avoid in the generation")
+      .option("--seed <n>", "Seed for reproducibility")
+      .option("--matte-color <hex>", "Matte color for alpha flattening (6-char hex)")
+      .option("--enhance-prompt", "Enhance the prompt before generation")
+      .option("--output-dir <dir>", "Directory to save output", ".")
+      .action(async function (options) {
+        try {
+          const ctx = createContext(this);
+          const params: Record<string, unknown> = {
+            output_frames: Number(options.outputFrames),
+            output_format: options.outputFormat,
+          };
+          if (options.colors) params.pixel_config = { colors: Number(options.colors) };
+          if (options.negativePrompt) params.negative_prompt = options.negativePrompt;
+          if (options.seed) params.seed = Number(options.seed);
+          if (options.matteColor) params.matte_color = options.matteColor;
+
+          const body: Record<string, unknown> = {
+            asset_type: "sprite",
+            prompt: options.prompt,
+            model: options.model,
+            input_file: options.input,
+            params,
+          };
+
+          const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
+          const localPath = await saveOutput(data, "sprite", options.outputDir);
+          if (localPath) data.local_path = localPath;
+          printSuccess("generate.sprite", data, ctx);
+        } catch (error) {
+          printError("generate.sprite", error);
         }
       })
   );

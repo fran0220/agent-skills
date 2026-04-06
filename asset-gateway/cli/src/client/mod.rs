@@ -163,6 +163,42 @@ pub enum GenerateCommands {
         #[arg(long, default_value = ".")]
         output_dir: String,
     },
+    /// Animate a sprite image using PixelEngine
+    Sprite {
+        /// Animation prompt describing the motion
+        #[arg(long)]
+        prompt: String,
+        /// Input image (local path or URL) — the character/sprite to animate
+        #[arg(long)]
+        input: String,
+        /// Model: pixel-engine-v1.1 (pixel art ≤256px) or frame-engine-v1.1 (HD 256-2048px)
+        #[arg(long, default_value = "pixel-engine-v1.1")]
+        model: String,
+        /// Number of animation frames (even integer, 2-16 for pixel, 2-24 for HD)
+        #[arg(long, default_value = "8")]
+        output_frames: u32,
+        /// Output format: spritesheet, webp, gif
+        #[arg(long, default_value = "spritesheet")]
+        output_format: String,
+        /// Pixel palette color count (2-256, pixel model only)
+        #[arg(long)]
+        colors: Option<u32>,
+        /// Negative prompt
+        #[arg(long)]
+        negative_prompt: Option<String>,
+        /// Seed for reproducibility
+        #[arg(long)]
+        seed: Option<u64>,
+        /// Matte color (6-char hex)
+        #[arg(long)]
+        matte_color: Option<String>,
+        /// Enhance the prompt before generation (free, recommended)
+        #[arg(long)]
+        enhance_prompt: bool,
+        /// Output directory
+        #[arg(long, default_value = ".")]
+        output_dir: String,
+    },
     /// Batch generate multiple assets with shared parameters
     Batch {
         /// Asset type (image, video, audio, etc.)
@@ -797,6 +833,44 @@ fn describe_schemas() -> Value {
                 }
             },
             "output": { "$ref": "#/generate.image/output" }
+        },
+        "generate.sprite": {
+            "input": {
+                "type": "object",
+                "required": ["prompt", "input"],
+                "properties": {
+                    "prompt": { "type": "string", "description": "Animation prompt describing the desired motion" },
+                    "input": { "type": "string", "description": "Input sprite image (local path, URL, or base64)" },
+                    "model": { "type": "string", "enum": ["pixel-engine-v1.1", "frame-engine-v1.1"], "default": "pixel-engine-v1.1" },
+                    "output_frames": { "type": "integer", "default": 8, "description": "Number of frames (even, 2-16 pixel / 2-24 HD)" },
+                    "output_format": { "type": "string", "enum": ["spritesheet", "webp", "gif"], "default": "spritesheet" },
+                    "colors": { "type": "integer", "description": "Pixel palette color count (2-256, pixel model only)" },
+                    "negative_prompt": { "type": "string" },
+                    "seed": { "type": "integer" },
+                    "matte_color": { "type": "string", "description": "6-char hex color" },
+                    "enhance_prompt": { "type": "boolean", "default": false },
+                    "output_dir": { "type": "string", "default": "." }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "ok": { "type": "boolean" },
+                    "command": { "const": "generate" },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "provider_id": { "type": "string" },
+                            "output_url": { "type": "string" },
+                            "output_data": { "type": "string" },
+                            "metadata": { "type": "object" },
+                            "cost_usd": { "type": "number" },
+                            "elapsed_ms": { "type": "integer" },
+                            "local_path": { "type": "string" }
+                        }
+                    }
+                }
+            }
         },
         "provider.list": {
             "input": { "type": "object", "properties": {} },

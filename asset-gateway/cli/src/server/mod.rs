@@ -77,6 +77,14 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         providers.push(Arc::new(tripo));
     }
 
+    if !config.pixelengine_key.is_empty() {
+        let mut pe = crate::providers::pixelengine::PixelEngineProvider::new(
+            config.pixelengine_key.clone(),
+        );
+        pe.id = "pixelengine".into();
+        providers.push(Arc::new(pe));
+    }
+
     if !config.dashscope_key.is_empty() {
         let mut qwen = crate::providers::qwen_tts::QwenTtsProvider::new(
             config.dashscope_url.clone(),

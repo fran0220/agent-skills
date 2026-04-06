@@ -24,3 +24,7 @@ key = ""
 [jimeng]
 url = "http://127.0.0.1:5100"
 token = ""
+
+# PixelEngine — sprite animation generation
+[pixelengine]
+key = ""

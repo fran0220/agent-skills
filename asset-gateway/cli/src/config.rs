@@ -19,6 +19,8 @@ pub struct ConfigFile {
     pub grok2api: Grok2apiSection,
     #[serde(default)]
     pub jimeng: JimengSection,
+    #[serde(default)]
+    pub pixelengine: ProviderKeySection,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -86,6 +88,9 @@ pub struct AppConfig {
     // Jimeng video+image (ByteDance) — jimeng-api gateway
     pub jimeng_url: String,
     pub jimeng_token: String,
+
+    // PixelEngine — sprite animation generation
+    pub pixelengine_key: String,
 }
 
 impl AppConfig {
@@ -194,6 +199,12 @@ impl AppConfig {
             jimeng_token: env_or(
                 "ASSET_GATEWAY_JIMENG_TOKEN",
                 file_cfg.jimeng.token.as_deref(),
+                "",
+            ),
+
+            pixelengine_key: env_or(
+                "ASSET_GATEWAY_PIXELENGINE_KEY",
+                file_cfg.pixelengine.key.as_deref(),
                 "",
             ),
         })
