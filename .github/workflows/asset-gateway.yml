@@ -1,4 +1,4 @@
-# asset-gateway CI — check + remote build on jpdata
+# asset-gateway CI — build on runner, deploy binary to jpdata
 name: asset-gateway
 
 on:
@@ -47,6 +47,24 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            asset-gateway/cli/target/
+          key: ${{ runner.os }}-cargo-deploy-${{ hashFiles('asset-gateway/cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-deploy-
+            ${{ runner.os }}-cargo-
+
+      - name: Build release binary
+        run: cargo build --release
+
       - name: Setup SSH
         working-directory: /tmp
         run: |
@@ -55,17 +73,19 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.JPDATA_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Build & restart on server
+      - name: Deploy binary to server
         working-directory: /tmp
         run: |
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new root@${{ secrets.JPDATA_HOST }}"
-          $SSH "cd /opt/asset-gateway/repo && \
-            git fetch origin main && git reset --hard origin/main && \
-            cd asset-gateway/cli && \
-            source ~/.cargo/env && \
-            cargo build --release 2>&1 | tail -5 && \
-            cp target/release/asset-gateway /opt/asset-gateway/asset-gateway.new && \
-            cp /opt/asset-gateway/asset-gateway /opt/asset-gateway/asset-gateway.old 2>/dev/null; \
+          SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
+          BINARY="${GITHUB_WORKSPACE}/asset-gateway/cli/target/release/asset-gateway"
+
+          # Upload binary
+          $SCP "$BINARY" "root@${{ secrets.JPDATA_HOST }}:/opt/asset-gateway/asset-gateway.new"
+
+          # Swap and restart
+          $SSH "cp /opt/asset-gateway/asset-gateway /opt/asset-gateway/asset-gateway.old 2>/dev/null; \
             mv /opt/asset-gateway/asset-gateway.new /opt/asset-gateway/asset-gateway && \
+            chmod +x /opt/asset-gateway/asset-gateway && \
             systemctl restart asset-gateway && \
             sleep 2 && systemctl --no-pager --full status asset-gateway | head -8"

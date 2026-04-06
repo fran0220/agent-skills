@@ -111,8 +111,8 @@ key = "..."
 
 ### 部署流程
 
-- **主要路径**：push 到 main 自动触发 CI 部署（GitHub Actions → SSH deploy to jpdata）
-- **手动 fallback**：`./scripts/deploy.sh`（rsync 源码到服务器编译）
+- **主要路径**：push 到 main 自动触发 CI 部署（GitHub Actions runner 编译 → scp 二进制 → 重启 systemd）
+- **重要**：不在 jpdata 服务器上编译（性能差），在 runner (ubuntu-latest x86_64) 上编译后推送二进制
 
 CI workflow：`.github/workflows/asset-gateway.yml`，Secrets：`JPDATA_SSH_KEY`、`JPDATA_HOST`
 

@@ -96,7 +96,7 @@ agent-skills/
 
 所有 Rust 服务通过 GitHub Actions 自动部署：push 到 main 且 paths 匹配 → CI check/test/clippy → SSH 到目标服务器 → `git pull + cargo build --release` → restart systemd。
 
-编译在目标服务器本地执行，避免跨平台 glibc 兼容问题。各服务器已预装 Rust 工具链，代码通过 `/opt/<service>/repo/` 的 shallow clone 同步。
+Rust 服务在 GitHub Actions runner (ubuntu-latest x86_64) 上编译 release 二进制，然后 scp 到目标服务器并重启 systemd。不在目标服务器上编译（性能差）。
 
 GitHub Secrets：`DEPLOY_SSH_KEY`（统一私钥）+ `JPDATA_HOST` / `BWG_HOST` / `ORACLE_HOST`。
 
