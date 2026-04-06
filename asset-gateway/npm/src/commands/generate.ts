@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, extname, join } from "node:path";
 import { Command } from "commander";
 import { createContext, printError, printSuccess } from "./common.js";
 
@@ -431,11 +431,20 @@ export function createGenerateCommand(): Command {
           if (options.seed) params.seed = Number(options.seed);
           if (options.matteColor) params.matte_color = options.matteColor;
 
+          // Encode local file to data URI for PixelEngine (requires base64)
+          let inputFile = options.input as string;
+          if (existsSync(inputFile)) {
+            const ext = extname(inputFile).toLowerCase();
+            const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : "image/png";
+            const b64 = readFileSync(inputFile).toString("base64");
+            inputFile = `data:${mime};base64,${b64}`;
+          }
+
           const body: Record<string, unknown> = {
             asset_type: "sprite",
             prompt: options.prompt,
             model: options.model,
-            input_file: options.input,
+            input_file: inputFile,
             params,
           };
 
