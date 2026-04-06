@@ -44,7 +44,7 @@ jobs:
   deploy:
     name: Deploy (jpdata)
     needs: check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # Match jpdata's glibc 2.35 (Ubuntu 22.04)
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v5
