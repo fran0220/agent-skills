@@ -199,6 +199,24 @@ pub enum GenerateCommands {
         #[arg(long, default_value = ".")]
         output_dir: String,
     },
+    /// Generate a 3D world/environment using WorldLabs Marble
+    World {
+        /// Text prompt describing the environment
+        #[arg(long)]
+        prompt: String,
+        /// Input image (local path or URL) for image-to-world generation
+        #[arg(long, alias = "image")]
+        input: Option<String>,
+        /// Model: marble-1.0-draft, marble-1.0, marble-1.1, marble-1.1-plus
+        #[arg(long, default_value = "marble-1.1")]
+        model: String,
+        /// Display name for the generated world
+        #[arg(long)]
+        display_name: Option<String>,
+        /// Output directory
+        #[arg(long, default_value = ".")]
+        output_dir: String,
+    },
     /// Batch generate multiple assets with shared parameters
     Batch {
         /// Asset type (image, video, audio, etc.)
@@ -864,6 +882,46 @@ fn describe_schemas() -> Value {
                             "output_url": { "type": "string" },
                             "output_data": { "type": "string" },
                             "metadata": { "type": "object" },
+                            "cost_usd": { "type": "number" },
+                            "elapsed_ms": { "type": "integer" },
+                            "local_path": { "type": "string" }
+                        }
+                    }
+                }
+            }
+        },
+        "generate.world": {
+            "input": {
+                "type": "object",
+                "required": ["prompt"],
+                "properties": {
+                    "prompt": { "type": "string", "description": "Text prompt describing the 3D environment to generate" },
+                    "input": { "type": "string", "description": "Input image (local path or URL) for image-to-world generation" },
+                    "model": { "type": "string", "enum": ["marble-1.0-draft", "marble-1.0", "marble-1.1", "marble-1.1-plus"], "default": "marble-1.1" },
+                    "display_name": { "type": "string", "description": "Display name for the generated world" },
+                    "output_dir": { "type": "string", "default": "." }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "ok": { "type": "boolean" },
+                    "command": { "const": "generate" },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "provider_id": { "type": "string" },
+                            "output_url": { "type": "string" },
+                            "output_data": { "type": "string" },
+                            "metadata": {
+                                "type": "object",
+                                "properties": {
+                                    "world_id": { "type": "string" },
+                                    "model": { "type": "string" },
+                                    "operation_id": { "type": "string" },
+                                    "assets": { "type": "object", "description": "Download URLs for spz (100k/500k/full_res), collider GLB, panorama" }
+                                }
+                            },
                             "cost_usd": { "type": "number" },
                             "elapsed_ms": { "type": "integer" },
                             "local_path": { "type": "string" }

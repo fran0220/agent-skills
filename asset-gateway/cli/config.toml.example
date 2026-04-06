@@ -28,3 +28,7 @@ token = ""
 # PixelEngine — sprite animation generation
 [pixelengine]
 key = ""
+
+# WorldLabs Marble — 3D world/environment generation
+[worldlabs]
+key = ""

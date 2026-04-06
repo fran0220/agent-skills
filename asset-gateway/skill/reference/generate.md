@@ -95,6 +95,38 @@ asset-gateway generate tts --prompt "Welcome to the launch event." --voice Ethan
 asset-gateway generate tts --prompt "This is the emergency broadcast." --instructions "calm, authoritative, slow pacing" --output-dir ./assets
 ```
 
+## World
+
+Generate photorealistic 3D environments (Gaussian Splat scenes) using WorldLabs Marble API. Outputs `.spz` file with collider mesh and panorama URLs in metadata.
+
+### Text to World
+
+```bash
+asset-gateway generate world --prompt "a medieval tavern with wooden beams and a roaring fireplace" --output-dir ./assets
+```
+
+### Image to World
+
+```bash
+asset-gateway generate world --prompt "convert this reference into a 3D scene" --input ./reference.jpg --output-dir ./assets
+asset-gateway generate world --prompt "photorealistic interior" --input https://example.com/photo.jpg --output-dir ./assets
+```
+
+### Model Selection
+
+| Model | Speed | Quality | Use Case |
+|-------|-------|---------|----------|
+| `marble-1.0-draft` | Fast | Draft | Previews, iteration |
+| `marble-1.0` | Medium | Good | Standard generation |
+| `marble-1.1` (default) | Medium | High | Production quality |
+| `marble-1.1-plus` | Slow | Highest | Largest worlds |
+
+```bash
+asset-gateway generate world --prompt "sprawling cityscape" --model marble-1.1-plus --output-dir ./assets
+```
+
+> Generation takes ~3-8 minutes. The response metadata includes download URLs for all resolution tiers (100k/500k/full_res SPZ), collider GLB, and panorama image.
+
 ## Text
 
 Single-shot LLM text generation.

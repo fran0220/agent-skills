@@ -21,6 +21,8 @@ pub struct ConfigFile {
     pub jimeng: JimengSection,
     #[serde(default)]
     pub pixelengine: ProviderKeySection,
+    #[serde(default)]
+    pub worldlabs: ProviderKeySection,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -82,7 +84,9 @@ pub struct AppConfig {
     pub dashscope_key: String,
 
     // Grok2API (direct connection to grok2api-go reverse proxy)
+    #[allow(dead_code)]
     pub grok2api_url: String,
+    #[allow(dead_code)]
     pub grok2api_key: String,
 
     // Jimeng video+image (ByteDance) — jimeng-api gateway
@@ -91,6 +95,9 @@ pub struct AppConfig {
 
     // PixelEngine — sprite animation generation
     pub pixelengine_key: String,
+
+    // WorldLabs Marble — 3D world/environment generation
+    pub worldlabs_key: String,
 }
 
 impl AppConfig {
@@ -205,6 +212,12 @@ impl AppConfig {
             pixelengine_key: env_or(
                 "ASSET_GATEWAY_PIXELENGINE_KEY",
                 file_cfg.pixelengine.key.as_deref(),
+                "",
+            ),
+
+            worldlabs_key: env_or(
+                "ASSET_GATEWAY_WORLDLABS_KEY",
+                file_cfg.worldlabs.key.as_deref(),
                 "",
             ),
         })

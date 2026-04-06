@@ -89,6 +89,7 @@ impl PixelEngineProvider {
     }
 
     /// Call POST /enhance-prompt to rewrite a prompt for the generation model.
+    #[allow(dead_code)]
     pub async fn enhance_prompt(
         &self,
         prompt: &str,

@@ -37,8 +37,11 @@
 | 文本 | LLM Proxy | `generate text` |
 | 图片后处理 | 内置管线 | `process crop` / `resize` |
 | 精灵动画 | PixelEngine | `generate sprite` |
+| 3D 世界/环境 | WorldLabs Marble | `generate world` |
 
 精灵动画通过 PixelEngine AI 一步完成：`generate sprite` 接受静态图片 + 动作描述，输出 spritesheet/webp/gif。
+
+3D 世界通过 WorldLabs Marble API 生成：`generate world` 接受文本或图片输入，输出 Gaussian Splat (.spz) + 碰撞网格 (.glb) + 全景图。
 
 ## 技术栈选择
 
@@ -101,6 +104,9 @@ token = "..."
 
 [pixelengine]
 key = "pe_sk_..."
+
+[worldlabs]
+key = "..."
 ```
 
 ### 部署流程
@@ -124,7 +130,7 @@ asset-gateway auth set <token>
 | 命令组 | 子命令 |
 |--------|--------|
 | `auth` | `set`, `status`, `clear` |
-| `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text` |
+| `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text`, `world` |
 | `generate` | `batch`（并行线程规划中，当前分支未合入） |
 | `process` | `crop`, `resize` |
 | `process` | `compose`（并行线程规划中，当前分支未合入） |
@@ -148,9 +154,10 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 |--------|--------|------|:--------:|
 | `serve` | `--host --port --db --config` | 启动网关服务 | ✅ 完整 |
 | `auth` | `login`, `logout`, `whoami` | 认证入口 | ✅ 完整 |
-| `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text` | 资产生成 | ✅ 完整 |
+| `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text`, `world` | 资产生成 | ✅ 完整 |
 | `generate` | `batch` | 批量生成 + 可选自动拼合 | ⏳ 线程规格已明确，当前分支未合入 |
 | `generate` | `sprite` | 精灵动画生成（PixelEngine） | ✅ 完整 |
+| `generate` | `world` | 3D 世界/环境生成（WorldLabs Marble） | ✅ 完整 |
 | `process` | `crop`, `resize` | 图像后处理 | ✅ 完整 |
 | `process` | `compose` | 多图拼合 sprite sheet | ⏳ 线程规格已明确，当前分支未合入 |
 | `process3d` | `convert`, `texture`, `rig`, `animate`, `reduce`, `stylize`, `segment`, `prerigcheck`, `refine`, `import` | 3D 后处理管线 | ✅ 完整 |
@@ -194,6 +201,7 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | `elevenlabs` | Audio/Music | sound-generation（BGM/SFX）+ music-generation | ✅ 1.5s |
 | `tripo3d` | Model3d | 完整 3D 管线：text/image/multiview → model, texture, rig, animate, convert, reduce, stylize, segment, prerigcheck, refine, import | ✅ |
 | `pixelengine` | Sprite | 图片→动画精灵（pixel-engine-v1.1 像素画 / frame-engine-v1.1 HD），输出 spritesheet/webp/gif | ⬚ 待测试 |
+| `worldlabs` | World | WorldLabs Marble API：文本/图片→ Gaussian Splat 3D 世界，输出 SPZ + 碰撞 GLB + 全景图 | ⬚ 待测试 |
 
 > `llm_proxy` / `gemini_image` 通过 LLM proxy（api.xiaomao.chat）接入；`jimeng` 通过本地 jimeng-api Docker 容器（127.0.0.1:5100）接入；`qwen_tts` 使用独立 DashScope 国际站。
 
@@ -335,7 +343,8 @@ src/
 │   ├── jimeng.rs    (237)  Jimeng 图片 + 视频（Seedance VIP）
 │   ├── qwen_tts.rs   (548)  Qwen3-TTS：标准合成 + instruct + Voice Clone + Voice Design
 │   ├── elevenlabs.rs (251)  音频 / 音乐
-│   └── tripo3d.rs   (1045)  TripoClient + 全链路 3D 管线
+│   ├── tripo3d.rs   (1045)  TripoClient + 全链路 3D 管线
+│   └── worldlabs.rs (250)  WorldLabs Marble API — 3D 世界生成
 │
 ├── server/
 │   ├── mod.rs        (144)  ServerState + RwLock<AppConfig> + Provider 构建 + run()

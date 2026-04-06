@@ -84,6 +84,13 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         providers.push(Arc::new(pe));
     }
 
+    if !config.worldlabs_key.is_empty() {
+        let mut wl =
+            crate::providers::worldlabs::WorldLabsProvider::new(config.worldlabs_key.clone());
+        wl.id = "worldlabs".into();
+        providers.push(Arc::new(wl));
+    }
+
     if !config.dashscope_key.is_empty() {
         let mut qwen = crate::providers::qwen_tts::QwenTtsProvider::new(
             config.dashscope_url.clone(),

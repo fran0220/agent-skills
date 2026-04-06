@@ -14,6 +14,7 @@ pub(crate) fn infer_extension(asset_type: &str) -> &'static str {
         "model3d" => "glb",
         "text" => "txt",
         "sprite" => "png",
+        "world" => "spz",
         _ => "bin",
     }
 }
@@ -436,6 +437,30 @@ pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<
                 "sprite",
                 serde_json::json!({
                     "asset_type": "sprite",
+                    "prompt": prompt,
+                    "model": model,
+                    "input_file": input,
+                    "params": params,
+                }),
+                output_dir,
+            )
+        }
+        GenerateCommands::World {
+            prompt,
+            input,
+            model,
+            display_name,
+            output_dir,
+        } => {
+            let input = maybe_encode_local_input(input).await?;
+            let mut params = serde_json::json!({});
+            if let Some(name) = display_name {
+                params["display_name"] = serde_json::json!(name);
+            }
+            (
+                "world",
+                serde_json::json!({
+                    "asset_type": "world",
                     "prompt": prompt,
                     "model": model,
                     "input_file": input,

@@ -4,7 +4,7 @@ import { Command } from "commander";
 import { createContext, printError, printSuccess } from "./common.js";
 
 function inferExtension(assetType: string): string {
-  const map: Record<string, string> = { image: "png", audio: "mp3", music: "mp3", tts: "mp3", video: "mp4", model3d: "glb", text: "txt", sprite: "png" };
+  const map: Record<string, string> = { image: "png", audio: "mp3", music: "mp3", tts: "mp3", video: "mp4", model3d: "glb", text: "txt", sprite: "png", world: "spz" };
   return map[assetType] ?? "bin";
 }
 
@@ -454,6 +454,51 @@ export function createGenerateCommand(): Command {
           printSuccess("generate.sprite", data, ctx);
         } catch (error) {
           printError("generate.sprite", error);
+        }
+      })
+  );
+
+  command.addCommand(
+    new Command("world")
+      .description("Generate a 3D world/environment using WorldLabs Marble")
+      .requiredOption("--prompt <text>", "Text prompt describing the environment")
+      .option("--input <path>", "Input image (local path or URL) for image-to-world")
+      .option("--model <model>", "Model: marble-1.0-draft, marble-1.0, marble-1.1, marble-1.1-plus", "marble-1.1")
+      .option("--display-name <name>", "Display name for the generated world")
+      .option("--output-dir <dir>", "Directory to save output", ".")
+      .action(async function (options) {
+        try {
+          const ctx = createContext(this);
+          const params: Record<string, unknown> = {};
+          if (options.displayName) params.display_name = options.displayName;
+
+          // Encode local file to data URI if needed
+          let inputFile: string | undefined;
+          if (options.input) {
+            if (existsSync(options.input)) {
+              const ext = extname(options.input).toLowerCase();
+              const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : "image/png";
+              const b64 = readFileSync(options.input).toString("base64");
+              inputFile = `data:${mime};base64,${b64}`;
+            } else {
+              inputFile = options.input;
+            }
+          }
+
+          const body: Record<string, unknown> = {
+            asset_type: "world",
+            prompt: options.prompt,
+            model: options.model,
+            params,
+          };
+          if (inputFile) body.input_file = inputFile;
+
+          const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
+          const localPath = await saveOutput(data, "world", options.outputDir);
+          if (localPath) data.local_path = localPath;
+          printSuccess("generate.world", data, ctx);
+        } catch (error) {
+          printError("generate.world", error);
         }
       })
   );

@@ -29,6 +29,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Voice Identity | Voice clone, voice design | `voice clone`, `voice design` |
 | 3D Model | Text/image → 3D, rig/animate/convert | `generate model`, `process3d ...` |
 | Sprite Animation | Image → animated spritesheet/webp/gif via PixelEngine AI | `generate sprite` |
+| 3D World | Text/image → photorealistic 3D environment (Gaussian Splat) | `generate world` |
 | Text | Single-shot LLM text generation | `generate text` |
 | Image/Video Tools | Crop, resize, compose, extract frames, remove background | `process ...` |
 
@@ -58,6 +59,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Extract video frames | `process extract-frames` | `--input`, `--count`, `--output-dir` |
 | Remove background | `process remove-bg` | `--input <files...>`, `--output-dir` |
 | Animate a sprite | `generate sprite` | `--prompt`, `--input <image>`, `--output-dir` |
+| Generate 3D world | `generate world` | `--prompt`, `--input <image>`, `--model`, `--output-dir` |
 | Generate text | `generate text` | `--prompt`, `--model`, `--output-dir` |
 
 All `generate`, `process`, `process3d` commands should include `--output-dir` to save output locally.
@@ -77,6 +79,7 @@ For detailed usage, examples, and workflows, read the reference files:
 - **reference/process.md** — Crop, resize, compose, extract-frames, remove-bg
 - **reference/3d-pipeline.md** — 3D model generation and process3d chain
 - **reference/sprite-workflow.md** — Full sprite animation pipeline (recommended approach)
+- **reference/world-workflow.md** — 3D world generation with WorldLabs Marble
 
 ## Schema Introspection
 
