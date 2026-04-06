@@ -18,11 +18,12 @@ defaults:
 
 env:
   CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: true
 
 jobs:
   check:
     name: Check & Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -34,8 +35,8 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             asset-gateway/cli/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('asset-gateway/cli/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-22.04-cargo-${{ hashFiles('asset-gateway/cli/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-22.04-cargo-
       - run: cargo check --release
       - run: cargo test --lib
       - run: cargo clippy -- -D warnings 2>/dev/null || cargo clippy
@@ -44,7 +45,7 @@ jobs:
   deploy:
     name: Deploy (jpdata)
     needs: check
-    runs-on: ubuntu-22.04  # Match jpdata's glibc 2.35 (Ubuntu 22.04)
+    runs-on: ubuntu-22.04
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v5
@@ -57,10 +58,8 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             asset-gateway/cli/target/
-          key: ${{ runner.os }}-cargo-deploy-${{ hashFiles('asset-gateway/cli/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-deploy-
-            ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-22.04-cargo-${{ hashFiles('asset-gateway/cli/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-22.04-cargo-
 
       - name: Build release binary
         run: cargo build --release
