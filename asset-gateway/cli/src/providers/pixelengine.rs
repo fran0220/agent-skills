@@ -102,11 +102,32 @@ impl AssetProvider for PixelEngineProvider {
             anyhow::bail!("PixelEngine requires a non-empty prompt");
         }
 
-        let image = req
+        let image_raw = req
             .input_file
             .as_deref()
             .or_else(|| req.params.get("image").and_then(Value::as_str))
             .ok_or_else(|| anyhow::anyhow!("PixelEngine requires an input image (input_file or params.image)"))?;
+
+        // PixelEngine API requires base64 or data URL — convert URLs/paths to base64
+        let image_b64 = if image_raw.starts_with("data:") || (!image_raw.contains("://") && !image_raw.starts_with("http")) {
+            // Already base64 data URI or raw base64
+            image_raw.to_string()
+        } else {
+            // URL — download and convert to base64
+            tracing::debug!(url = image_raw, "downloading image for PixelEngine");
+            let dl = self.http.get(image_raw).send().await?;
+            if !dl.status().is_success() {
+                anyhow::bail!("failed to download input image: HTTP {}", dl.status());
+            }
+            let content_type = dl
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("image/png")
+                .to_string();
+            let bytes = dl.bytes().await?;
+            format!("data:{};base64,{}", content_type, STANDARD.encode(&bytes))
+        };
 
         let model = req
             .model
@@ -121,7 +142,7 @@ impl AssetProvider for PixelEngineProvider {
             .unwrap_or("spritesheet");
 
         let mut body = json!({
-            "image": image,
+            "image": image_b64,
             "prompt": prompt,
             "model": model,
             "output_format": output_format,
