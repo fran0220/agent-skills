@@ -146,7 +146,11 @@ impl SpriteForgeProvider {
         let body = json!({
             "contents": [{ "role": "user", "parts": parts }],
             "generationConfig": {
-                "responseModalities": ["IMAGE", "TEXT"]
+                "responseModalities": ["IMAGE", "TEXT"],
+                "imageConfig": {
+                    "imageSize": "1K",
+                    "aspectRatio": "1:1"
+                }
             }
         });
 
