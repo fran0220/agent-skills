@@ -118,7 +118,9 @@ impl SpriteForgeProvider {
         reference_image: Option<(&[u8], &str)>,
     ) -> anyhow::Result<Vec<u8>> {
         if reference_image.is_some() {
-            tracing::warn!("Grok image API does not support image input; proceeding without reference image");
+            tracing::warn!(
+                "Grok image API does not support image input; proceeding without reference image"
+            );
         }
 
         let body = json!({
