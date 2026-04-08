@@ -47,7 +47,7 @@ impl SpriteForgeProvider {
             id: "spriteforge".into(),
             proxy_url,
             proxy_key,
-            llm_model: "gemini-3-flash-preview".into(),
+            llm_model: "grok-4.1-fast".into(),
             gemini_model: "gemini-3.1-flash-image-preview".into(),
             http,
         }
@@ -83,6 +83,7 @@ impl SpriteForgeProvider {
         let body = json!({
             "model": self.llm_model,
             "max_tokens": 2000,
+            "stream": false,
             "messages": [
                 { "role": "system", "content": SPRITE_PROMPT_SYSTEM },
                 { "role": "user", "content": user_content }
