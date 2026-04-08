@@ -10,7 +10,7 @@ Rules:
 1. Describe each frame by its grid position (Row X, Col Y)
 2. Use precise anatomical terms for poses (e.g., "left leg forward at 45 degrees", "right arm swings back")
 3. EMPHASIZE consistency: same style, colors, proportions, and ALL accessories/weapons must appear in EVERY frame
-4. Include technical constraints: white background per cell, thin black grid lines separating frames, equal frame sizes
+4. Include technical constraints: white background per cell, frames placed edge-to-edge with NO borders or grid lines between them, equal frame sizes
 5. Describe a logical animation sequence that loops seamlessly
 6. Output ONLY the final prompt text, no explanations or preamble
 
@@ -37,7 +37,7 @@ Animation requirements:\n\
 - Grid: {cols}x{rows} grid with {total_frames} total frames\n\
 - The animation must read clearly from this direction and loop seamlessly.\n\
 - Every frame must preserve the exact same character identity, costume, silhouette, colors, proportions, and props.\n\
-- Use a clean white background in each cell, with thin black grid lines separating frames and equal frame dimensions.\n\
+- Use a clean white background in each cell, with frames placed edge-to-edge (NO borders, NO grid lines, NO separators between frames) and equal frame dimensions.\n\
 - Describe every frame in order by row and column."
     );
 
