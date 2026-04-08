@@ -163,38 +163,32 @@ pub enum GenerateCommands {
         #[arg(long, default_value = ".")]
         output_dir: String,
     },
-    /// Animate a sprite image using PixelEngine
+    /// Generate sprite animation using SpriteForge AI
     Sprite {
-        /// Animation prompt describing the motion
+        /// Character description
         #[arg(long)]
         prompt: String,
-        /// Input image (local path or URL) — the character/sprite to animate
+        /// Reference image (local path or URL, optional)
         #[arg(long)]
-        input: String,
-        /// Model: pixel-engine-v1.1 (pixel art ≤256px) or frame-engine-v1.1 (HD 256-2048px)
-        #[arg(long, default_value = "pixel-engine-v1.1")]
-        model: String,
-        /// Number of animation frames (even integer, 2-16 for pixel, 2-24 for HD)
-        #[arg(long, default_value = "8")]
-        output_frames: u32,
-        /// Output format: spritesheet, webp, gif
+        input: Option<String>,
+        /// Animation type (e.g. idle, walk, run, attack, death, jump, cast, dance, or any custom action)
+        #[arg(long, default_value = "idle")]
+        animation_type: String,
+        /// Facing direction: right, left, front, back
+        #[arg(long, default_value = "right")]
+        direction: String,
+        /// Grid size: 2x2, 3x3, 4x4
+        #[arg(long, default_value = "3x3")]
+        grid_size: String,
+        /// Visual style (e.g. "pixel art", "hand-drawn", "chibi")
+        #[arg(long)]
+        style: Option<String>,
+        /// Output format: spritesheet (PNG) or gif
         #[arg(long, default_value = "spritesheet")]
         output_format: String,
-        /// Pixel palette color count (2-256, pixel model only)
-        #[arg(long)]
-        colors: Option<u32>,
-        /// Negative prompt
-        #[arg(long)]
-        negative_prompt: Option<String>,
-        /// Seed for reproducibility
-        #[arg(long)]
-        seed: Option<u64>,
-        /// Matte color (6-char hex)
-        #[arg(long)]
-        matte_color: Option<String>,
-        /// Enhance the prompt before generation (free, recommended)
-        #[arg(long)]
-        enhance_prompt: bool,
+        /// GIF frame rate (only for gif output)
+        #[arg(long, default_value = "8")]
+        fps: u32,
         /// Output directory
         #[arg(long, default_value = ".")]
         output_dir: String,

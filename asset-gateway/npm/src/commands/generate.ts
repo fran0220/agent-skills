@@ -407,33 +407,30 @@ export function createGenerateCommand(): Command {
 
   command.addCommand(
     new Command("sprite")
-      .description("Animate a sprite image using PixelEngine AI")
-      .requiredOption("--prompt <text>", "Animation prompt describing the desired motion")
-      .requiredOption("--input <path>", "Input sprite image (local path or URL)")
-      .option("--model <model>", "Model: pixel-engine-v1.1 or frame-engine-v1.1", "pixel-engine-v1.1")
-      .option("--output-frames <n>", "Number of animation frames (even integer)", "8")
-      .option("--output-format <fmt>", "Output format: spritesheet, webp, gif", "spritesheet")
-      .option("--colors <n>", "Pixel palette color count (2-256, pixel model only)")
-      .option("--negative-prompt <text>", "What to avoid in the generation")
-      .option("--seed <n>", "Seed for reproducibility")
-      .option("--matte-color <hex>", "Matte color for alpha flattening (6-char hex)")
-      .option("--enhance-prompt", "Enhance the prompt before generation")
+      .description("Generate sprite animation using SpriteForge AI")
+      .requiredOption("--prompt <text>", "Character description")
+      .option("--input <path>", "Reference image (local path or URL)")
+      .option("--animation-type <type>", "Animation type (idle, walk, run, attack, death, jump, cast, dance, or any custom)", "idle")
+      .option("--direction <dir>", "Facing direction: right, left, front, back", "right")
+      .option("--grid-size <size>", "Grid size: 2x2, 3x3, 4x4", "3x3")
+      .option("--style <style>", "Visual style (e.g. pixel art, hand-drawn, chibi)")
+      .option("--output-format <fmt>", "Output format: spritesheet or gif", "spritesheet")
+      .option("--fps <n>", "GIF frame rate", "8")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
           const ctx = createContext(this);
           const params: Record<string, unknown> = {
-            output_frames: Number(options.outputFrames),
+            animation_type: options.animationType,
+            direction: options.direction,
+            grid_size: options.gridSize,
             output_format: options.outputFormat,
+            fps: Number(options.fps),
           };
-          if (options.colors) params.pixel_config = { colors: Number(options.colors) };
-          if (options.negativePrompt) params.negative_prompt = options.negativePrompt;
-          if (options.seed) params.seed = Number(options.seed);
-          if (options.matteColor) params.matte_color = options.matteColor;
+          if (options.style) params.style = options.style;
 
-          // Encode local file to data URI for PixelEngine (requires base64)
-          let inputFile = options.input as string;
-          if (existsSync(inputFile)) {
+          let inputFile = options.input as string | undefined;
+          if (inputFile && existsSync(inputFile)) {
             const ext = extname(inputFile).toLowerCase();
             const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : "image/png";
             const b64 = readFileSync(inputFile).toString("base64");
@@ -443,10 +440,9 @@ export function createGenerateCommand(): Command {
           const body: Record<string, unknown> = {
             asset_type: "sprite",
             prompt: options.prompt,
-            model: options.model,
-            input_file: inputFile,
             params,
           };
+          if (inputFile) body.input_file = inputFile;
 
           const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
           const localPath = await saveOutput(data, "sprite", options.outputDir);

@@ -406,39 +406,30 @@ pub async fn handle(cmd: GenerateCommands, gateway_url: &str) -> anyhow::Result<
         GenerateCommands::Sprite {
             prompt,
             input,
-            model,
-            output_frames,
+            animation_type,
+            direction,
+            grid_size,
+            style,
             output_format,
-            colors,
-            negative_prompt,
-            seed,
-            matte_color,
-            enhance_prompt: _,
+            fps,
             output_dir,
         } => {
-            let input = maybe_encode_local_input(Some(input)).await?;
+            let input = maybe_encode_local_input(input).await?;
             let mut params = serde_json::json!({
-                "output_frames": output_frames,
+                "animation_type": animation_type,
+                "direction": direction,
+                "grid_size": grid_size,
                 "output_format": output_format,
+                "fps": fps,
             });
-            if let Some(colors) = colors {
-                params["pixel_config"] = serde_json::json!({ "colors": colors });
-            }
-            if let Some(np) = negative_prompt {
-                params["negative_prompt"] = serde_json::json!(np);
-            }
-            if let Some(s) = seed {
-                params["seed"] = serde_json::json!(s);
-            }
-            if let Some(mc) = matte_color {
-                params["matte_color"] = serde_json::json!(mc);
+            if let Some(s) = style {
+                params["style"] = serde_json::json!(s);
             }
             (
                 "sprite",
                 serde_json::json!({
                     "asset_type": "sprite",
                     "prompt": prompt,
-                    "model": model,
                     "input_file": input,
                     "params": params,
                 }),

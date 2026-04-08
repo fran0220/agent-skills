@@ -50,6 +50,13 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         );
         gpt.id = "gpt_image".into();
         providers.push(Arc::new(gpt));
+
+        // SpriteForge — sprite animation (reuses proxy credentials)
+        let sf = crate::providers::spriteforge::SpriteForgeProvider::new(
+            config.proxy_url.clone(),
+            config.proxy_key.clone(),
+        );
+        providers.push(Arc::new(sf));
     }
 
     if !config.jimeng_token.is_empty() && !config.jimeng_url.is_empty() {
@@ -75,13 +82,6 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
             crate::providers::tripo3d::Tripo3dProvider::new(config.tripo3d_keys.clone());
         tripo.id = "tripo3d".into();
         providers.push(Arc::new(tripo));
-    }
-
-    if !config.pixelengine_key.is_empty() {
-        let mut pe =
-            crate::providers::pixelengine::PixelEngineProvider::new(config.pixelengine_key.clone());
-        pe.id = "pixelengine".into();
-        providers.push(Arc::new(pe));
     }
 
     if !config.worldlabs_key.is_empty() {
