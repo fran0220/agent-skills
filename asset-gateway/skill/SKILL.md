@@ -24,7 +24,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Image | Generate, edit, reference, inpaint, restyle, expand | `generate image` |
 | Video | Image-to-video (Jimeng Seedance 2.0 VIP) | `generate video` |
 | Audio | SFX, BGM | `generate audio` |
-| Music | Music generation | `generate music` |
+| Music | Music generation (Lyria 3) | `generate music` |
 | Speech | TTS, multilingual, instructed style | `generate tts` |
 | Voice Identity | Voice clone, voice design | `voice clone`, `voice design` |
 | 3D Model | Text/image → 3D, rig/animate/convert | `generate model`, `process3d ...` |
@@ -58,7 +58,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Compose sprite sheet | `process compose` | `--input <files...>`, `--direction`, `--output-dir` |
 | Extract video frames | `process extract-frames` | `--input`, `--count`, `--output-dir` |
 | Remove background | `process remove-bg` | `--input <files...>`, `--output-dir` |
-| Animate a sprite | `generate sprite` | `--prompt`, `--animation-type`, `--grid-size`, `--output-dir` |
+| Animate a sprite | `generate sprite` | `--prompt`, `--animation-type`, `--duration`, `--output-dir` |
 | Generate 3D world | `generate world` | `--prompt`, `--input <image>`, `--model`, `--output-dir` |
 | Generate text | `generate text` | `--prompt`, `--model`, `--output-dir` |
 

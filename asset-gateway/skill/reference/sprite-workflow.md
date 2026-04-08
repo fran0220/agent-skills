@@ -1,19 +1,19 @@
 # Sprite Animation Workflow
 
-一条命令生成精灵动画：文本描述角色 → SpriteForge 自动完成 prompt 增强 → Gemini 生图 → 后处理输出 spritesheet/GIF。
+一条命令生成精灵动画：文本/图片 → Grok 视频生成（2 秒） → ffmpeg 逐帧提取 → 白色背景移除 → spritesheet/GIF。
 
 ## 概览
 
-SpriteForge 是自包含的精灵动画生成管线，无需预先准备输入图。核心流程：
+SpriteForge 基于 **xAI Grok 视频生成**（`grok-imagine-video`），直接从文本或参考图生成动画视频，再通过后处理提取帧并输出 spritesheet 或 GIF。核心流程：
 
-1. **文本描述** → 你提供角色描述（`--prompt`）和动画类型（`--animation-type`）
-2. **LLM Prompt 增强** → 自动将简短描述扩展为高质量生成 prompt
-3. **Gemini 图像生成** → 生成动画帧
-4. **后处理** → 输出 spritesheet PNG 或 animated GIF
+1. **输入** → 文本描述（`--prompt`）+ 可选参考图（`--input`）
+2. **Grok 视频生成** → 生成 2 秒动画视频（默认 8fps = 16 帧，一个完整动画循环）
+3. **帧提取** → ffmpeg 按指定帧率从视频中提取帧序列
+4. **后处理** → 白色背景移除 → 输出透明背景 spritesheet PNG 或 animated GIF
 
-> 与旧版 PixelEngine 不同，SpriteForge **不再需要单独的输入图步骤**。prompt 描述的是**角色外观**，动作由 `--animation-type` 控制。
+> 与旧版 Gemini 网格图方案不同，SpriteForge 现在**直接生成视频**——动画流畅度和角色一致性大幅提升。无需 LLM prompt 增强，prompt 直接传给 Grok。
 
-## 基本用法（单条命令）
+## 基本用法（Text-to-Sprite）
 
 ```bash
 asset-gateway generate sprite \
@@ -22,33 +22,35 @@ asset-gateway generate sprite \
   --output-dir ./sprites
 ```
 
-输出：`sprites/sprite_<timestamp>.png` — 水平排列的 spritesheet（如 6 帧 × 256px = 1536×256）。
+输出：`sprites/sprite_<timestamp>.png` — 水平排列的 spritesheet（16 帧透明背景 PNG）。
 
-**关键区别：**
+**关键点：**
 - `--prompt` 描述**角色外观**，不描述动作序列
-- `--animation-type` 控制动画类型（walk、attack 等）
-- 不需要 `--input`，SpriteForge 自动生成角色图
+- `--animation-type` 控制动画类型（walk、run、attack 等）
+- 无需 LLM 增强，prompt 直接发送给 Grok 视频模型
+- 生成耗时约 **15-20 秒**
 
-## 使用参考图（可选两步流程）
+## 使用参考图（Image-to-Sprite）
 
-如果你已有角色概念图，可以作为参考传入：
+传入参考图保持角色外观一致性，适合为同一角色生成多套动画：
 
 ```bash
-# Step 1（可选）: 生成或准备参考图
-asset-gateway generate image \
-  --prompt "pixel art knight in silver armor, idle pose, facing right, solid green background" \
-  --size 256x256 \
-  --output-dir ./sprites
-
-# Step 2: 用参考图生成动画
+# 用已有角色图生成走路动画
 asset-gateway generate sprite \
   --prompt "knight in silver armor with blue cape" \
   --animation-type walk \
-  --input ./sprites/image_*.png \
+  --input ./character_concept.png \
+  --output-dir ./sprites
+
+# 同一角色生成攻击动画
+asset-gateway generate sprite \
+  --prompt "knight in silver armor with blue cape" \
+  --animation-type attack \
+  --input ./character_concept.png \
   --output-dir ./sprites
 ```
 
-> 参考图帮助 SpriteForge 保持角色外观一致性，但不是必须的。
+`--input` 支持本地路径和 URL。Grok 会以参考图为基准生成角色动画视频（image-to-video）。
 
 ## 动画类型
 
@@ -56,16 +58,16 @@ asset-gateway generate sprite \
 
 ### 常用预设
 
-| 类型 | 说明 | 推荐帧数 |
-|------|------|---------|
-| `idle` | 待机呼吸 | 4-6 |
-| `walk` | 走路循环 | 6-8 |
-| `run` | 跑步循环 | 6-8 |
-| `attack` | 攻击挥砍 | 8-10 |
-| `death` | 死亡倒地 | 6-8 |
-| `jump` | 起跳→滞空→落地 | 6-8 |
-| `cast` | 施法释放魔法 | 8-10 |
-| `dance` | 跳舞循环 | 8-10 |
+| 类型 | 说明 |
+|------|------|
+| `walk`（默认） | 走路循环 |
+| `run` | 跑步循环 |
+| `idle` | 待机呼吸 |
+| `attack` | 攻击挥砍 |
+| `death` | 死亡倒地 |
+| `jump` | 起跳→滞空→落地 |
+| `cast` | 施法释放魔法 |
+| `dance` | 跳舞循环 |
 
 ### 自定义动画
 
@@ -74,34 +76,30 @@ asset-gateway generate sprite \
 ```bash
 # 自定义动画类型
 asset-gateway generate sprite \
-  --prompt "pixel art wizard with purple robe" \
+  --prompt "wizard with purple robe" \
   --animation-type "charge up energy and release lightning bolt" \
   --output-dir ./sprites
 
 asset-gateway generate sprite \
-  --prompt "pixel art slime monster" \
+  --prompt "slime monster" \
   --animation-type "split into two smaller slimes" \
+  --duration 4 \
   --output-dir ./sprites
 ```
 
-## 网格尺寸
+> 复杂动画建议增加 `--duration`，更长的视频能容纳更多动作细节。
 
-通过 `--grid-size` 控制每帧的像素尺寸。
+## 视频时长
 
-| Grid Size | 适用 | 说明 |
-|-----------|------|------|
-| `32x32` | 小型 NPC、道具 | 经典像素尺寸 |
-| `64x64` | 标准角色 | 平衡细节与性能 |
-| `128x128` | 大型角色、Boss | 高细节 |
-| `256x256`（默认） | 展示/高清 | 最大细节 |
+通过 `--duration` 控制 Grok 生成的视频时长（秒），直接影响帧数。
 
-```bash
-asset-gateway generate sprite \
-  --prompt "pixel art goblin with dagger" \
-  --animation-type attack \
-  --grid-size 64x64 \
-  --output-dir ./sprites
-```
+| Duration | FPS=8 帧数 | 适用 | 费用 |
+|----------|-----------|------|------|
+| `1` | 8 帧 | 简单循环（idle、blink） | $0.05 |
+| `2`（默认） | 16 帧 | 标准动画（walk、run） | $0.10 |
+| `4` | 32 帧 | 复杂动画（attack combo） | $0.20 |
+| `8` | 64 帧 | 长序列（death、cutscene） | $0.40 |
+| `15`（最大） | 120 帧 | 超长序列 | $0.75 |
 
 ## GIF 输出
 
@@ -109,7 +107,7 @@ asset-gateway generate sprite \
 
 ```bash
 asset-gateway generate sprite \
-  --prompt "pixel art cat with witch hat" \
+  --prompt "cat with witch hat" \
   --animation-type idle \
   --output-format gif \
   --fps 10 \
@@ -118,25 +116,27 @@ asset-gateway generate sprite \
 
 输出：`sprites/sprite_<timestamp>.gif` — 可直接作为聊天表情或预览动画。
 
-> GIF 适合预览和分享，游戏引擎中建议使用 spritesheet PNG。
+> GIF 适合预览和分享，游戏引擎中建议使用 spritesheet PNG（透明背景）。
 
 ## 风格选项
 
-通过 `--style` 指定画面风格：
+通过 `--style` 指定画面风格。SpriteForge 是**风格无关的**，任何视觉风格都可以：
 
 | Style | 效果 |
 |-------|------|
-| `pixel`（默认） | 经典像素画，清晰边缘 |
-| `retro` | 复古 8-bit / 16-bit 风格 |
-| `modern` | 现代像素画，渐变和光影 |
+| `pixel art` | 经典像素画 |
+| `realistic` | 写实风格 |
+| `cartoon` | 卡通风格 |
+| `anime` | 日系动画风格 |
 | `chibi` | Q 版大头角色 |
+| `watercolor` | 水彩画风 |
+
+也可以在 `--prompt` 中直接描述风格，效果等价：
 
 ```bash
-asset-gateway generate sprite \
-  --prompt "warrior with flaming sword" \
-  --animation-type idle \
-  --style chibi \
-  --output-dir ./sprites
+# 两种方式等价
+asset-gateway generate sprite --prompt "knight" --style "pixel art"
+asset-gateway generate sprite --prompt "pixel art knight"
 ```
 
 ## 完整参数
@@ -144,12 +144,12 @@ asset-gateway generate sprite \
 | Flag | Default | 说明 |
 |------|---------|------|
 | `--prompt` | 必填 | **角色外观描述**（不描述动作） |
-| `--animation-type` | `idle` | 动画类型（预设或自定义文本） |
-| `--input` | — | 参考图（可选，本地路径或 URL） |
-| `--output-format` | `spritesheet` | 输出格式：`spritesheet`（PNG）或 `gif` |
-| `--grid-size` | `256x256` | 每帧像素尺寸 |
-| `--style` | `pixel` | 画面风格 |
-| `--fps` | `8` | GIF 帧率 |
+| `--animation-type` | `walk` | 动画类型（预设或自定义文本） |
+| `--input` | — | 参考图（可选，本地路径或 URL，用于 image-to-video） |
+| `--output-format` | `spritesheet` | 输出格式：`spritesheet`（透明 PNG）或 `gif` |
+| `--duration` | `2` | 视频时长（秒），范围 1-15 |
+| `--style` | — | 视觉风格（pixel art, realistic, anime 等） |
+| `--fps` | `8` | 帧提取率（每秒提取帧数） |
 | `--direction` | `right` | 角色朝向 |
 | `--output-dir` | `.` | 输出目录 |
 
@@ -159,8 +159,10 @@ asset-gateway generate sprite \
 
 ```bash
 asset-gateway generate sprite \
-  --prompt "pixel art mage in dark blue robe, holding glowing staff" \
+  --prompt "mage in dark blue robe, holding glowing staff" \
   --animation-type idle \
+  --style "pixel art" \
+  --duration 1 \
   --output-dir ./sprites
 ```
 
@@ -168,10 +170,9 @@ asset-gateway generate sprite \
 
 ```bash
 asset-gateway generate sprite \
-  --prompt "pixel art knight in silver armor with red plume helmet" \
+  --prompt "knight in silver armor with red plume helmet" \
   --animation-type walk \
   --direction right \
-  --grid-size 128x128 \
   --output-dir ./sprites
 ```
 
@@ -179,17 +180,40 @@ asset-gateway generate sprite \
 
 ```bash
 asset-gateway generate sprite \
-  --prompt "pixel art samurai with katana" \
+  --prompt "samurai with katana" \
   --animation-type attack \
-  --grid-size 128x128 \
+  --duration 3 \
   --output-dir ./sprites
+```
+
+### 写实风格角色
+
+```bash
+asset-gateway generate sprite \
+  --prompt "medieval warrior with chainmail and longsword" \
+  --animation-type run \
+  --style realistic \
+  --output-dir ./sprites
+```
+
+### 参考图多动画套组
+
+```bash
+# 先用参考图生成一套动画
+for anim in walk run idle attack death; do
+  asset-gateway generate sprite \
+    --prompt "robot with glowing blue eyes" \
+    --animation-type "$anim" \
+    --input ./robot_concept.png \
+    --output-dir ./sprites
+done
 ```
 
 ### GIF 表情贴图
 
 ```bash
 asset-gateway generate sprite \
-  --prompt "pixel art corgi puppy with tiny crown" \
+  --prompt "corgi puppy with tiny crown" \
   --animation-type dance \
   --output-format gif \
   --fps 12 \
@@ -199,15 +223,17 @@ asset-gateway generate sprite \
 
 ## 费用
 
-- 每次生成（LLM 增强 + Gemini 生图 + 后处理）：**~$0.05**
-- 无额外 credit 系统，按实际 API 调用计费
+- 基于 Grok 视频生成按秒计费：**$0.05/秒**
+- 默认 2 秒视频：**$0.10/sprite**
+- 后处理（ffmpeg + 背景移除）无额外费用
 
 ## Tips
 
 - **prompt 写角色，不写动作** — `--prompt` 只描述外观（服装、武器、颜色），动作由 `--animation-type` 控制
 - **自定义动画尽量具体** — `"charge up energy and release fireball"` 比 `"magic attack"` 效果好
-- **生成耗时 60-90 秒** — SpriteForge 需要完成 LLM 增强 → 生图 → 后处理全流程
+- **生成约 15-20 秒** — Grok 视频生成 + ffmpeg 后处理全流程
 - **效果不满意就重试** — 调整 prompt 措辞或换个 style，重试 2-3 次是正常的
-- **GIF 用于预览** — 最终游戏资源用 spritesheet PNG，GIF 仅用于快速预览和分享
-- **参考图提升一致性** — 如果需要同一角色多套动画，用参考图保持外观统一
-- **小尺寸更稳定** — 64x64 和 128x128 的像素画质量通常比 256x256 更一致
+- **GIF 用于预览** — 最终游戏资源用 spritesheet PNG（透明背景），GIF 仅用于快速预览和分享
+- **参考图提升一致性** — 如果需要同一角色多套动画，用 `--input` 传入参考图保持外观统一
+- **短时长更稳定** — 2 秒（默认）对大多数动画循环已经足够，复杂动画再加长
+- **风格无限制** — 像素画、写实、卡通、动漫皆可，不再局限于像素风格

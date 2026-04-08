@@ -73,11 +73,12 @@ asset-gateway generate audio --prompt "ambient medieval tavern" --type bgm --dur
 
 ## Music
 
-For generating full music segments.
+For generating full music segments. Powered by Google Lyria 3 — 30-second high-quality clips at $0.04/clip.
 
 ```bash
-asset-gateway generate music --prompt "uplifting indie game theme, warm synths" --duration 30 --output-dir ./assets
-asset-gateway generate music --prompt "lofi study beat with soft piano" --duration 45 --output-dir ./assets
+asset-gateway generate music --prompt "uplifting indie game theme, warm synths" --output-dir ./assets
+asset-gateway generate music --prompt "lofi study beat with soft piano, instrumental only" --output-dir ./assets
+asset-gateway generate music --prompt "8-bit chiptune battle theme in C minor" --output-dir ./assets
 ```
 
 ## TTS

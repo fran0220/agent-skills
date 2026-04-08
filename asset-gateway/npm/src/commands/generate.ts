@@ -407,12 +407,12 @@ export function createGenerateCommand(): Command {
 
   command.addCommand(
     new Command("sprite")
-      .description("Generate sprite animation using SpriteForge AI")
+      .description("Generate character animation using SpriteForge AI")
       .requiredOption("--prompt <text>", "Character description")
-      .option("--input <path>", "Reference image (local path or URL)")
-      .option("--animation-type <type>", "Animation type (idle, walk, run, attack, death, jump, cast, dance, or any custom)", "idle")
+      .option("--input <path>", "Reference image for character consistency (local path or URL)")
+      .option("--animation-type <type>", "Animation type (idle, walk, run, attack, death, jump, cast, dance, or any custom)", "walk")
       .option("--direction <dir>", "Facing direction: right, left, front, back", "right")
-      .option("--grid-size <size>", "Grid size: 2x2, 3x3, 4x4", "3x3")
+      .option("--duration <n>", "Video duration in seconds (1-15)", "2")
       .option("--style <style>", "Visual style (e.g. pixel art, hand-drawn, chibi)")
       .option("--output-format <fmt>", "Output format: spritesheet or gif", "spritesheet")
       .option("--fps <n>", "GIF frame rate", "8")
@@ -423,7 +423,7 @@ export function createGenerateCommand(): Command {
           const params: Record<string, unknown> = {
             animation_type: options.animationType,
             direction: options.direction,
-            grid_size: options.gridSize,
+            duration: Number(options.duration),
             output_format: options.outputFormat,
             fps: Number(options.fps),
           };
