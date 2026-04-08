@@ -51,11 +51,17 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         gpt.id = "gpt_image".into();
         providers.push(Arc::new(gpt));
 
-        // SpriteForge — sprite animation (LLM + image gen both via proxy)
-        let sf = crate::providers::spriteforge::SpriteForgeProvider::new(
+        // Lyria — music/audio generation (Google, replaces ElevenLabs for BGM)
+        let lyria = crate::providers::lyria::LyriaProvider::new(
             config.proxy_url.clone(),
             config.proxy_key.clone(),
         );
+        providers.push(Arc::new(lyria));
+    }
+
+    // SpriteForge — character animation via xAI video generation
+    if !config.xai_key.is_empty() {
+        let sf = crate::providers::spriteforge::SpriteForgeProvider::new(config.xai_key.clone());
         providers.push(Arc::new(sf));
     }
 

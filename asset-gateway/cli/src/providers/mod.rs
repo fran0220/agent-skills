@@ -4,6 +4,7 @@ pub mod gpt_image;
 pub mod grok_image;
 pub mod jimeng;
 pub mod llm_proxy;
+pub mod lyria;
 pub mod qwen_tts;
 pub mod spriteforge;
 pub mod tripo3d;

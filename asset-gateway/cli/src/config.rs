@@ -21,6 +21,8 @@ pub struct ConfigFile {
     pub jimeng: JimengSection,
     #[serde(default)]
     pub worldlabs: ProviderKeySection,
+    #[serde(default)]
+    pub xai: ProviderKeySection,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -93,6 +95,9 @@ pub struct AppConfig {
 
     // WorldLabs Marble — 3D world/environment generation
     pub worldlabs_key: String,
+
+    // xAI direct API — video generation (SpriteForge)
+    pub xai_key: String,
 }
 
 impl AppConfig {
@@ -209,6 +214,8 @@ impl AppConfig {
                 file_cfg.worldlabs.key.as_deref(),
                 "",
             ),
+
+            xai_key: env_or("ASSET_GATEWAY_XAI_KEY", file_cfg.xai.key.as_deref(), ""),
         })
     }
 

@@ -7,39 +7,21 @@ use image::codecs::gif::{GifEncoder, Repeat};
 use image::{DynamicImage, Frame, GenericImage, GenericImageView, ImageFormat, RgbaImage};
 use serde_json::{json, Value};
 
-const SPRITE_PROMPT_SYSTEM: &str = r#"You are an expert sprite sheet artist and prompt engineer for AI image generation.
-
-Your task is to generate a single, detailed prompt for an AI image generation model to create a sprite animation grid image.
-
-Rules:
-1. Start with a global description: the grid layout (e.g. "A 3x3 grid sprite sheet"), the character's full appearance (outfit, colors, proportions, accessories, weapons), the art style, and the animation type.
-2. Then describe EACH cell individually by its grid position. For each cell, write a self-contained visual description like a storyboard shot:
-   - "Row 1, Col 1: [character name/description] in [exact pose]. [specific anatomical details: limb positions, weight distribution, facial expression]. [any motion blur or action lines]."
-   - Use precise anatomical terms (e.g., "left leg forward at 45 degrees, right arm swings back, torso tilted 10 degrees forward").
-3. EMPHASIZE consistency: every cell must show the SAME character with identical outfit, colors, proportions, silhouette, and ALL accessories/weapons.
-4. Technical constraints: clean white background in each cell, frames placed edge-to-edge with NO borders, NO grid lines, NO separators between frames. All cells must be equal size.
-5. The animation sequence must loop seamlessly (last frame transitions naturally back to first frame).
-6. Output ONLY the final prompt text. No JSON, no preamble, no explanations.
-
-The prompt you generate will be sent directly to an image generation API as a single text prompt."#;
-
-/// SpriteForge provider — AI-driven sprite animation generation.
+/// SpriteForge provider — AI-driven character animation generation.
 ///
-/// Embeds the full sprite-forge pipeline:
-/// 1. LLM prompt enhancement via Gemini (`gemini-3.1-flash-lite-preview`)
-/// 2. Image generation via Gemini (`gemini-3.1-flash-image-preview`)
-/// 3. Grid post-processing into horizontal sprite sheet
+/// Pipeline:
+/// 1. Build prompt from user description (no LLM enhancement)
+/// 2. Generate short video via xAI Grok (`grok-imagine-video`)
+/// 3. Extract frames via ffmpeg
+/// 4. Remove white background → compose spritesheet or GIF
 pub struct SpriteForgeProvider {
     pub id: String,
-    proxy_url: String,
-    proxy_key: String,
-    llm_model: String,
-    image_model: String,
+    xai_key: String,
     http: reqwest::Client,
 }
 
 impl SpriteForgeProvider {
-    pub fn new(proxy_url: String, proxy_key: String) -> Self {
+    pub fn new(xai_key: String) -> Self {
         let http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(300))
@@ -47,158 +29,171 @@ impl SpriteForgeProvider {
             .expect("failed to build SpriteForge HTTP client");
         Self {
             id: "spriteforge".into(),
-            proxy_url,
-            proxy_key,
-            llm_model: "gemini-3.1-flash-lite-preview".into(),
-            image_model: "gemini-3.1-flash-image-preview".into(),
+            xai_key,
             http,
         }
     }
 
-    /// Call Gemini LLM to enhance a sprite prompt via generateContent API.
-    async fn enhance_prompt(
-        &self,
+    /// Build a video generation prompt from request parameters.
+    fn build_prompt(
         character_desc: &str,
         animation_type: &str,
         direction: &str,
-        grid_size: &str,
         style: Option<&str>,
-    ) -> anyhow::Result<String> {
-        let (cols, rows) = Self::parse_grid_size(grid_size);
-        let total_frames = cols * rows;
-        let mut user_content = format!(
-            "Create a detailed sprite sheet generation prompt for this character and animation.\n\n\
-             Character description:\n{character_desc}\n\n\
-             Animation requirements:\n\
-             - Animation type: {animation_type}\n\
-             - Facing direction: {direction}\n\
-             - Grid: {cols}x{rows} grid with {total_frames} total frames\n\
-             - The animation must read clearly from this direction and loop seamlessly.\n\
-             - Every frame must preserve the exact same character identity, costume, silhouette, colors, proportions, and props.\n\
-             - Use a clean white background in each cell, with frames placed edge-to-edge (NO borders, NO grid lines, NO separators between frames) and equal frame dimensions.\n\
-             - Describe every frame in order by row and column."
+    ) -> String {
+        let mut prompt = format!(
+            "{character_desc}, {animation_type} animation facing {direction}. \
+             Side view, clean white background, smooth looping motion."
         );
         if let Some(s) = style.filter(|v| !v.trim().is_empty()) {
-            user_content.push_str(&format!("\n- Visual style: {s}"));
+            prompt.push_str(&format!(" {s} style."));
         }
-
-        let body = json!({
-            "contents": [
-                { "role": "user", "parts": [{ "text": format!("{SPRITE_PROMPT_SYSTEM}\n\n{user_content}") }] }
-            ],
-            "generationConfig": {
-                "responseModalities": ["TEXT"]
-            }
-        });
-
-        let resp = self
-            .http
-            .post(format!(
-                "{}/v1beta/models/{}:generateContent",
-                self.proxy_url, self.llm_model
-            ))
-            .header("x-goog-api-key", &self.proxy_key)
-            .json(&body)
-            .send()
-            .await?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let text = resp.text().await?;
-            anyhow::bail!("SpriteForge LLM prompt enhancement returned {status}: {text}");
-        }
-
-        let data: Value = resp.json().await?;
-        let parts = data["candidates"][0]["content"]["parts"]
-            .as_array()
-            .ok_or_else(|| {
-                anyhow::anyhow!("missing candidates[0].content.parts in Gemini LLM response")
-            })?;
-
-        for part in parts {
-            if let Some(text) = part["text"].as_str() {
-                return Ok(text.to_string());
-            }
-        }
-
-        anyhow::bail!("Gemini LLM response contains no text part")
+        prompt
     }
 
-    /// Generate image via Gemini generateContent API with IMAGE response modality.
-    async fn generate_image(
+    /// Submit a video generation request to xAI and poll until done.
+    async fn generate_video(
         &self,
-        enhanced_prompt: &str,
-        reference_image: Option<(&[u8], &str)>,
-    ) -> anyhow::Result<Vec<u8>> {
-        let mut parts: Vec<Value> = Vec::new();
-
-        if let Some((bytes, mime)) = reference_image {
-            parts.push(json!({
-                "inlineData": {
-                    "mimeType": mime,
-                    "data": STANDARD.encode(bytes)
-                }
-            }));
-        }
-
-        parts.push(json!({"text": enhanced_prompt}));
-
-        let body = json!({
-            "contents": [{ "role": "user", "parts": parts }],
-            "generationConfig": {
-                "responseModalities": ["IMAGE", "TEXT"],
-                "imageConfig": {
-                    "imageSize": "1K",
-                    "aspectRatio": "1:1"
-                }
-            }
+        prompt: &str,
+        duration: u32,
+        image_url: Option<&str>,
+    ) -> anyhow::Result<String> {
+        let mut body = json!({
+            "model": "grok-imagine-video",
+            "prompt": prompt,
+            "duration": duration,
+            "aspect_ratio": "1:1",
+            "resolution": "480p"
         });
+        if let Some(url) = image_url {
+            body["image_url"] = json!(url);
+        }
 
         let resp = self
             .http
-            .post(format!(
-                "{}/v1beta/models/{}:generateContent",
-                self.proxy_url, self.image_model
-            ))
-            .header("x-goog-api-key", &self.proxy_key)
+            .post("https://api.x.ai/v1/videos/generations")
+            .bearer_auth(&self.xai_key)
             .json(&body)
             .send()
             .await?;
 
         let status = resp.status();
         let text = resp.text().await?;
-
         if !status.is_success() {
-            anyhow::bail!("SpriteForge Gemini image generation returned {status}: {text}");
+            anyhow::bail!("SpriteForge video generation returned {status}: {text}");
         }
 
-        let payload: Value = serde_json::from_str(&text)?;
-        let parts = payload["candidates"][0]["content"]["parts"]
-            .as_array()
-            .ok_or_else(|| anyhow::anyhow!("Gemini image response missing parts"))?;
+        let data: Value = serde_json::from_str(&text)?;
+        let request_id = data["request_id"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing request_id in video response"))?;
+        tracing::info!(request_id, "SpriteForge: video generation submitted");
 
-        for part in parts {
-            if let Some(b64) = part["inlineData"]["data"].as_str() {
-                return Ok(STANDARD.decode(b64)?);
+        // Poll until done (up to 5 minutes)
+        for i in 0..60 {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            let poll = self
+                .http
+                .get(format!("https://api.x.ai/v1/videos/{request_id}"))
+                .bearer_auth(&self.xai_key)
+                .send()
+                .await?;
+
+            let poll_data: Value = poll.json().await?;
+            let poll_status = poll_data["status"].as_str().unwrap_or("");
+            tracing::debug!(
+                attempt = i + 1,
+                status = poll_status,
+                "SpriteForge: polling"
+            );
+
+            match poll_status {
+                "done" => {
+                    let url = poll_data["video"]["url"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("missing video url in done response"))?;
+                    return Ok(url.to_string());
+                }
+                "expired" | "failed" => {
+                    anyhow::bail!("SpriteForge video generation {poll_status}: {poll_data}");
+                }
+                _ => continue,
             }
         }
-
-        anyhow::bail!("Gemini image response contains no inlineData image")
+        anyhow::bail!("SpriteForge video generation timed out after 5 minutes")
     }
 
-    /// Split a grid image into individual frames.
-    fn split_grid(img: &DynamicImage, cols: u32, rows: u32) -> Vec<DynamicImage> {
-        let (w, h) = img.dimensions();
-        let frame_w = w / cols;
-        let frame_h = h / rows;
-        let mut frames = Vec::new();
-        for row in 0..rows {
-            for col in 0..cols {
-                let frame = img.crop_imm(col * frame_w, row * frame_h, frame_w, frame_h);
-                frames.push(frame);
-            }
+    /// Download video, extract frames via ffmpeg, return as DynamicImage vec.
+    async fn extract_frames(&self, video_url: &str, fps: u32) -> anyhow::Result<Vec<DynamicImage>> {
+        // Download video to temp file
+        let resp = self.http.get(video_url).send().await?;
+        if !resp.status().is_success() {
+            anyhow::bail!("failed to download video: HTTP {}", resp.status());
         }
+        let video_bytes = resp.bytes().await?;
+
+        let tmp_dir = tempfile::tempdir()?;
+        let video_path = tmp_dir.path().join("input.mp4");
+        tokio::fs::write(&video_path, &video_bytes).await?;
+
+        // Extract frames with ffmpeg
+        let frame_pattern = tmp_dir.path().join("frame_%03d.png");
+        let output = tokio::process::Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-i",
+                video_path.to_str().unwrap(),
+                "-vf",
+                &format!("fps={fps}"),
+                frame_pattern.to_str().unwrap(),
+            ])
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("ffmpeg frame extraction failed: {stderr}");
+        }
+
+        // Read extracted frames
+        let mut frames = Vec::new();
+        let mut entries: Vec<_> = std::fs::read_dir(tmp_dir.path())?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path()
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("frame_") && n.ends_with(".png"))
+            })
+            .collect();
+        entries.sort_by_key(|e| e.file_name());
+
+        for entry in entries {
+            let img = image::open(entry.path()).map_err(|e| {
+                anyhow::anyhow!("failed to load frame {}: {e}", entry.path().display())
+            })?;
+            frames.push(img);
+        }
+
+        tracing::info!(count = frames.len(), fps, "SpriteForge: frames extracted");
+        Ok(frames)
+    }
+
+    /// Remove white background from frames (make transparent).
+    fn remove_white_bg(frames: &[DynamicImage]) -> Vec<DynamicImage> {
         frames
+            .iter()
+            .map(|frame| {
+                let mut rgba = frame.to_rgba8();
+                for pixel in rgba.pixels_mut() {
+                    let [r, g, b, _] = pixel.0;
+                    if r > 220 && g > 220 && b > 220 {
+                        pixel.0[3] = 0;
+                    }
+                }
+                DynamicImage::ImageRgba8(rgba)
+            })
+            .collect()
     }
 
     /// Compose frames into a horizontal sprite sheet.
@@ -216,17 +211,6 @@ impl SpriteForgeProvider {
         sheet
     }
 
-    /// Parse "CxR" grid size string into (cols, rows).
-    fn parse_grid_size(s: &str) -> (u32, u32) {
-        if let Some((c, r)) = s.split_once('x').or_else(|| s.split_once('X')) {
-            let cols = c.trim().parse().unwrap_or(3);
-            let rows = r.trim().parse().unwrap_or(3);
-            (cols.max(1), rows.max(1))
-        } else {
-            (3, 3)
-        }
-    }
-
     /// Encode frames into an animated GIF.
     fn encode_gif(frames: &[DynamicImage], fps: u32) -> anyhow::Result<Vec<u8>> {
         let mut buf = Vec::new();
@@ -241,25 +225,6 @@ impl SpriteForgeProvider {
         }
         Ok(buf)
     }
-
-    /// Download an image from a URL and return (bytes, mime_type).
-    async fn download_image(&self, url: &str) -> anyhow::Result<(Vec<u8>, String)> {
-        let resp = self.http.get(url).send().await?;
-        if !resp.status().is_success() {
-            anyhow::bail!("failed to download reference image: HTTP {}", resp.status());
-        }
-        let content_type = resp
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("image/png")
-            .split(';')
-            .next()
-            .unwrap_or("image/png")
-            .to_string();
-        let bytes = resp.bytes().await?.to_vec();
-        Ok((bytes, content_type))
-    }
 }
 
 #[async_trait::async_trait]
@@ -273,7 +238,7 @@ impl AssetProvider for SpriteForgeProvider {
     }
 
     fn display_name(&self) -> &str {
-        "SpriteForge (AI Sprite Animation)"
+        "SpriteForge (AI Character Animation)"
     }
 
     fn asset_types(&self) -> &[AssetType] {
@@ -300,17 +265,12 @@ impl AssetProvider for SpriteForgeProvider {
             .params
             .get("animation_type")
             .and_then(Value::as_str)
-            .unwrap_or("idle");
+            .unwrap_or("walk");
         let direction = req
             .params
             .get("direction")
             .and_then(Value::as_str)
             .unwrap_or("right");
-        let grid_size_str = req
-            .params
-            .get("grid_size")
-            .and_then(Value::as_str)
-            .unwrap_or("3x3");
         let style = req.params.get("style").and_then(Value::as_str);
         let output_format = req
             .params
@@ -318,54 +278,42 @@ impl AssetProvider for SpriteForgeProvider {
             .and_then(Value::as_str)
             .unwrap_or("spritesheet");
         let fps = req.params.get("fps").and_then(Value::as_u64).unwrap_or(8) as u32;
-        let (cols, rows) = Self::parse_grid_size(grid_size_str);
+        let duration = req
+            .params
+            .get("duration")
+            .and_then(Value::as_u64)
+            .unwrap_or(2) as u32;
 
-        // Step 1: LLM prompt enhancement
+        // Step 1: Build prompt (no LLM enhancement)
+        let video_prompt = Self::build_prompt(prompt, animation_type, direction, style);
         tracing::info!(
             prompt,
             animation_type,
             direction,
-            grid_size = grid_size_str,
-            "SpriteForge: enhancing prompt"
-        );
-        let enhanced_prompt = self
-            .enhance_prompt(prompt, animation_type, direction, grid_size_str, style)
-            .await?;
-        tracing::debug!(
-            enhanced_prompt_len = enhanced_prompt.len(),
-            "SpriteForge: prompt enhanced"
+            duration,
+            "SpriteForge: generating video"
         );
 
-        // Step 2: Download reference image if provided
-        let reference = if let Some(url) = req.input_file.as_deref() {
-            let (bytes, mime) = self.download_image(url).await?;
-            Some((bytes, mime))
-        } else {
-            None
-        };
-
-        // Step 3: Generate grid image via Gemini
-        tracing::info!("SpriteForge: generating grid image via Gemini");
-        let grid_bytes = self
-            .generate_image(
-                &enhanced_prompt,
-                reference.as_ref().map(|(b, m)| (b.as_slice(), m.as_str())),
-            )
+        // Step 2: Generate video via Grok
+        let image_url = req.input_file.as_deref();
+        let video_url = self
+            .generate_video(&video_prompt, duration, image_url)
             .await?;
 
-        // Step 4: Post-process — split grid into frames
-        let grid_img = image::load_from_memory(&grid_bytes)
-            .map_err(|e| anyhow::anyhow!("failed to decode generated image: {e}"))?;
-        let frames = Self::split_grid(&grid_img, cols, rows);
+        // Step 3: Extract frames
+        let raw_frames = self.extract_frames(&video_url, fps).await?;
+
+        // Step 4: Remove white background
+        let frames = Self::remove_white_bg(&raw_frames);
         let frame_count = frames.len();
 
+        // Step 5: Compose output
         let (output_b64, content_type) = match output_format {
             "gif" => {
                 let gif_bytes = Self::encode_gif(&frames, fps)?;
                 (STANDARD.encode(&gif_bytes), "image/gif")
             }
             _ => {
-                // Default: horizontal sprite sheet PNG
                 let sheet = Self::compose_sprite_sheet(&frames);
                 let mut png_buf = Cursor::new(Vec::new());
                 sheet
@@ -375,24 +323,26 @@ impl AssetProvider for SpriteForgeProvider {
             }
         };
 
+        let cost = 0.05 * duration as f64;
+
         Ok(GenerateResponse {
             provider_id: self.id.clone(),
             output_path: None,
             output_url: None,
             output_data: Some(output_b64),
             metadata: json!({
-                "model": self.llm_model,
-                "image_model": self.image_model,
+                "video_model": "grok-imagine-video",
                 "animation_type": animation_type,
                 "direction": direction,
-                "grid_size": grid_size_str,
+                "video_duration": duration,
                 "frame_count": frame_count,
                 "output_format": output_format,
                 "content_type": content_type,
                 "fps": fps,
-                "enhanced_prompt": enhanced_prompt,
+                "video_prompt": video_prompt,
+                "has_reference_image": image_url.is_some(),
             }),
-            cost_usd: Some(0.05),
+            cost_usd: Some(cost),
             elapsed_ms: start.elapsed().as_millis() as u64,
         })
     }
@@ -401,8 +351,8 @@ impl AssetProvider for SpriteForgeProvider {
         let start = Instant::now();
         let resp = self
             .http
-            .get(format!("{}/v1/models", self.proxy_url))
-            .bearer_auth(&self.proxy_key)
+            .get("https://api.x.ai/v1/models")
+            .bearer_auth(&self.xai_key)
             .timeout(Duration::from_secs(10))
             .send()
             .await;
