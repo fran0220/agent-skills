@@ -128,6 +128,7 @@ async fn serve() -> Result<()> {
         .allow_origin([
             HeaderValue::from_static("http://localhost:5173"),
             HeaderValue::from_static("http://localhost:5174"),
+            HeaderValue::from_static("https://sprite.xiaomao.chat"),
         ])
         .allow_methods([
             Method::GET,
