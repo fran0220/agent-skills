@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -43,6 +44,8 @@ type appChatParseResult struct {
 	Progresses []appProgress
 	ImageURLs  []string
 }
+
+var appChatGeneratePrefixRE = regexp.MustCompile(`(?i)^\s*(generate an image|create an image|draw an image|make an image)\s*:`)
 
 func NewImageGenerationService(cfg *config.Config) *ImageGenerationService {
 	return &ImageGenerationService{cfg: cfg, imagine: reverse.NewImagineWebSocketReverse()}
@@ -130,11 +133,8 @@ func (s *ImageGenerationService) generateStreamChunks(
 	aspectRatio string,
 	enableNSFW bool,
 ) ([]string, error) {
-	var chunks []string
-	var err error
-	if modelInfo.ModelID == "grok-imagine-1.0-fast" {
-		chunks, err = s.streamAppChat(ctx, currentToken, prompt, n, responseFormat, size, enableNSFW, tokenMgr)
-	} else {
+	chunks, err := s.streamAppChat(ctx, currentToken, modelInfo, prompt, n, responseFormat, size, enableNSFW, tokenMgr)
+	if err != nil && !isRateLimited(err) {
 		chunks, err = s.streamWS(ctx, currentToken, prompt, n, responseFormat, size, aspectRatio, modelInfo.ModelID, enableNSFW)
 	}
 	if err != nil {
@@ -157,11 +157,8 @@ func (s *ImageGenerationService) generateImages(
 	aspectRatio string,
 	enableNSFW bool,
 ) ([]string, error) {
-	var images []string
-	var err error
-	if modelInfo.ModelID == "grok-imagine-1.0-fast" {
-		images, err = s.collectAppChat(ctx, currentToken, prompt, n, responseFormat, enableNSFW, tokenMgr)
-	} else {
+	images, err := s.collectAppChat(ctx, currentToken, modelInfo, prompt, n, responseFormat, enableNSFW, tokenMgr)
+	if err != nil && !isRateLimited(err) {
 		images, err = s.collectWS(ctx, currentToken, prompt, n, responseFormat, aspectRatio, enableNSFW)
 	}
 	if err != nil {
@@ -334,8 +331,8 @@ func (s *ImageGenerationService) streamWS(ctx context.Context, tokenValue, promp
 	return chunks, nil
 }
 
-func (s *ImageGenerationService) collectAppChat(ctx context.Context, tokenValue, prompt string, n int, responseFormat string, enableNSFW bool, tokenMgr *token.TokenManager) ([]string, error) {
-	parsed, err := s.parseAppChatStream(ctx, tokenValue, prompt, n, enableNSFW, tokenMgr)
+func (s *ImageGenerationService) collectAppChat(ctx context.Context, tokenValue string, modelInfo model.ModelInfo, prompt string, n int, responseFormat string, enableNSFW bool, tokenMgr *token.TokenManager) ([]string, error) {
+	parsed, err := s.parseAppChatStream(ctx, tokenValue, modelInfo, prompt, n, enableNSFW, tokenMgr)
 	if err != nil {
 		return nil, err
 	}
@@ -357,8 +354,8 @@ func (s *ImageGenerationService) collectAppChat(ctx context.Context, tokenValue,
 	return results, nil
 }
 
-func (s *ImageGenerationService) streamAppChat(ctx context.Context, tokenValue, prompt string, n int, responseFormat, size string, enableNSFW bool, tokenMgr *token.TokenManager) ([]string, error) {
-	parsed, err := s.parseAppChatStream(ctx, tokenValue, prompt, n, enableNSFW, tokenMgr)
+func (s *ImageGenerationService) streamAppChat(ctx context.Context, tokenValue string, modelInfo model.ModelInfo, prompt string, n int, responseFormat, size string, enableNSFW bool, tokenMgr *token.TokenManager) ([]string, error) {
+	parsed, err := s.parseAppChatStream(ctx, tokenValue, modelInfo, prompt, n, enableNSFW, tokenMgr)
 	if err != nil {
 		return nil, err
 	}
@@ -411,19 +408,26 @@ func (s *ImageGenerationService) streamAppChat(ctx context.Context, tokenValue, 
 	return chunks, nil
 }
 
-func (s *ImageGenerationService) parseAppChatStream(ctx context.Context, tokenValue, prompt string, n int, enableNSFW bool, tokenMgr *token.TokenManager) (*appChatParseResult, error) {
+func (s *ImageGenerationService) parseAppChatStream(ctx context.Context, tokenValue string, modelInfo model.ModelInfo, prompt string, n int, enableNSFW bool, tokenMgr *token.TokenManager) (*appChatParseResult, error) {
 	session := reverse.NewResettableSession(reverse.SessionOptions{Browser: s.cfg.GetString("proxy.browser", "")})
 	defer session.Close()
 	appChat := reverse.NewAppChatReverse()
 	appChat.RecordTokenFailure = func(ctx context.Context, tokenValue string, status int, reason string) error {
 		return tokenMgr.RecordFail(tokenValue, status, reason)
 	}
-	requestOverrides := map[string]any{
-		"imageGenerationCount": max(1, n),
-		"modeId":               "auto",
-	}
-	requestOverrides["enableNsfw"] = enableNSFW
-	body, err := appChat.Request(ctx, session, tokenValue, prompt, "", "", nil, nil, nil, requestOverrides)
+	requestOverrides := buildImageAppChatRequestOverrides(n, enableNSFW)
+	body, err := appChat.Request(
+		ctx,
+		session,
+		tokenValue,
+		buildImageAppChatMessage(prompt),
+		modelInfo.GrokModel,
+		modelInfo.ModelMode,
+		nil,
+		map[string]any{"imageGen": true},
+		nil,
+		requestOverrides,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -498,6 +502,25 @@ func (s *ImageGenerationService) pickToken(tokenMgr *token.TokenManager, modelIn
 		}
 	}
 	return tokenMgr.GetToken(poolName, tried, preferTags)
+}
+
+func buildImageAppChatMessage(prompt string) string {
+	text := strings.TrimSpace(prompt)
+	if text == "" {
+		return prompt
+	}
+	if appChatGeneratePrefixRE.MatchString(text) {
+		return text
+	}
+	return "Generate an image: " + text
+}
+
+func buildImageAppChatRequestOverrides(n int, enableNSFW bool) map[string]any {
+	return map[string]any{
+		"imageGenerationCount": max(1, n),
+		"enableNsfw":           enableNSFW,
+		"disableSearch":        true,
+	}
 }
 
 func pickBestImage(existing, incoming reverse.ImageEvent) reverse.ImageEvent {

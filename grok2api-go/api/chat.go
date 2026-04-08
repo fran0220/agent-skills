@@ -437,18 +437,7 @@ func anyInt(value any) (int, bool) {
 }
 
 func imageSizeToAspectRatio(size string) string {
-	switch size {
-	case "1280x720":
-		return "16:9"
-	case "720x1280":
-		return "9:16"
-	case "1792x1024":
-		return "7:4"
-	case "1024x1792":
-		return "4:7"
-	default:
-		return "1:1"
-	}
+	return resolveAspectRatio(strings.TrimSpace(size), "")
 }
 
 type errString string

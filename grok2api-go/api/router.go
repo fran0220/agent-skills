@@ -33,6 +33,7 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger) http.Handler {
 	mux.Handle("/v1/images/generations", auth.VerifyAPIKey(cfg)(handleImageGenerations(cfg, modelService)))
 	mux.Handle("/v1/images/edits", auth.VerifyAPIKey(cfg)(handleImageEdits(cfg, modelService)))
 	mux.Handle("/v1/video/generations", auth.VerifyAPIKey(cfg)(handleVideoGenerations(videoService, modelService)))
+	mux.Handle("/v1/videos", auth.VerifyAPIKey(cfg)(handleVideoGenerations(videoService, modelService)))
 	mux.Handle("/v1/files/image/", handleImageFile())
 	mux.Handle("/v1/files/video/", handleVideoFile())
 	mux.Handle("/v1/admin/verify", auth.VerifyAppKey(cfg)(adminHandler.Verify()))

@@ -32,12 +32,13 @@ var qualityToResolution = map[string]string{
 }
 
 type videoGenerationRequest struct {
-	Prompt  string `json:"prompt"`
-	Model   string `json:"model"`
-	Size    string `json:"size"`
-	Seconds int    `json:"seconds"`
-	Quality string `json:"quality"`
-	Image   string `json:"image,omitempty"`
+	Prompt         string `json:"prompt"`
+	Model          string `json:"model"`
+	Size           string `json:"size"`
+	Seconds        int    `json:"seconds"`
+	Quality        string `json:"quality"`
+	Image          string `json:"image,omitempty"`
+	ImageReference any    `json:"image_reference,omitempty"`
 }
 
 func handleVideoGenerations(videoService *service.VideoService, modelService *model.Service) http.HandlerFunc {
@@ -79,11 +80,15 @@ func handleVideoGenerations(videoService *service.VideoService, modelService *mo
 			writeVideoError(w, &service.VideoError{StatusCode: http.StatusBadRequest, Message: "prompt is required", Param: "prompt", Code: "invalid_request_error"})
 			return
 		}
+		imageReferences, err := normalizeVideoImageReferences(req.Image, req.ImageReference)
+		if err != nil {
+			writeVideoError(w, err)
+			return
+		}
 
-		result, err := videoService.Generate(r.Context(), service.GenerateParams{
+		result, err := videoService.Completions(r.Context(), service.CompletionParams{
 			Model:       modelID,
-			Prompt:      req.Prompt,
-			Image:       strings.TrimSpace(req.Image),
+			Messages:    buildVideoMessages(strings.TrimSpace(req.Prompt), imageReferences),
 			AspectRatio: aspectRatio,
 			VideoLength: seconds,
 			Resolution:  resolution,
@@ -159,6 +164,122 @@ func normalizeVideoSeconds(seconds int) (int, error) {
 		return 0, &service.VideoError{StatusCode: http.StatusBadRequest, Message: "seconds must be between 6 and 30", Param: "seconds", Code: "invalid_seconds"}
 	}
 	return value, nil
+}
+
+func normalizeVideoImageReferences(legacyImage string, raw any) ([]string, error) {
+	references, err := parseVideoImageReferences(raw)
+	if err != nil {
+		return nil, err
+	}
+	if value := strings.TrimSpace(legacyImage); value != "" {
+		legacyRef, err := validateVideoImageReference(value, "image")
+		if err != nil {
+			return nil, err
+		}
+		references = append(references, legacyRef)
+	}
+	return dedupeStrings(references), nil
+}
+
+func parseVideoImageReferences(raw any) ([]string, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	switch typed := raw.(type) {
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return nil, nil
+		}
+		if strings.HasPrefix(trimmed, "[") {
+			var parsed []any
+			if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+				return nil, &service.VideoError{StatusCode: http.StatusBadRequest, Message: "image_reference must be a JSON array string", Param: "image_reference", Code: "invalid_reference"}
+			}
+			return parseVideoImageReferences(parsed)
+		}
+		ref, err := validateVideoImageReference(trimmed, "image_reference")
+		if err != nil {
+			return nil, err
+		}
+		return []string{ref}, nil
+	case []any:
+		refs := make([]string, 0, len(typed))
+		for index, item := range typed {
+			ref, err := parseVideoImageReferenceItem(item, index)
+			if err != nil {
+				return nil, err
+			}
+			if ref != "" {
+				refs = append(refs, ref)
+			}
+		}
+		return refs, nil
+	default:
+		return nil, &service.VideoError{StatusCode: http.StatusBadRequest, Message: "image_reference must be a URL, data URI, or array of image_url blocks", Param: "image_reference", Code: "invalid_reference"}
+	}
+}
+
+func parseVideoImageReferenceItem(value any, index int) (string, error) {
+	param := fmt.Sprintf("image_reference[%d]", index)
+	switch typed := value.(type) {
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return "", &service.VideoError{StatusCode: http.StatusBadRequest, Message: param + " cannot be empty", Param: param, Code: "invalid_reference"}
+		}
+		return validateVideoImageReference(trimmed, param)
+	case map[string]any:
+		if strings.TrimSpace(anyString(typed["type"])) != "image_url" {
+			return "", &service.VideoError{StatusCode: http.StatusBadRequest, Message: param + " must have type=\"image_url\"", Param: param + ".type", Code: "invalid_reference"}
+		}
+		imageURL, ok := typed["image_url"].(map[string]any)
+		if !ok {
+			return "", &service.VideoError{StatusCode: http.StatusBadRequest, Message: param + ".image_url must be an object with a url field", Param: param + ".image_url", Code: "invalid_reference"}
+		}
+		urlValue := strings.TrimSpace(anyString(imageURL["url"]))
+		if urlValue == "" {
+			return "", &service.VideoError{StatusCode: http.StatusBadRequest, Message: param + ".image_url.url cannot be empty", Param: param + ".image_url.url", Code: "invalid_reference"}
+		}
+		return validateVideoImageReference(urlValue, param+".image_url.url")
+	default:
+		return "", &service.VideoError{StatusCode: http.StatusBadRequest, Message: param + " must be a URL string or image_url content block", Param: param, Code: "invalid_reference"}
+	}
+}
+
+func validateVideoImageReference(value, param string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") || strings.HasPrefix(trimmed, "data:") {
+		return trimmed, nil
+	}
+	return "", &service.VideoError{StatusCode: http.StatusBadRequest, Message: param + " must be a URL or data URI", Param: param, Code: "invalid_reference"}
+}
+
+func buildVideoMessages(prompt string, imageReferences []string) []map[string]any {
+	if len(imageReferences) == 0 {
+		return []map[string]any{{"role": "user", "content": prompt}}
+	}
+	content := []map[string]any{{"type": "text", "text": prompt}}
+	for _, imageReference := range imageReferences {
+		content = append(content, map[string]any{"type": "image_url", "image_url": map[string]any{"url": imageReference}})
+	}
+	return []map[string]any{{"role": "user", "content": content}}
+}
+
+func dedupeStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
 }
 
 func writeVideoError(w http.ResponseWriter, err error) {
