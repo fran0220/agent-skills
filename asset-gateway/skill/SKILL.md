@@ -28,7 +28,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Speech | TTS, multilingual, instructed style | `generate tts` |
 | Voice Identity | Voice clone, voice design | `voice clone`, `voice design` |
 | 3D Model | Text/image → 3D, rig/animate/convert | `generate model`, `process3d ...` |
-| Sprite Animation | Image → animated spritesheet/webp/gif via PixelEngine AI | `generate sprite` |
+| Sprite Animation | Text/image → sprite animation (spritesheet or GIF) via SpriteForge AI | `generate sprite` |
 | 3D World | Text/image → photorealistic 3D environment (Gaussian Splat) | `generate world` |
 | Text | Single-shot LLM text generation | `generate text` |
 | Image/Video Tools | Crop, resize, compose, extract frames, remove background | `process ...` |
@@ -58,7 +58,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Compose sprite sheet | `process compose` | `--input <files...>`, `--direction`, `--output-dir` |
 | Extract video frames | `process extract-frames` | `--input`, `--count`, `--output-dir` |
 | Remove background | `process remove-bg` | `--input <files...>`, `--output-dir` |
-| Animate a sprite | `generate sprite` | `--prompt`, `--input <image>`, `--output-dir` |
+| Animate a sprite | `generate sprite` | `--prompt`, `--animation-type`, `--grid-size`, `--output-dir` |
 | Generate 3D world | `generate world` | `--prompt`, `--input <image>`, `--model`, `--output-dir` |
 | Generate text | `generate text` | `--prompt`, `--model`, `--output-dir` |
 

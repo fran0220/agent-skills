@@ -1,6 +1,6 @@
 {
   "name": "@doufunao123/asset-gateway",
-  "version": "0.12.2",
+  "version": "0.13.0",
   "description": "Universal asset generation gateway CLI",
   "type": "module",
   "bin": {

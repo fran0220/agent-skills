@@ -36,10 +36,10 @@
 | 3D 模型 | Tripo3D | `generate model` + `process3d` |
 | 文本 | LLM Proxy | `generate text` |
 | 图片后处理 | 内置管线 | `process crop` / `resize` |
-| 精灵动画 | PixelEngine | `generate sprite` |
+| 精灵动画 | SpriteForge | `generate sprite` |
 | 3D 世界/环境 | WorldLabs Marble | `generate world` |
 
-精灵动画通过 PixelEngine AI 一步完成：`generate sprite` 接受静态图片 + 动作描述，输出 spritesheet/webp/gif。
+精灵动画通过 SpriteForge AI 一步完成：`generate sprite` 接受角色描述文本 + 可选参考图，经 LLM 增强 + Gemini 图片生成 + 后处理，输出 spritesheet/gif。
 
 3D 世界通过 WorldLabs Marble API 生成：`generate world` 接受文本或图片输入，输出 Gaussian Splat (.spz) + 碰撞网格 (.glb) + 全景图。
 
@@ -102,9 +102,6 @@ key = "..."
 url = "http://127.0.0.1:5100"
 token = "..."
 
-[pixelengine]
-key = "pe_sk_..."
-
 [worldlabs]
 key = "..."
 ```
@@ -156,7 +153,7 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | `auth` | `login`, `logout`, `whoami` | 认证入口 | ✅ 完整 |
 | `generate` | `image`, `video`, `audio`, `music`, `tts`, `model`, `text`, `world` | 资产生成 | ✅ 完整 |
 | `generate` | `batch` | 批量生成 + 可选自动拼合 | ⏳ 线程规格已明确，当前分支未合入 |
-| `generate` | `sprite` | 精灵动画生成（PixelEngine） | ✅ 完整 |
+| `generate` | `sprite` | 精灵动画生成（SpriteForge） | ✅ 完整 |
 | `generate` | `world` | 3D 世界/环境生成（WorldLabs Marble） | ✅ 完整 |
 | `process` | `crop`, `resize` | 图像后处理 | ✅ 完整 |
 | `process` | `compose` | 多图拼合 sprite sheet | ⏳ 线程规格已明确，当前分支未合入 |
@@ -200,7 +197,7 @@ Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 | `qwen_tts` | Tts/Voice | Qwen3-TTS via DashScope Intl：49+ 系统音色、指令控制、VC/VD | ✅ ~97ms 首包 |
 | `elevenlabs` | Audio/Music | sound-generation（BGM/SFX）+ music-generation | ✅ 1.5s |
 | `tripo3d` | Model3d | 完整 3D 管线：text/image/multiview → model, texture, rig, animate, convert, reduce, stylize, segment, prerigcheck, refine, import | ✅ |
-| `pixelengine` | Sprite | 图片→动画精灵（pixel-engine-v1.1 像素画 / frame-engine-v1.1 HD），输出 spritesheet/webp/gif | ⬚ 待测试 |
+| `spriteforge` | Sprite | 文本/图片→精灵动画（LLM增强+Gemini生成+后处理），输出 spritesheet/gif | ✅ 已验证 |
 | `worldlabs` | World | WorldLabs Marble API：文本/图片→ Gaussian Splat 3D 世界，输出 SPZ + 碰撞 GLB + 全景图 | ⬚ 待测试 |
 
 > `llm_proxy` / `gemini_image` 通过 LLM proxy（api.xiaomao.chat）接入；`jimeng` 通过本地 jimeng-api Docker 容器（127.0.0.1:5100）接入；`qwen_tts` 使用独立 DashScope 国际站。
