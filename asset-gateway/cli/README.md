@@ -2,140 +2,144 @@
 
 Universal, pluggable asset generation gateway.
 
-One binary, two modes:
-- `asset-gateway serve` runs the gateway server
-- other subcommands act as HTTP clients to the running gateway
+`asset-gateway` is now split cleanly into two parts:
 
-`asset-gateway` provides a unified interface for:
-- Text (LLM)
-- Image
-- Video
-- Audio (BGM/SFX)
-- 3D model generation
+- Rust binary: server only, started with `asset-gateway serve`
+- npm package: `@doufunao123/asset-gateway`, the only supported CLI client
 
-## Features
+The server exposes one unified API for text, image, video, audio, music, speech, sprite animation, 3D models, and 3D worlds. The npm CLI is the user-facing command surface for all of those capabilities.
 
-- Unified command surface: `generate`, `provider`, `credential`, `job`, `auth`
-- Pluggable provider adapters
-- SQLite persistence for users/providers/credentials/jobs
-- AES-256-GCM credential vault
-- JSON envelope output for agent automation
+## Architecture
+
+- Server runtime: Rust + Axum + PostgreSQL
+- Config: `config.toml` with env override support
+- Auth: JWT + API key + admin token
+- Providers: pluggable adapters behind one dispatcher
+- Client: npm CLI in `../npm`
+- Admin UI: embedded HTML SPA at `/admin`
+
+## Product Mapping
+
+| Category | Backend | npm CLI command |
+|----------|---------|------------------|
+| Image | Gemini / GPT Image (transparent) | `asset-gateway generate image` |
+| Video | Jimeng Seedance | `asset-gateway generate video` |
+| Audio / SFX / BGM | ElevenLabs | `asset-gateway generate audio` |
+| Music | Google Lyria 3 | `asset-gateway generate music` |
+| TTS | Qwen / DashScope | `asset-gateway generate tts` |
+| Voice clone / design | Qwen / DashScope | `asset-gateway voice ...` |
+| 3D model | Tripo3D | `asset-gateway generate model`, `asset-gateway process3d ...` |
+| Sprite animation | SpriteForge | `asset-gateway generate sprite` |
+| 3D world | WorldLabs Marble | `asset-gateway generate world` |
+| Text | LLM Proxy | `asset-gateway generate text` |
+
+## Key Changes
+
+- Rust no longer ships its own client command surface.
+- SpriteForge now uses xAI Grok video generation, then `ffmpeg` frame extraction and white-background removal.
+- `generate music` now uses Google Lyria 3 via the proxy gateway.
+- ElevenLabs remains for `generate audio`, not `generate music`.
+- A new `[xai]` config section is required for SpriteForge.
 
 ## Quick Start
 
-### 1) Install
+### 1. Run the server
 
 From this monorepo root:
 
 ```bash
-cargo install --path cli/asset-gateway
+cargo run --manifest-path asset-gateway/cli/Cargo.toml -- serve \
+  --host 0.0.0.0 \
+  --port 6700 \
+  --database-url postgres://localhost/asset_gateway \
+  --config /path/to/config.toml
 ```
 
-For local development without install:
+Or build a release binary:
 
 ```bash
-cargo run --manifest-path cli/asset-gateway/Cargo.toml -- --help
+cargo build --manifest-path asset-gateway/cli/Cargo.toml --release
 ```
 
-### 2) Start the gateway
+### 2. Install the npm CLI
 
 ```bash
-asset-gateway serve --host 0.0.0.0 --port 6700 --db asset-gateway.db
+npm install -g @doufunao123/asset-gateway
+asset-gateway auth set <token>
 ```
 
-### 3) Login
+### 3. Call the gateway
 
 ```bash
-asset-gateway auth login --username admin --password 'your-password'
+asset-gateway generate image --prompt "isometric village, soft morning light" --output-dir ./assets
+asset-gateway generate music --prompt "uplifting indie game theme" --output-dir ./assets
+asset-gateway generate sprite --prompt "pixel art knight" --animation-type walk --duration 2 --output-dir ./assets
 ```
 
-### 4) Generate an image
+## Server Dependencies
 
-```bash
-asset-gateway generate image --prompt "A stylized forest shrine" --size 1024x1024
+The gateway server depends on local tools for parts of the media pipeline:
+
+- ImageMagick 6 for crop / resize / compose
+- `ffmpeg` for frame extraction and SpriteForge post-processing
+- Blender for `process3d render-sprites`
+
+## Config
+
+Runtime config is loaded from `config.toml`, with environment variables taking precedence.
+
+```toml
+[server]
+admin_token = "agk_admin_..."
+
+[proxy]
+url = "https://api.xiaomao.chat"
+key = "..."
+default_model = "claude-sonnet-4-6"
+
+[elevenlabs]
+key = "..."
+
+[tripo3d]
+key = "..."
+
+[dashscope]
+url = "https://dashscope-intl.aliyuncs.com"
+key = "..."
+
+[grok2api]
+url = "https://grok.xiaomao.chat"
+key = "..."
+
+[jimeng]
+url = "http://127.0.0.1:5100"
+token = "..."
+
+[worldlabs]
+key = "..."
+
+[xai]
+key = "..."
 ```
 
-## Command Reference
+## Providers
 
-### `serve`
+Current documented provider set:
 
-Run gateway service:
+- `llm_proxy` for text generation
+- `gemini_image` for default image generation and editing
+- `gpt_image` for transparent image output
+- `jimeng` for image + Seedance video
+- `qwen_tts` for TTS and custom voice workflows
+- `elevenlabs` for audio / SFX / BGM
+- `lyria` for music generation
+- `tripo3d` for 3D generation and processing
+- `spriteforge` for sprite animation generation
+- `worldlabs` for Gaussian Splat world generation
 
-```bash
-asset-gateway serve [--host 0.0.0.0] [--port 6700] [--db asset-gateway.db]
-```
+## API Contract
 
-### `auth`
-
-```bash
-asset-gateway auth login [--url <gateway-url>] [--username <u>] [--password <p>]
-asset-gateway auth logout
-asset-gateway auth whoami
-```
-
-### `generate`
-
-```bash
-asset-gateway generate image --prompt <text> [--provider <id>] [--transparent] [--model <m>] [--size <wxh>] [-o <file>]
-asset-gateway generate video --prompt <text> [--provider <id>] [-o <file>]
-asset-gateway generate audio --prompt <text> [--type bgm|sfx] [--duration <sec>] [-o <file>]
-asset-gateway generate model [--image <url-or-path> | --prompt <text>] [-o <file>]
-asset-gateway generate text --prompt <text> [--model <m>] [--max-tokens <n>]
-```
-
-### `provider`
-
-```bash
-asset-gateway provider list
-asset-gateway provider health [provider-id]
-```
-
-### `credential`
-
-```bash
-asset-gateway credential set <key> <value> [--provider <provider-id>]
-asset-gateway credential list
-asset-gateway credential delete <key>
-```
-
-### `job`
-
-```bash
-asset-gateway job list [--status <status>] [--limit 20]
-asset-gateway job status <id>
-asset-gateway job cancel <id>
-```
-
-### `describe`
-
-```bash
-asset-gateway describe
-asset-gateway describe generate.image
-```
-
-## Environment Variables
-
-Runtime and client configuration:
-
-- `ASSET_GATEWAY_URL` (default: `http://localhost:6700`)
-- `ASSET_GATEWAY_DB` (default: `asset-gateway.db`)
-- `ASSET_GATEWAY_JWT_SECRET`
-- `ASSET_GATEWAY_VAULT_KEY`
-- `ASSET_GATEWAY_DATA_DIR`
-
-Example:
-
-```bash
-export ASSET_GATEWAY_URL=http://localhost:6700
-export ASSET_GATEWAY_DB=asset-gateway.db
-export ASSET_GATEWAY_JWT_SECRET=change-me
-export ASSET_GATEWAY_VAULT_KEY=change-me-32-char-key
-export ASSET_GATEWAY_DATA_DIR=./data
-```
-
-## JSON Contract
-
-All commands and API responses use the envelope:
+The server returns a unified JSON envelope:
 
 ```json
 {
@@ -158,55 +162,29 @@ Error shape:
 }
 ```
 
-Exit codes:
+## Development
 
-- `0` success
-- `1` command error
-- `2` system error
-- `3` external provider/service error
+From the repo root, the main checks are:
 
-## Providers (v1)
+```bash
+cargo fmt
+cargo test --manifest-path asset-gateway/cli/Cargo.toml --lib
+cargo clippy --manifest-path asset-gateway/cli/Cargo.toml
+cargo fmt --manifest-path asset-gateway/cli/Cargo.toml --check
+```
 
-- `llm_proxy`: Claude/GPT/Gemini/Grok via proxy
-- `gpt_image`: OpenAI image generation (supports transparency)
-- `gemini_image`: Google image generation (cost-efficient)
-- `grok_image`: Grok image generation/editing + video generation (xAI)
-- `elevenlabs`: audio generation (BGM/SFX)
-- `tripo3d`: image/text to 3D model
+## Deployment
 
-### Default Routing Strategy
+- Server: `jpdata` (`185.200.65.233`)
+- Binary: `/opt/asset-gateway/asset-gateway`
+- Config: `/opt/asset-gateway/config.toml`
+- Port: `6700`
+- Domain: `upload.xiaomao.chat`
+- Service manager: `systemd`
+- Deploy path: GitHub Actions on push to `main`
 
-- Transparent image requests -> `gpt_image`
-- Non-transparent image requests -> `gemini_image`
-- Explicit `--provider` override takes precedence
-- If selected provider fails, fallback by priority
+## More Docs
 
-## Provider Management Workflow
-
-1. Start gateway service.
-2. Save required provider credentials with `credential set`.
-3. Verify available providers via `provider list`.
-4. Run `provider health` before production workloads.
-5. Use `--provider` only when you need deterministic routing.
-
-## Client Usage Notes
-
-- `asset-gateway` client commands call HTTP endpoints on the gateway.
-- If the server is not running, client commands fail fast.
-- Use `--gateway-url` to target remote environments.
-
-## Architecture Snapshot
-
-- CLI: clap command parsing
-- Server: Axum routes (`/auth/*`, `/api/*`)
-- Core: dispatcher, provider registry, vault
-- Storage: SQLite (`users`, `providers`, `credentials`, `jobs`)
-- Adapters: reqwest-based provider integrations
-
-## Roadmap
-
-Planned for v2+:
-- Leptos admin frontend
-- WebSocket job progress push
-- async queue for long-running video/3D jobs
-- richer rate limiting and cost dashboard
+- Development guide: `./AGENTS.md`
+- Design source of truth: `./BLUEPRINT.md`
+- Agent skill docs: `../skill/SKILL.md`

@@ -256,13 +256,13 @@ export function createGenerateCommand(): Command {
 
   command.addCommand(
     new Command("music")
-      .description("Generate music (ElevenLabs /v1/music)")
+      .description("Generate music using the gateway music provider")
       .requiredOption("--prompt <text>", "Music description prompt")
-      .option("--duration <seconds>", "Duration in seconds (maps to music_length_ms)")
-      .option("--force-instrumental", "Force instrumental output (ElevenLabs)")
+      .option("--duration <seconds>", "Duration in seconds")
+      .option("--force-instrumental", "Request instrumental output when supported")
       .option(
         "--output-format <fmt>",
-        "ElevenLabs output_format query, e.g. mp3_44100_128"
+        "Provider-specific output format override when supported"
       )
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {

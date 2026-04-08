@@ -19,7 +19,7 @@ export const SCHEMAS: Record<string, object> = {
     description: "Generate assets via the gateway",
     subcommands: {
       image: {
-        description: "Generate or edit an image (Gemini / GPT Image / Grok)",
+        description: "Generate or edit an image",
         params: {
           "--prompt": { type: "string", required: true, description: "Image prompt" },
           "--provider": { type: "string", required: false },
@@ -34,7 +34,7 @@ export const SCHEMAS: Record<string, object> = {
         },
       },
       video: {
-        description: "Text or image-to-video (Grok)",
+        description: "Generate a video from text or an input image",
         params: {
           "--prompt": { type: "string", required: true },
           "--provider": { type: "string" },
@@ -43,7 +43,7 @@ export const SCHEMAS: Record<string, object> = {
         },
       },
       batch: {
-        description: "Batch image (etc.) generation; optional sprite compose",
+        description: "Batch-generate assets with shared parameters and optional compose step",
         params: {
           "--prompt": { type: "string[]", required: true, description: "One prompt per frame" },
           "--asset-type": { type: "string", default: "image" },
@@ -57,7 +57,7 @@ export const SCHEMAS: Record<string, object> = {
         },
       },
       audio: {
-        description: "BGM/SFX via ElevenLabs sound-generation",
+        description: "Generate audio from a text prompt",
         params: {
           "--prompt": { type: "string", required: true },
           "--type": { type: "string", description: "bgm | sfx" },
@@ -66,12 +66,12 @@ export const SCHEMAS: Record<string, object> = {
         },
       },
       music: {
-        description: "Music via ElevenLabs POST /v1/music (model music_v1)",
+        description: "Generate music using the gateway music provider",
         params: {
           "--prompt": { type: "string", required: true },
-          "--duration": { type: "number", description: "Seconds; mapped to music_length_ms (3s–600s)" },
-          "--force-instrumental": { type: "bool", description: "Optional; passed to provider" },
-          "--output-format": { type: "string", description: "Optional; e.g. mp3_44100_128" },
+          "--duration": { type: "number", description: "Seconds" },
+          "--force-instrumental": { type: "bool", description: "Request instrumental output when supported" },
+          "--output-format": { type: "string", description: "Provider-specific output format override when supported" },
           "--output-dir": { type: "string", default: "." },
         },
       },
@@ -110,6 +110,30 @@ export const SCHEMAS: Record<string, object> = {
           "--prompt": { type: "string", required: true },
           "--model": { type: "string" },
           "--max-tokens": { type: "number" },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      sprite: {
+        description: "Generate character animation using SpriteForge AI",
+        params: {
+          "--prompt": { type: "string", required: true, description: "Character description" },
+          "--input": { type: "string", description: "Reference image path or URL" },
+          "--animation-type": { type: "string", default: "walk" },
+          "--direction": { type: "string", default: "right" },
+          "--duration": { type: "number", default: 2, description: "Video duration in seconds" },
+          "--style": { type: "string" },
+          "--output-format": { type: "string", default: "spritesheet", description: "spritesheet | gif" },
+          "--fps": { type: "number", default: 8, description: "GIF frame rate" },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      world: {
+        description: "Generate a 3D world or environment",
+        params: {
+          "--prompt": { type: "string", required: true },
+          "--input": { type: "string", description: "Input image path or URL" },
+          "--model": { type: "string", default: "marble-1.1" },
+          "--display-name": { type: "string" },
           "--output-dir": { type: "string", default: "." },
         },
       },
@@ -168,17 +192,110 @@ export const SCHEMAS: Record<string, object> = {
   process3d: {
     description: "Tripo 3D follow-up operations (chain on tripo_task_id)",
     subcommands: {
-      convert: { description: "Export format (FBX/GLTF/…)", params: { "--task-id": { required: true }, "--format": { required: true } } },
-      texture: { description: "Re-texture", params: { "--task-id": { required: true } } },
-      rig: { description: "Auto-rig", params: { "--task-id": { required: true } } },
-      animate: { description: "Retarget animation", params: { "--task-id": { required: true } } },
-      "render-sprites": { description: "Blender render to 2D frames", params: { "--task-id": { required: true } } },
-      reduce: { description: "Low-poly", params: { "--task-id": { required: true } } },
-      stylize: { description: "Style transfer", params: { "--task-id": { required: true } } },
-      segment: { description: "Mesh segmentation", params: { "--task-id": { required: true } } },
-      prerigcheck: { description: "Rig eligibility", params: { "--task-id": { required: true } } },
-      refine: { description: "Refine quality", params: { "--task-id": { required: true } } },
-      import: { description: "Import external model", params: { "--file-url": { type: "string" }, "--file-path": { type: "string" } } },
+      convert: {
+        description: "Convert a 3D model to another format",
+        params: {
+          "--task-id": { type: "string", required: true },
+          "--format": { type: "string", required: true },
+          "--quad": { type: "bool" },
+          "--face-limit": { type: "number" },
+          "--pack-uv": { type: "bool" },
+          "--bake": { type: "bool" },
+          "--texture-format": { type: "string" },
+          "--force-symmetry": { type: "bool" },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      texture: {
+        description: "Apply new textures to a 3D model",
+        params: {
+          "--task-id": { type: "string", required: true },
+          "--prompt": { type: "string" },
+          "--style-image": { type: "string" },
+          "--pbr": { type: "bool" },
+          "--quality": { type: "string" },
+          "--texture-alignment": { type: "string" },
+          "--bake": { type: "bool" },
+          "--texture-version": { type: "string" },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      rig: {
+        description: "Auto-rig a 3D model",
+        params: {
+          "--task-id": { type: "string", required: true },
+          "--format": { type: "string", default: "glb" },
+          "--spec": { type: "string", default: "mixamo" },
+          "--rig-type": { type: "string" },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      animate: {
+        description: "Apply a preset animation to a rigged model",
+        params: {
+          "--task-id": { type: "string", required: true },
+          "--animation": { type: "string", required: true },
+          "--format": { type: "string", default: "glb" },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      "render-sprites": {
+        description: "Render an animated 3D model to sprite frames",
+        params: {
+          "--task-id": { type: "string", required: true },
+          "--frame-count": { type: "number", default: 8 },
+          "--resolution": { type: "number", default: 64 },
+          "--camera-angle": { type: "string", default: "front" },
+          "--directions": { type: "number", default: 1 },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      reduce: {
+        description: "Reduce polygon count",
+        params: {
+          "--task-id": { type: "string", required: true },
+          "--face-limit": { type: "number" },
+          "--quad": { type: "bool" },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      stylize: {
+        description: "Apply a stylized look to a model",
+        params: {
+          "--task-id": { type: "string", required: true },
+          "--style": { type: "string", required: true },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      segment: {
+        description: "Segment a mesh into logical parts",
+        params: {
+          "--task-id": { type: "string", required: true },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      prerigcheck: {
+        description: "Check whether a model can be rigged",
+        params: {
+          "--task-id": { type: "string", required: true },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      refine: {
+        description: "Refine a draft model to higher quality",
+        params: {
+          "--task-id": { type: "string", required: true },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
+      import: {
+        description: "Import an external 3D model for post-processing",
+        params: {
+          "--file-url": { type: "string" },
+          "--file-path": { type: "string" },
+          "--output-dir": { type: "string", default: "." },
+        },
+      },
     },
   },
   voice: {
@@ -186,14 +303,23 @@ export const SCHEMAS: Record<string, object> = {
     subcommands: {
       clone: {
         description: "Clone from audio sample",
-        params: { "--audio": { required: true }, "--name": { required: true } },
+        params: {
+          "--audio": { type: "string", required: true },
+          "--name": { type: "string", required: true },
+          "--target-model": { type: "string" },
+        },
       },
       design: {
         description: "Design voice from text",
-        params: { "--prompt": { required: true }, "--name": { required: true } },
+        params: {
+          "--prompt": { type: "string", required: true },
+          "--preview-text": { type: "string", required: true },
+          "--name": { type: "string", required: true },
+          "--target-model": { type: "string" },
+        },
       },
       list: { description: "List custom voices", params: { "--type": { type: "string" } } },
-      delete: { description: "Delete by voice id", params: { "<voice-id>": { required: true } } },
+      delete: { description: "Delete by voice id", params: { "<voice-id>": { type: "string", required: true }, "--type": { type: "string" } } },
     },
   },
   upload: {
@@ -208,7 +334,7 @@ export const SCHEMAS: Record<string, object> = {
     description: "Provider discovery and health",
     subcommands: {
       list: { description: "List providers" },
-      health: { description: "Health check", params: { name: { type: "string", required: false } } },
+      health: { description: "Health check", params: { "[name]": { type: "string", required: false } } },
     },
   },
   job: {
@@ -221,14 +347,14 @@ export const SCHEMAS: Record<string, object> = {
           "--limit": { type: "number" },
         },
       },
-      status: { description: "Job detail", params: { id: { type: "string", required: true } } },
-      cancel: { description: "Cancel pending/running", params: { id: { type: "string", required: true } } },
+      status: { description: "Job detail", params: { "<id>": { type: "string", required: true } } },
+      cancel: { description: "Cancel pending/running", params: { "<id>": { type: "string", required: true } } },
     },
   },
   describe: {
     description: "Command introspection (this output)",
     params: {
-      command: { type: "string", required: false, description: "Top-level group: generate, process, …" },
+      "[command]": { type: "string", required: false, description: "Top-level group: generate, process, …" },
     },
   },
 };
