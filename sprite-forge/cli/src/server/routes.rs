@@ -178,7 +178,7 @@ async fn run_job(
         "Enhancing prompt",
     );
 
-    let result = pipeline::run_pipeline(&state.llm, &state.gemini, &request).await;
+    let result = pipeline::run_pipeline(&state.llm, &state.image_client, &request).await;
     match result {
         Ok(result) => {
             publish_progress(

@@ -25,14 +25,14 @@ The prompt you generate will be sent directly to Gemini's image editing API alon
 ///
 /// Embeds the full sprite-forge pipeline:
 /// 1. LLM prompt enhancement (OpenAI-compatible)
-/// 2. Gemini native image generation
+/// 2. Grok image generation (OpenAI-compatible /v1/images/generations)
 /// 3. Grid post-processing into horizontal sprite sheet
 pub struct SpriteForgeProvider {
     pub id: String,
     proxy_url: String,
     proxy_key: String,
     llm_model: String,
-    gemini_model: String,
+    image_model: String,
     http: reqwest::Client,
 }
 
@@ -48,7 +48,7 @@ impl SpriteForgeProvider {
             proxy_url,
             proxy_key,
             llm_model: "grok-4.1-fast".into(),
-            gemini_model: "gemini-3.1-flash-image-preview".into(),
+            image_model: "grok-imagine-1.0".into(),
             http,
         }
     }
@@ -111,39 +111,28 @@ impl SpriteForgeProvider {
             .ok_or_else(|| anyhow::anyhow!("missing choices[0].message.content in LLM response"))
     }
 
-    /// Call Gemini native generateContent API for image generation.
+    /// Call Grok image generation API (OpenAI-compatible /v1/images/generations).
     async fn generate_image(
         &self,
         enhanced_prompt: &str,
         reference_image: Option<(&[u8], &str)>,
     ) -> anyhow::Result<Vec<u8>> {
-        let mut parts = Vec::new();
-
-        if let Some((bytes, mime)) = reference_image {
-            parts.push(json!({
-                "inlineData": {
-                    "mimeType": mime,
-                    "data": STANDARD.encode(bytes)
-                }
-            }));
+        if reference_image.is_some() {
+            tracing::warn!("Grok image API does not support image input; proceeding without reference image");
         }
 
-        parts.push(json!({ "text": enhanced_prompt }));
-
         let body = json!({
-            "contents": [{ "role": "user", "parts": parts }],
-            "generationConfig": {
-                "responseModalities": ["IMAGE", "TEXT"]
-            }
+            "model": self.image_model,
+            "prompt": enhanced_prompt,
+            "n": 1,
+            "size": "1024x1024",
+            "response_format": "url"
         });
 
         let resp = self
             .http
-            .post(format!(
-                "{}/v1beta/models/{}:generateContent",
-                self.proxy_url, self.gemini_model
-            ))
-            .header("x-goog-api-key", &self.proxy_key)
+            .post(format!("{}/v1/images/generations", self.proxy_url))
+            .bearer_auth(&self.proxy_key)
             .json(&body)
             .send()
             .await?;
@@ -152,20 +141,22 @@ impl SpriteForgeProvider {
         let text = resp.text().await?;
 
         if !status.is_success() {
-            anyhow::bail!("SpriteForge Gemini image generation returned {status}: {text}");
+            anyhow::bail!("SpriteForge Grok image generation returned {status}: {text}");
         }
 
         let payload: Value = serde_json::from_str(&text)?;
-        let image_data = payload["candidates"][0]["content"]["parts"]
-            .as_array()
-            .and_then(|parts| {
-                parts
-                    .iter()
-                    .find_map(|p| p["inlineData"]["data"].as_str().map(String::from))
-            })
-            .ok_or_else(|| anyhow::anyhow!("Gemini response does not contain inlineData image"))?;
+        let data = &payload["data"][0];
 
-        Ok(STANDARD.decode(&image_data)?)
+        if let Some(url) = data["url"].as_str() {
+            let (bytes, _mime) = self.download_image(url).await?;
+            return Ok(bytes);
+        }
+
+        if let Some(b64) = data["b64_json"].as_str() {
+            return Ok(STANDARD.decode(b64)?);
+        }
+
+        anyhow::bail!("Grok image response contains neither url nor b64_json")
     }
 
     /// Split a grid image into individual frames.
@@ -326,8 +317,8 @@ impl AssetProvider for SpriteForgeProvider {
             None
         };
 
-        // Step 3: Generate grid image via Gemini
-        tracing::info!("SpriteForge: generating grid image via Gemini");
+        // Step 3: Generate grid image via Grok
+        tracing::info!("SpriteForge: generating grid image via Grok");
         let grid_bytes = self
             .generate_image(
                 &enhanced_prompt,
@@ -337,7 +328,7 @@ impl AssetProvider for SpriteForgeProvider {
 
         // Step 4: Post-process — split grid into frames
         let grid_img = image::load_from_memory(&grid_bytes)
-            .map_err(|e| anyhow::anyhow!("failed to decode Gemini output image: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("failed to decode generated image: {e}"))?;
         let frames = Self::split_grid(&grid_img, cols, rows);
         let frame_count = frames.len();
 
@@ -364,7 +355,7 @@ impl AssetProvider for SpriteForgeProvider {
             output_data: Some(output_b64),
             metadata: json!({
                 "model": self.llm_model,
-                "gemini_model": self.gemini_model,
+                "image_model": self.image_model,
                 "animation_type": animation_type,
                 "direction": direction,
                 "grid_size": grid_size_str,

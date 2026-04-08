@@ -29,7 +29,7 @@ impl SpriteForgeConfig {
                 .or_else(|_| env::var("LLM_PROXY_URL"))
                 .unwrap_or_else(|_| "https://api.xiaomao.chat".to_string()),
             gemini_model: env::var("GEMINI_MODEL")
-                .unwrap_or_else(|_| "gemini-3.1-flash-image-preview".to_string()),
+                .unwrap_or_else(|_| "grok-imagine-1.0".to_string()),
             llm_model: env::var("LLM_MODEL")
                 .unwrap_or_else(|_| "gemini-3-flash-preview".to_string()),
             output_dir: env::var("OUTPUT_DIR").unwrap_or_else(|_| "./output".to_string()),

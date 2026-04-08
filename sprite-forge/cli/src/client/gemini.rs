@@ -3,16 +3,16 @@ use std::time::Instant;
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
-pub struct GeminiClient {
+pub struct ImageClient {
     http: reqwest::Client,
     base_url: String,
     api_key: String,
     model: String,
 }
 
-impl GeminiClient {
+impl ImageClient {
     pub fn new(base_url: &str, api_key: &str, model: &str) -> Self {
         Self {
             http: reqwest::Client::new(),
@@ -27,49 +27,35 @@ impl GeminiClient {
         prompt: &str,
         reference_image: Option<&[u8]>,
     ) -> Result<Vec<u8>> {
-        let mut parts = Vec::with_capacity(if reference_image.is_some() { 2 } else { 1 });
-
-        if let Some(bytes) = reference_image {
-            parts.push(json!({
-                "inlineData": {
-                    "mimeType": "image/png",
-                    "data": STANDARD.encode(bytes),
-                }
-            }));
+        if reference_image.is_some() {
+            warn!("Reference image provided but Grok image API does not support image input; using text prompt only");
         }
 
-        parts.push(json!({ "text": prompt }));
-
         let body = json!({
-            "contents": [{
-                "role": "user",
-                "parts": parts,
-            }],
-            "generationConfig": {
-                "responseModalities": ["IMAGE", "TEXT"]
-            }
+            "model": self.model,
+            "prompt": prompt,
+            "n": 1,
+            "size": "1024x1024",
+            "response_format": "url"
         });
 
-        let url = format!(
-            "{}/v1beta/models/{}:generateContent",
-            self.base_url, self.model
-        );
+        let url = format!("{}/v1/images/generations", self.base_url);
         let started_at = Instant::now();
 
         let response = self
             .http
             .post(&url)
-            .header("x-goog-api-key", &self.api_key)
+            .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&body)
             .send()
             .await
-            .map_err(|err| anyhow!("Gemini request failed: {err}"))?;
+            .map_err(|err| anyhow!("Image generation request failed: {err}"))?;
 
         let status = response.status();
         let payload = response
             .text()
             .await
-            .map_err(|err| anyhow!("Failed to read Gemini response body: {err}"))?;
+            .map_err(|err| anyhow!("Failed to read image generation response body: {err}"))?;
         let elapsed = started_at.elapsed();
 
         if !status.is_success() {
@@ -77,92 +63,76 @@ impl GeminiClient {
                 status = %status,
                 elapsed_ms = elapsed.as_millis(),
                 body = %payload,
-                "Gemini image generation failed"
+                "Image generation failed"
             );
-            return Err(anyhow!("Gemini image API returned {}: {}", status, payload));
+            return Err(anyhow!("Image API returned {}: {}", status, payload));
         }
 
         let value: Value = serde_json::from_str(&payload).map_err(|err| {
-            anyhow!("Failed to parse Gemini response JSON: {err}; body: {payload}")
+            anyhow!("Failed to parse image generation response JSON: {err}; body: {payload}")
         })?;
-        let (image, mime_type) = Self::extract_image(&value)?;
+
+        let image_bytes = self.extract_image(&value).await?;
 
         info!(
             model = %self.model,
             elapsed_ms = elapsed.as_millis(),
-            mime_type = %mime_type,
-            bytes = image.len(),
+            bytes = image_bytes.len(),
             has_reference = reference_image.is_some(),
-            "Gemini image generation completed"
+            "Image generation completed"
         );
 
-        Ok(image)
+        Ok(image_bytes)
     }
 
     pub async fn generate_image_from_url(&self, prompt: &str, image_url: &str) -> Result<Vec<u8>> {
-        let response = self
-            .http
-            .get(image_url)
-            .send()
-            .await
-            .map_err(|err| anyhow!("Failed to download reference image from URL: {err}"))?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(anyhow!(
-                "Failed to download reference image from URL, status {}: {}",
-                status,
-                body
-            ));
-        }
-
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|err| anyhow!("Failed to read downloaded reference image bytes: {err}"))?;
-
-        self.generate_image(prompt, Some(bytes.as_ref())).await
+        warn!("Reference image URL provided but Grok image API does not support image input; using text prompt only. URL: {image_url}");
+        self.generate_image(prompt, None).await
     }
 
-    fn extract_image(payload: &Value) -> Result<(Vec<u8>, String)> {
-        let parts = payload["candidates"][0]["content"]["parts"]
+    async fn extract_image(&self, payload: &Value) -> Result<Vec<u8>> {
+        let data = payload["data"]
             .as_array()
-            .ok_or_else(|| anyhow!("Gemini response missing candidates[0].content.parts"))?;
+            .ok_or_else(|| anyhow!("Image API response missing 'data' array"))?;
 
-        for part in parts {
-            let Some(inline_data) = part.get("inlineData") else {
-                continue;
-            };
+        let item = data.first().ok_or_else(|| anyhow!("Image API response 'data' array is empty"))?;
 
-            let mime_type = inline_data["mimeType"]
-                .as_str()
-                .ok_or_else(|| anyhow!("Gemini image part missing inlineData.mimeType"))?
-                .to_string();
-            let encoded = inline_data["data"]
-                .as_str()
-                .ok_or_else(|| anyhow!("Gemini image part missing inlineData.data"))?;
-            let bytes = STANDARD
-                .decode(encoded)
-                .map_err(|err| anyhow!("Failed to decode Gemini image base64 payload: {err}"))?;
-
-            return Ok((bytes, mime_type));
+        // Try URL first
+        if let Some(url) = item["url"].as_str() {
+            let resp = self
+                .http
+                .get(url)
+                .send()
+                .await
+                .map_err(|err| anyhow!("Failed to download generated image from URL: {err}"))?;
+            if !resp.status().is_success() {
+                return Err(anyhow!("Failed to download image: HTTP {}", resp.status()));
+            }
+            let bytes = resp.bytes().await
+                .map_err(|err| anyhow!("Failed to read downloaded image bytes: {err}"))?;
+            return Ok(bytes.to_vec());
         }
 
-        Err(anyhow!(
-            "Gemini response did not contain any inlineData image parts"
-        ))
+        // Try b64_json
+        if let Some(b64) = item["b64_json"].as_str() {
+            let bytes = STANDARD
+                .decode(b64)
+                .map_err(|err| anyhow!("Failed to decode base64 image: {err}"))?;
+            return Ok(bytes);
+        }
+
+        Err(anyhow!("Image API response does not contain 'url' or 'b64_json'"))
     }
 
     pub async fn health_check(&self) -> Result<bool> {
-        let url = format!("{}/v1beta/models", self.base_url);
+        let url = format!("{}/v1/models", self.base_url);
         let response = self
             .http
             .get(url)
-            .header("x-goog-api-key", &self.api_key)
+            .header("Authorization", format!("Bearer {}", self.api_key))
             .send()
             .await
-            .map_err(|err| anyhow!("Gemini health check request failed: {err}"))?;
+            .map_err(|err| anyhow!("Image API health check request failed: {err}"))?;
 
         Ok(response.status().is_success())
     }

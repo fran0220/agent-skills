@@ -1,4 +1,4 @@
-use crate::client::{gemini::GeminiClient, llm::LlmClient};
+use crate::client::{gemini::ImageClient, llm::LlmClient};
 use crate::config::SpriteForgeConfig;
 use crate::db::Db;
 use crate::types::JobProgress;
@@ -8,7 +8,7 @@ use tokio::sync::broadcast;
 
 pub struct AppState {
     pub config: SpriteForgeConfig,
-    pub gemini: GeminiClient,
+    pub image_client: ImageClient,
     pub llm: LlmClient,
     pub db: Db,
     pub job_channels: Arc<DashMap<String, broadcast::Sender<JobProgress>>>,
@@ -16,7 +16,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: SpriteForgeConfig, db: Db) -> Self {
-        let gemini = GeminiClient::new(
+        let image_client = ImageClient::new(
             &config.gemini_base_url,
             &config.gemini_api_key,
             &config.gemini_model,
@@ -28,7 +28,7 @@ impl AppState {
         );
         Self {
             config,
-            gemini,
+            image_client,
             llm,
             db,
             job_channels: Arc::new(DashMap::new()),

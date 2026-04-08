@@ -1,14 +1,14 @@
-use crate::client::gemini::GeminiClient;
+use crate::client::gemini::ImageClient;
 use std::time::Instant;
 use tracing::info;
 
 pub async fn generate_sprite_grid(
-    gemini: &GeminiClient,
+    image_client: &ImageClient,
     enhanced_prompt: &str,
     reference_image: Option<&[u8]>,
 ) -> anyhow::Result<Vec<u8>> {
     let start = Instant::now();
-    let grid_bytes = gemini
+    let grid_bytes = image_client
         .generate_image(enhanced_prompt, reference_image)
         .await?;
 

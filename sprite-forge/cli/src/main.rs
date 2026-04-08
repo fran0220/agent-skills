@@ -161,7 +161,7 @@ async fn generate(args: GenerateArgs) -> Result<()> {
         &config.llm_proxy_key,
         &config.llm_model,
     );
-    let gemini = client::gemini::GeminiClient::new(
+    let image_client = client::gemini::ImageClient::new(
         &config.gemini_base_url,
         &config.gemini_api_key,
         &config.gemini_model,
@@ -177,7 +177,7 @@ async fn generate(args: GenerateArgs) -> Result<()> {
         remove_background: true,
     };
 
-    let result = pipeline::run_pipeline(&llm, &gemini, &request).await?;
+    let result = pipeline::run_pipeline(&llm, &image_client, &request).await?;
 
     fs::create_dir_all(&args.output_dir).await?;
 

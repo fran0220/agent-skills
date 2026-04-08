@@ -2,7 +2,7 @@ pub mod generate;
 pub mod process;
 pub mod prompt;
 
-use crate::client::{gemini::GeminiClient, llm::LlmClient};
+use crate::client::{gemini::ImageClient, llm::LlmClient};
 use crate::types::{AnimationType, Direction, SpriteRequest};
 use anyhow::{Context, anyhow};
 use std::time::Instant;
@@ -18,7 +18,7 @@ pub struct PipelineResult {
 
 pub async fn run_pipeline(
     llm: &LlmClient,
-    gemini: &GeminiClient,
+    image_client: &ImageClient,
     request: &SpriteRequest,
 ) -> anyhow::Result<PipelineResult> {
     let start = Instant::now();
@@ -53,7 +53,7 @@ pub async fn run_pipeline(
 
     info!("step 2/3: generating sprite grid");
     let grid_image =
-        generate::generate_sprite_grid(gemini, &enhanced_prompt, reference_image.as_deref())
+        generate::generate_sprite_grid(image_client, &enhanced_prompt, reference_image.as_deref())
             .await?;
 
     info!("step 3/3: post-processing");
