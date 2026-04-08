@@ -68,7 +68,14 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         providers.push(Arc::new(jimeng));
     }
 
-    // grok_image provider removed — reverse-engineered proxy too unstable for production use.
+    if !config.grok2api_url.is_empty() && !config.grok2api_key.is_empty() {
+        let mut grok = crate::providers::grok_image::GrokImageProvider::new(
+            config.grok2api_url.clone(),
+            config.grok2api_key.clone(),
+        );
+        grok.id = "grok_image".into();
+        providers.push(Arc::new(grok));
+    }
 
     if !config.elevenlabs_key.is_empty() {
         let mut el =

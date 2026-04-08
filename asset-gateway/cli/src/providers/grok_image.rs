@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::time::{Duration, Instant};
 
 use crate::core::*;
@@ -109,12 +107,18 @@ impl AssetProvider for GrokImageProvider {
                     .map(|s| s.clamp(6, 30))
                     .unwrap_or(6);
 
+                let quality = req
+                    .params
+                    .get("quality")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("standard");
+
                 let mut video_body = json!({
                     "model": VIDEO_MODEL,
                     "prompt": prompt,
                     "size": size,
                     "seconds": seconds,
-                    "quality": "standard",
+                    "quality": quality,
                 });
                 if let Some(ref image_url) = req.input_file {
                     video_body["image"] = json!(image_url);
