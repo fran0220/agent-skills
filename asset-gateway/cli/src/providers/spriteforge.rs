@@ -31,13 +31,15 @@ pub struct SpriteForgeProvider {
     pub id: String,
     proxy_url: String,
     proxy_key: String,
+    grok_url: String,
+    grok_key: String,
     llm_model: String,
     image_model: String,
     http: reqwest::Client,
 }
 
 impl SpriteForgeProvider {
-    pub fn new(proxy_url: String, proxy_key: String) -> Self {
+    pub fn new(proxy_url: String, proxy_key: String, grok_url: String, grok_key: String) -> Self {
         let http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(300))
@@ -47,6 +49,8 @@ impl SpriteForgeProvider {
             id: "spriteforge".into(),
             proxy_url,
             proxy_key,
+            grok_url,
+            grok_key,
             llm_model: "grok-4.1-fast".into(),
             image_model: "grok-imagine-1.0".into(),
             http,
@@ -133,8 +137,8 @@ impl SpriteForgeProvider {
 
         let resp = self
             .http
-            .post(format!("{}/v1/images/generations", self.proxy_url))
-            .bearer_auth(&self.proxy_key)
+            .post(format!("{}/v1/images/generations", self.grok_url))
+            .bearer_auth(&self.grok_key)
             .json(&body)
             .send()
             .await?;
