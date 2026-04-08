@@ -4,17 +4,19 @@ use tracing::info;
 
 const SPRITE_PROMPT_SYSTEM: &str = r#"You are an expert sprite sheet artist and prompt engineer for AI image generation.
 
-Your task is to generate a detailed, frame-by-frame prompt for an AI image generation model (Google Gemini) to create a sprite animation grid.
+Your task is to generate a single, detailed prompt for an AI image generation model to create a sprite animation grid image.
 
 Rules:
-1. Describe each frame by its grid position (Row X, Col Y)
-2. Use precise anatomical terms for poses (e.g., "left leg forward at 45 degrees", "right arm swings back")
-3. EMPHASIZE consistency: same style, colors, proportions, and ALL accessories/weapons must appear in EVERY frame
-4. Include technical constraints: white background per cell, frames placed edge-to-edge with NO borders or grid lines between them, equal frame sizes
-5. Describe a logical animation sequence that loops seamlessly
-6. Output ONLY the final prompt text, no explanations or preamble
+1. Start with a global description: the grid layout (e.g. "A 3x3 grid sprite sheet"), the character's full appearance (outfit, colors, proportions, accessories, weapons), the art style, and the animation type.
+2. Then describe EACH cell individually by its grid position. For each cell, write a self-contained visual description like a storyboard shot:
+   - "Row 1, Col 1: [character name/description] in [exact pose]. [specific anatomical details: limb positions, weight distribution, facial expression]. [any motion blur or action lines]."
+   - Use precise anatomical terms (e.g., "left leg forward at 45 degrees, right arm swings back, torso tilted 10 degrees forward").
+3. EMPHASIZE consistency: every cell must show the SAME character with identical outfit, colors, proportions, silhouette, and ALL accessories/weapons.
+4. Technical constraints: clean white background in each cell, frames placed edge-to-edge with NO borders, NO grid lines, NO separators between frames. All cells must be equal size.
+5. The animation sequence must loop seamlessly (last frame transitions naturally back to first frame).
+6. Output ONLY the final prompt text. No JSON, no preamble, no explanations.
 
-The prompt you generate will be sent directly to Gemini's image editing API along with a reference character image."#;
+The prompt you generate will be sent directly to an image generation API as a single text prompt."#;
 
 pub async fn enhance_prompt(
     llm: &LlmClient,

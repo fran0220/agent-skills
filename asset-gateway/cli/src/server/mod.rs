@@ -51,16 +51,12 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         gpt.id = "gpt_image".into();
         providers.push(Arc::new(gpt));
 
-        // SpriteForge — sprite animation (LLM via proxy, image gen via grok2api)
-        if !config.grok2api_url.is_empty() && !config.grok2api_key.is_empty() {
-            let sf = crate::providers::spriteforge::SpriteForgeProvider::new(
-                config.proxy_url.clone(),
-                config.proxy_key.clone(),
-                config.grok2api_url.clone(),
-                config.grok2api_key.clone(),
-            );
-            providers.push(Arc::new(sf));
-        }
+        // SpriteForge — sprite animation (LLM + image gen both via proxy)
+        let sf = crate::providers::spriteforge::SpriteForgeProvider::new(
+            config.proxy_url.clone(),
+            config.proxy_key.clone(),
+        );
+        providers.push(Arc::new(sf));
     }
 
     if !config.jimeng_token.is_empty() && !config.jimeng_url.is_empty() {
@@ -72,8 +68,11 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         providers.push(Arc::new(jimeng));
     }
 
+    // Grok Image: image via proxy (xAI official), video via grok2api-go
     if !config.grok2api_url.is_empty() && !config.grok2api_key.is_empty() {
         let mut grok = crate::providers::grok_image::GrokImageProvider::new(
+            config.proxy_url.clone(),
+            config.proxy_key.clone(),
             config.grok2api_url.clone(),
             config.grok2api_key.clone(),
         );

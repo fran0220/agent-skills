@@ -3,11 +3,11 @@ use std::time::{Duration, Instant};
 use crate::core::*;
 use serde_json::{json, Value};
 
-const IMAGE_MODEL: &str = "grok-imagine-1.0";
+const IMAGE_MODEL: &str = "grok-imagine-image";
 const VIDEO_MODEL: &str = "grok-imagine-1.0-video";
 
-/// Allowed sizes for grok2api-go image/video endpoints.
-const ALLOWED_SIZES: &[(&str, f64)] = &[
+/// Allowed sizes for video endpoints (grok2api-go).
+const ALLOWED_VIDEO_SIZES: &[(&str, f64)] = &[
     ("1024x1024", 1.0),
     ("1280x720", 1.778),
     ("720x1280", 0.5625),
@@ -15,29 +15,35 @@ const ALLOWED_SIZES: &[(&str, f64)] = &[
     ("1024x1792", 0.571),
 ];
 
-/// Grok Image provider — connects directly to grok2api-go native REST APIs.
-/// Supports image generation (`/v1/images/generations`) and video generation
-/// (`/v1/video/generations`).
+/// Grok Image provider — dual-backend:
+/// - Image generation via xAI official API through proxy (`/v1/images/generations`)
+/// - Video generation via grok2api-go (`/v1/video/generations`)
 pub struct GrokImageProvider {
     pub id: String,
-    pub base_url: String,
-    pub api_key: String,
+    /// Proxy URL for image generation (api.xiaomao.chat → xAI official)
+    proxy_url: String,
+    proxy_key: String,
+    /// grok2api-go URL for video generation (grok.xiaomao.chat)
+    video_url: String,
+    video_key: String,
     http: reqwest::Client,
 }
 
 impl GrokImageProvider {
-    pub fn new(base_url: String, api_key: String) -> Self {
+    pub fn new(proxy_url: String, proxy_key: String, video_url: String, video_key: String) -> Self {
         Self {
             id: "grok_image".into(),
-            base_url,
-            api_key,
+            proxy_url,
+            proxy_key,
+            video_url,
+            video_key,
             http: reqwest::Client::new(),
         }
     }
 }
 
-/// Map a "WxH" size string to the closest allowed grok2api-go size.
-fn map_size(size: &str) -> &'static str {
+/// Map a "WxH" size string to the closest allowed grok2api-go video size.
+fn map_video_size(size: &str) -> &'static str {
     let parts: Vec<&str> = size.split('x').chain(size.split('X')).take(2).collect();
     if parts.len() < 2 {
         return "1024x1024";
@@ -49,9 +55,9 @@ fn map_size(size: &str) -> &'static str {
     }
 
     let ratio = w / h;
-    let mut best = ALLOWED_SIZES[0].0;
+    let mut best = ALLOWED_VIDEO_SIZES[0].0;
     let mut best_diff = f64::MAX;
-    for &(name, r) in ALLOWED_SIZES {
+    for &(name, r) in ALLOWED_VIDEO_SIZES {
         let diff = (ratio - r).abs();
         if diff < best_diff {
             best_diff = diff;
@@ -91,22 +97,20 @@ impl AssetProvider for GrokImageProvider {
         let prompt = req.prompt.as_deref().unwrap_or("");
         let start = Instant::now();
 
-        let size = req
-            .params
-            .get("size")
-            .and_then(|v| v.as_str())
-            .map(map_size)
-            .unwrap_or("1024x1024");
-
-        let (url, body, timeout, model, cost) = match req.asset_type {
+        let (url, auth_key, body, timeout, model, cost) = match req.asset_type {
             AssetType::Video => {
+                let size = req
+                    .params
+                    .get("size")
+                    .and_then(|v| v.as_str())
+                    .map(map_video_size)
+                    .unwrap_or("1792x1024");
                 let seconds = req
                     .params
                     .get("seconds")
                     .and_then(|v| v.as_u64())
                     .map(|s| s.clamp(6, 30))
                     .unwrap_or(6);
-
                 let quality = req
                     .params
                     .get("quality")
@@ -125,31 +129,43 @@ impl AssetProvider for GrokImageProvider {
                 }
 
                 (
-                    format!("{}/v1/video/generations", self.base_url),
+                    format!("{}/v1/video/generations", self.video_url),
+                    &self.video_key,
                     video_body,
                     Duration::from_secs(180),
                     VIDEO_MODEL,
                     0.10,
                 )
             }
-            _ => (
-                format!("{}/v1/images/generations", self.base_url),
-                json!({
-                    "model": IMAGE_MODEL,
-                    "prompt": prompt,
-                    "size": size,
-                    "response_format": "url",
-                }),
-                Duration::from_secs(60),
-                IMAGE_MODEL,
-                0.07,
-            ),
+            _ => {
+                // Image: use xAI official API via proxy with aspect_ratio
+                let aspect_ratio = req
+                    .params
+                    .get("aspect_ratio")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("1:1");
+
+                (
+                    format!("{}/v1/images/generations", self.proxy_url),
+                    &self.proxy_key,
+                    json!({
+                        "model": IMAGE_MODEL,
+                        "prompt": prompt,
+                        "n": 1,
+                        "response_format": "url",
+                        "aspect_ratio": aspect_ratio,
+                    }),
+                    Duration::from_secs(60),
+                    IMAGE_MODEL,
+                    0.02,
+                )
+            }
         };
 
         let resp = self
             .http
             .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
+            .bearer_auth(auth_key)
             .timeout(timeout)
             .json(&body)
             .send()
@@ -180,7 +196,6 @@ impl AssetProvider for GrokImageProvider {
             metadata: json!({
                 "model": model,
                 "asset_type": req.asset_type.to_string(),
-                "size": size,
             }),
             cost_usd: Some(cost),
             elapsed_ms: start.elapsed().as_millis() as u64,
@@ -191,8 +206,8 @@ impl AssetProvider for GrokImageProvider {
         let start = Instant::now();
         let resp = self
             .http
-            .get(format!("{}/v1/models", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
+            .get(format!("{}/v1/models", self.proxy_url))
+            .bearer_auth(&self.proxy_key)
             .send()
             .await;
 
@@ -216,41 +231,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn map_size_square() {
-        assert_eq!(map_size("1024x1024"), "1024x1024");
-        assert_eq!(map_size("512x512"), "1024x1024");
+    fn map_video_size_square() {
+        assert_eq!(map_video_size("1024x1024"), "1024x1024");
+        assert_eq!(map_video_size("512x512"), "1024x1024");
     }
 
     #[test]
-    fn map_size_landscape() {
-        assert_eq!(map_size("1280x720"), "1280x720");
-        // 1920x1080 = 1.778 ratio, same as 1280x720
-        assert_eq!(map_size("1920x1080"), "1280x720");
-        assert_eq!(map_size("1792x1024"), "1792x1024");
+    fn map_video_size_landscape() {
+        assert_eq!(map_video_size("1280x720"), "1280x720");
+        assert_eq!(map_video_size("1920x1080"), "1280x720");
+        assert_eq!(map_video_size("1792x1024"), "1792x1024");
     }
 
     #[test]
-    fn map_size_portrait() {
-        assert_eq!(map_size("720x1280"), "720x1280");
-        assert_eq!(map_size("1024x1792"), "1024x1792");
-        // 1080x1920 = 0.5625 ratio, same as 720x1280
-        assert_eq!(map_size("1080x1920"), "720x1280");
+    fn map_video_size_portrait() {
+        assert_eq!(map_video_size("720x1280"), "720x1280");
+        assert_eq!(map_video_size("1024x1792"), "1024x1792");
+        assert_eq!(map_video_size("1080x1920"), "720x1280");
     }
 
     #[test]
-    fn map_size_invalid() {
-        assert_eq!(map_size("bad"), "1024x1024");
-        assert_eq!(map_size("0x0"), "1024x1024");
-        assert_eq!(map_size(""), "1024x1024");
+    fn map_video_size_invalid() {
+        assert_eq!(map_video_size("bad"), "1024x1024");
+        assert_eq!(map_video_size("0x0"), "1024x1024");
+        assert_eq!(map_video_size(""), "1024x1024");
     }
 
     #[test]
-    fn map_size_near_ratios() {
-        // 4:3 ≈ 1.333 — closest to 1280x720 (1.778) vs 1024x1024 (1.0)
-        // diff to 1.0 = 0.333, diff to 1.778 = 0.445, diff to 1.75 = 0.417
-        // → closest is 1024x1024
-        assert_eq!(map_size("800x600"), "1024x1024");
-        // 16:10 = 1.6 — closest to 1792x1024 (1.75)
-        assert_eq!(map_size("1680x1050"), "1792x1024");
+    fn map_video_size_near_ratios() {
+        assert_eq!(map_video_size("800x600"), "1024x1024");
+        assert_eq!(map_video_size("1680x1050"), "1792x1024");
     }
 }
