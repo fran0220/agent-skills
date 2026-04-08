@@ -158,9 +158,9 @@ impl SpriteForgeProvider {
         let image_data = payload["candidates"][0]["content"]["parts"]
             .as_array()
             .and_then(|parts| {
-                parts.iter().find_map(|p| {
-                    p["inlineData"]["data"].as_str().map(String::from)
-                })
+                parts
+                    .iter()
+                    .find_map(|p| p["inlineData"]["data"].as_str().map(String::from))
             })
             .ok_or_else(|| anyhow::anyhow!("Gemini response does not contain inlineData image"))?;
 
@@ -298,19 +298,24 @@ impl AssetProvider for SpriteForgeProvider {
             .get("output_format")
             .and_then(Value::as_str)
             .unwrap_or("spritesheet");
-        let fps = req
-            .params
-            .get("fps")
-            .and_then(Value::as_u64)
-            .unwrap_or(8) as u32;
+        let fps = req.params.get("fps").and_then(Value::as_u64).unwrap_or(8) as u32;
         let (cols, rows) = Self::parse_grid_size(grid_size_str);
 
         // Step 1: LLM prompt enhancement
-        tracing::info!(prompt, animation_type, direction, grid_size = grid_size_str, "SpriteForge: enhancing prompt");
+        tracing::info!(
+            prompt,
+            animation_type,
+            direction,
+            grid_size = grid_size_str,
+            "SpriteForge: enhancing prompt"
+        );
         let enhanced_prompt = self
             .enhance_prompt(prompt, animation_type, direction, grid_size_str, style)
             .await?;
-        tracing::debug!(enhanced_prompt_len = enhanced_prompt.len(), "SpriteForge: prompt enhanced");
+        tracing::debug!(
+            enhanced_prompt_len = enhanced_prompt.len(),
+            "SpriteForge: prompt enhanced"
+        );
 
         // Step 2: Download reference image if provided
         let reference = if let Some(url) = req.input_file.as_deref() {
