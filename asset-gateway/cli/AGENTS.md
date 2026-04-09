@@ -149,7 +149,10 @@ Sprite 命令的当前行为：
 
 - 已移除 `--grid-size`
 - `--animation-type` 默认值为 `walk`
-- 新增 `--duration`，默认 `2`
+- `--duration` 默认 `2`
+- `--view` 视角控制（`auto`/`side`/`front`/`back`/`three-quarter`/`none`），默认 `auto` 从 `--direction` 推断
+- `--framing` 构图控制（`full-body`/`waist-up`/`close-up`/`none`），默认 `full-body`
+- `--background` 背景控制（`auto`/`white`/`none`/自定义文本），默认 `auto`；仅 `auto`/`white` 时启用白底移除
 
 Skill 安装在 `~/.config/amp/skills/asset-gateway` → `../skill/SKILL.md`。
 

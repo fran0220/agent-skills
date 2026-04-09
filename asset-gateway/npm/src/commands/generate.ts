@@ -8,6 +8,15 @@ function inferExtension(assetType: string): string {
   return map[assetType] ?? "bin";
 }
 
+function inferExtFromResult(result: Record<string, unknown>): string | null {
+  const meta = result.metadata as Record<string, unknown> | undefined;
+  if (!meta) return null;
+  const ct = meta.content_type as string | undefined;
+  if (!ct) return null;
+  const map: Record<string, string> = { "image/gif": "gif", "image/webp": "webp", "image/png": "png", "image/jpeg": "jpg", "video/mp4": "mp4", "audio/mpeg": "mp3" };
+  return map[ct] ?? null;
+}
+
 function stripDataUri(data: string): string {
   const idx = data.indexOf(";base64,");
   return idx >= 0 ? data.slice(idx + 8) : data;
@@ -18,7 +27,7 @@ async function saveOutput(
   assetType: string,
   outputDir: string
 ): Promise<string | null> {
-  const ext = inferExtension(assetType);
+  const ext = inferExtFromResult(result) ?? inferExtension(assetType);
   const timestamp = Date.now();
   const filename = `${assetType}_${timestamp}.${ext}`;
   mkdirSync(outputDir, { recursive: true });
@@ -412,6 +421,9 @@ export function createGenerateCommand(): Command {
       .option("--input <path>", "Reference image for character consistency (local path or URL)")
       .option("--animation-type <type>", "Animation type (idle, walk, run, attack, death, jump, cast, dance, or any custom)", "walk")
       .option("--direction <dir>", "Facing direction: right, left, front, back", "right")
+      .option("--view <view>", "Camera view angle: auto, side, front, back, three-quarter, none", "auto")
+      .option("--framing <framing>", "Framing: full-body, waist-up, close-up, none", "full-body")
+      .option("--background <bg>", "Background: auto, white, none, or free text (e.g. 'forest clearing')", "auto")
       .option("--duration <n>", "Video duration in seconds (1-15)", "2")
       .option("--style <style>", "Visual style (e.g. pixel art, hand-drawn, chibi)")
       .option("--output-format <fmt>", "Output format: spritesheet or gif", "spritesheet")
@@ -427,6 +439,9 @@ export function createGenerateCommand(): Command {
             output_format: options.outputFormat,
             fps: Number(options.fps),
           };
+          if (options.view && options.view !== "auto") params.view = options.view;
+          if (options.framing && options.framing !== "full-body") params.framing = options.framing;
+          if (options.background && options.background !== "auto") params.background = options.background;
           if (options.style) params.style = options.style;
 
           let inputFile = options.input as string | undefined;

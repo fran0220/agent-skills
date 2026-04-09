@@ -1,6 +1,6 @@
 # Sprite Animation Workflow
 
-一条命令生成精灵动画：文本/图片 → Grok 视频生成（2 秒） → ffmpeg 逐帧提取 → 白色背景移除 → spritesheet/GIF。
+一条命令生成精灵动画：文本/图片 → Grok 视频生成（2 秒） → ffmpeg 逐帧提取 → 条件白背景移除 → spritesheet/GIF。
 
 ## 概览
 
@@ -9,7 +9,7 @@ SpriteForge 基于 **xAI Grok 视频生成**（`grok-imagine-video`），直接�
 1. **输入** → 文本描述（`--prompt`）+ 可选参考图（`--input`）
 2. **Grok 视频生成** → 生成 2 秒动画视频（默认 8fps = 16 帧，一个完整动画循环）
 3. **帧提取** → ffmpeg 按指定帧率从视频中提取帧序列
-4. **后处理** → 白色背景移除 → 输出透明背景 spritesheet PNG 或 animated GIF
+4. **后处理** → 条件白背景移除（`--background auto/white` 时启用） → 输出 spritesheet PNG 或 animated GIF
 
 > 与旧版 Gemini 网格图方案不同，SpriteForge 现在**直接生成视频**——动画流畅度和角色一致性大幅提升。无需 LLM prompt 增强，prompt 直接传给 Grok。
 
@@ -139,6 +139,72 @@ asset-gateway generate sprite --prompt "knight" --style "pixel art"
 asset-gateway generate sprite --prompt "pixel art knight"
 ```
 
+## 视角与构图控制
+
+SpriteForge 现在支持独立控制视角、构图和背景，不再硬编码为"侧视图+白色背景"。
+
+### 视角（`--view`）
+
+默认 `auto` 会从 `--direction` 自动推断：`right/left` → side view，`front` → front view，`back` → back view。
+
+```bash
+# 正面视角的 idle 动画
+asset-gateway generate sprite \
+  --prompt "knight in silver armor" \
+  --animation-type idle \
+  --direction front \
+  --output-dir ./sprites
+
+# 四分之三视角
+asset-gateway generate sprite \
+  --prompt "mage with purple robe" \
+  --animation-type walk \
+  --view three-quarter \
+  --output-dir ./sprites
+```
+
+### 构图（`--framing`）
+
+默认 `full-body`（全身可见），适合游戏精灵。`waist-up` 适合头像/对话框立绘，`close-up` 适合肖像。
+
+```bash
+# 半身立绘
+asset-gateway generate sprite \
+  --prompt "elf archer with green hood" \
+  --animation-type idle \
+  --framing waist-up \
+  --output-dir ./sprites
+```
+
+### 背景（`--background`）
+
+默认 `auto`（= 白底 + 自动移除白色背景）。如果需要场景背景，设为自定义文本——此时不做背景移除。
+
+```bash
+# 默认行为：白底 + 自动移除 → 透明背景
+asset-gateway generate sprite \
+  --prompt "robot warrior" \
+  --animation-type run \
+  --output-dir ./sprites
+
+# 保留场景背景（不做背景移除）
+asset-gateway generate sprite \
+  --prompt "wizard casting spell" \
+  --animation-type cast \
+  --background "dark dungeon" \
+  --output-format gif \
+  --output-dir ./sprites
+
+# 无背景提示（不做背景移除）
+asset-gateway generate sprite \
+  --prompt "cat with witch hat" \
+  --animation-type dance \
+  --background none \
+  --output-dir ./sprites
+```
+
+> **注意**：`--background auto/white` 时输出为透明背景；自定义背景或 `none` 时不做白色移除，GIF 格式更适合展示。
+
 ## 完整参数
 
 | Flag | Default | 说明 |
@@ -151,6 +217,9 @@ asset-gateway generate sprite --prompt "pixel art knight"
 | `--style` | — | 视觉风格（pixel art, realistic, anime 等） |
 | `--fps` | `8` | 帧提取率（每秒提取帧数） |
 | `--direction` | `right` | 角色朝向 |
+| `--view` | `auto` | 视角：`auto`（从朝向推断）、`side`、`front`、`back`、`three-quarter`、`none` |
+| `--framing` | `full-body` | 构图：`full-body`、`waist-up`、`close-up`、`none` |
+| `--background` | `auto` | 背景：`auto`（白底+自动移除）、`white`、`none`、或自定义文本 |
 | `--output-dir` | `.` | 输出目录 |
 
 ## 更多示例
@@ -221,6 +290,18 @@ asset-gateway generate sprite \
   --output-dir ./sprites
 ```
 
+### 正面视角 + 半身构图
+
+```bash
+asset-gateway generate sprite \
+  --prompt "anime girl with cat ears" \
+  --animation-type idle \
+  --direction front \
+  --framing waist-up \
+  --style anime \
+  --output-dir ./sprites
+```
+
 ## 费用
 
 - 基于 Grok 视频生成按秒计费：**$0.05/秒**
@@ -237,3 +318,4 @@ asset-gateway generate sprite \
 - **参考图提升一致性** — 如果需要同一角色多套动画，用 `--input` 传入参考图保持外观统一
 - **短时长更稳定** — 2 秒（默认）对大多数动画循环已经足够，复杂动画再加长
 - **风格无限制** — 像素画、写实、卡通、动漫皆可，不再局限于像素风格
+- **视角默认自动推断** — 通常不需要手动设置 `--view`，`auto` 会根据 `--direction` 选择合适的视角

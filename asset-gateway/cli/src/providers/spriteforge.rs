@@ -34,21 +34,79 @@ impl SpriteForgeProvider {
         }
     }
 
+    /// Resolve camera view from direction + explicit view param.
+    /// `auto` infers from facing direction; `none` omits view clause.
+    fn resolve_view(direction: &str, view: Option<&str>) -> Option<String> {
+        match view.map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+            None | Some("") | Some("auto") => {
+                match direction.trim().to_ascii_lowercase().as_str() {
+                    "left" | "right" => Some("side view".into()),
+                    "front" => Some("front view".into()),
+                    "back" => Some("back view".into()),
+                    _ => None,
+                }
+            }
+            Some("none") => None,
+            Some(v) => Some(format!("{v} view")),
+        }
+    }
+
+    /// Resolve framing clause. Defaults to full-body.
+    fn resolve_framing(framing: Option<&str>) -> Option<String> {
+        match framing.map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+            None | Some("") | Some("full-body") => {
+                Some("full body character fully visible, centered in frame".into())
+            }
+            Some("none") => None,
+            Some(v) => Some(format!("{v} framing")),
+        }
+    }
+
+    /// Resolve background clause and whether white-bg removal should run.
+    fn resolve_background(background: Option<&str>) -> (Option<String>, bool) {
+        match background.map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+            None | Some("") | Some("auto") | Some("white") => {
+                (Some("plain white background".into()), true)
+            }
+            Some("none") => (None, false),
+            Some(v) => (Some(format!("{v} background")), false),
+        }
+    }
+
     /// Build a video generation prompt from request parameters.
     fn build_prompt(
         character_desc: &str,
         animation_type: &str,
         direction: &str,
+        view: Option<&str>,
+        framing: Option<&str>,
+        background: Option<&str>,
         style: Option<&str>,
     ) -> String {
-        let mut prompt = format!(
-            "{character_desc}, {animation_type} animation facing {direction}. \
-             Side view, clean white background, smooth looping motion."
-        );
-        if let Some(s) = style.filter(|v| !v.trim().is_empty()) {
-            prompt.push_str(&format!(" {s} style."));
+        let mut parts = vec![
+            character_desc.trim().to_string(),
+            format!("{animation_type} animation"),
+            format!("facing {direction}"),
+        ];
+
+        if let Some(v) = Self::resolve_view(direction, view) {
+            parts.push(v);
         }
-        prompt
+        if let Some(f) = Self::resolve_framing(framing) {
+            parts.push(f);
+        }
+        let (bg_clause, _) = Self::resolve_background(background);
+        if let Some(bg) = bg_clause {
+            parts.push(bg);
+        }
+
+        parts.push("smooth looping motion".into());
+
+        if let Some(s) = style.filter(|v| !v.trim().is_empty()) {
+            parts.push(format!("{s} style"));
+        }
+
+        format!("{}.", parts.join(". "))
     }
 
     /// Submit a video generation request to xAI and poll until done.
@@ -271,6 +329,9 @@ impl AssetProvider for SpriteForgeProvider {
             .get("direction")
             .and_then(Value::as_str)
             .unwrap_or("right");
+        let view = req.params.get("view").and_then(Value::as_str);
+        let framing = req.params.get("framing").and_then(Value::as_str);
+        let background = req.params.get("background").and_then(Value::as_str);
         let style = req.params.get("style").and_then(Value::as_str);
         let output_format = req
             .params
@@ -284,8 +345,18 @@ impl AssetProvider for SpriteForgeProvider {
             .and_then(Value::as_u64)
             .unwrap_or(2) as u32;
 
+        let (_, should_remove_bg) = Self::resolve_background(background);
+
         // Step 1: Build prompt (no LLM enhancement)
-        let video_prompt = Self::build_prompt(prompt, animation_type, direction, style);
+        let video_prompt = Self::build_prompt(
+            prompt,
+            animation_type,
+            direction,
+            view,
+            framing,
+            background,
+            style,
+        );
         tracing::info!(
             prompt,
             animation_type,
@@ -303,8 +374,12 @@ impl AssetProvider for SpriteForgeProvider {
         // Step 3: Extract frames
         let raw_frames = self.extract_frames(&video_url, fps).await?;
 
-        // Step 4: Remove white background
-        let frames = Self::remove_white_bg(&raw_frames);
+        // Step 4: Conditionally remove white background
+        let frames = if should_remove_bg {
+            Self::remove_white_bg(&raw_frames)
+        } else {
+            raw_frames
+        };
         let frame_count = frames.len();
 
         // Step 5: Compose output
@@ -334,6 +409,10 @@ impl AssetProvider for SpriteForgeProvider {
                 "video_model": "grok-imagine-video",
                 "animation_type": animation_type,
                 "direction": direction,
+                "view": view.unwrap_or("auto"),
+                "framing": framing.unwrap_or("full-body"),
+                "background": background.unwrap_or("auto"),
+                "background_removed": should_remove_bg,
                 "video_duration": duration,
                 "frame_count": frame_count,
                 "output_format": output_format,

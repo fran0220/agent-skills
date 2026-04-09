@@ -58,7 +58,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Compose sprite sheet | `process compose` | `--input <files...>`, `--direction`, `--output-dir` |
 | Extract video frames | `process extract-frames` | `--input`, `--count`, `--output-dir` |
 | Remove background | `process remove-bg` | `--input <files...>`, `--output-dir` |
-| Animate a sprite | `generate sprite` | `--prompt`, `--animation-type`, `--duration`, `--output-dir` |
+| Animate a sprite | `generate sprite` | `--prompt`, `--animation-type`, `--view`, `--background`, `--output-dir` |
 | Generate 3D world | `generate world` | `--prompt`, `--input <image>`, `--model`, `--output-dir` |
 | Generate text | `generate text` | `--prompt`, `--model`, `--output-dir` |
 
