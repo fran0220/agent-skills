@@ -237,37 +237,33 @@ impl SpriteForgeProvider {
         Ok(frames)
     }
 
-    /// Remove white background from frames using Euclidean distance from pure
-    /// white with a soft alpha falloff. This handles video compression artifacts
-    /// around character edges (near-white pixels like `(216, 210, 215)` that a
-    /// naive channel-threshold approach leaves as a speckled halo).
+    /// Remove white background from frames using a binary cutoff based on
+    /// Euclidean distance from pure white.
     ///
-    /// - `dist <= INNER` → fully transparent (solid background)
-    /// - `INNER < dist < OUTER` → linear alpha falloff (anti-aliased fringe)
-    /// - `dist >= OUTER` → unchanged (character pixels)
+    /// A soft-alpha falloff was tempting, but it causes white matting:
+    /// edge pixels keep their near-white RGB values (e.g. `(216, 210, 215)`)
+    /// and, when composited onto any non-white background, produce a visible
+    /// white fringe/halo. A hard threshold avoids that entirely and is robust
+    /// for sprite use where crisp silhouettes matter more than sub-pixel edges.
     ///
-    /// Also clears the RGB channels of fully-transparent pixels so the PNG does
-    /// not ghost a white halo in viewers that ignore the alpha channel.
+    /// Threshold of 80 catches the full halo range (pure white all the way
+    /// down to `(200, 200, 200)`-ish gray) without touching character pixels,
+    /// which are typically at distance > 100.
     fn remove_white_bg(frames: &[DynamicImage]) -> Vec<DynamicImage> {
-        const INNER: f32 = 50.0;
-        const OUTER: f32 = 100.0;
+        const THRESHOLD_SQ: u32 = 80 * 80;
 
         frames
             .iter()
             .map(|frame| {
                 let mut rgba = frame.to_rgba8();
                 for pixel in rgba.pixels_mut() {
-                    let [r, g, b, a] = pixel.0;
-                    let dr = 255.0 - r as f32;
-                    let dg = 255.0 - g as f32;
-                    let db = 255.0 - b as f32;
-                    let dist = (dr * dr + dg * dg + db * db).sqrt();
-
-                    if dist <= INNER {
+                    let [r, g, b, _] = pixel.0;
+                    let dr = 255 - r as i32;
+                    let dg = 255 - g as i32;
+                    let db = 255 - b as i32;
+                    let dist_sq = (dr * dr + dg * dg + db * db) as u32;
+                    if dist_sq <= THRESHOLD_SQ {
                         pixel.0 = [0, 0, 0, 0];
-                    } else if dist < OUTER {
-                        let t = (dist - INNER) / (OUTER - INNER);
-                        pixel.0[3] = (a as f32 * t).round().clamp(0.0, 255.0) as u8;
                     }
                 }
                 DynamicImage::ImageRgba8(rgba)
