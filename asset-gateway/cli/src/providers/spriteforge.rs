@@ -237,16 +237,37 @@ impl SpriteForgeProvider {
         Ok(frames)
     }
 
-    /// Remove white background from frames (make transparent).
+    /// Remove white background from frames using Euclidean distance from pure
+    /// white with a soft alpha falloff. This handles video compression artifacts
+    /// around character edges (near-white pixels like `(216, 210, 215)` that a
+    /// naive channel-threshold approach leaves as a speckled halo).
+    ///
+    /// - `dist <= INNER` → fully transparent (solid background)
+    /// - `INNER < dist < OUTER` → linear alpha falloff (anti-aliased fringe)
+    /// - `dist >= OUTER` → unchanged (character pixels)
+    ///
+    /// Also clears the RGB channels of fully-transparent pixels so the PNG does
+    /// not ghost a white halo in viewers that ignore the alpha channel.
     fn remove_white_bg(frames: &[DynamicImage]) -> Vec<DynamicImage> {
+        const INNER: f32 = 50.0;
+        const OUTER: f32 = 100.0;
+
         frames
             .iter()
             .map(|frame| {
                 let mut rgba = frame.to_rgba8();
                 for pixel in rgba.pixels_mut() {
-                    let [r, g, b, _] = pixel.0;
-                    if r > 220 && g > 220 && b > 220 {
-                        pixel.0[3] = 0;
+                    let [r, g, b, a] = pixel.0;
+                    let dr = 255.0 - r as f32;
+                    let dg = 255.0 - g as f32;
+                    let db = 255.0 - b as f32;
+                    let dist = (dr * dr + dg * dg + db * db).sqrt();
+
+                    if dist <= INNER {
+                        pixel.0 = [0, 0, 0, 0];
+                    } else if dist < OUTER {
+                        let t = (dist - INNER) / (OUTER - INNER);
+                        pixel.0[3] = (a as f32 * t).round().clamp(0.0, 255.0) as u8;
                     }
                 }
                 DynamicImage::ImageRgba8(rgba)
