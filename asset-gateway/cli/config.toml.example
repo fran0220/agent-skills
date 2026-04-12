@@ -28,3 +28,13 @@ token = ""
 # WorldLabs Marble — 3D world/environment generation
 [worldlabs]
 key = ""
+
+# xAI direct API — Grok image + video generation
+[xai]
+key = ""
+
+# Vertex AI — direct access for Google models (Gemini Image, Lyria, Veo, CharAnim)
+[vertex]
+service_account_path = "~/vertex-ai-key.json"
+project_id = ""
+location = "global"

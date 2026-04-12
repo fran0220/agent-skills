@@ -3,68 +3,98 @@ use std::time::{Duration, Instant};
 use crate::core::*;
 use serde_json::{json, Value};
 
+const XAI_BASE: &str = "https://api.x.ai";
 const IMAGE_MODEL: &str = "grok-imagine-image";
-const VIDEO_MODEL: &str = "grok-imagine-1.0-video";
+const VIDEO_MODEL: &str = "grok-imagine-video";
 
-/// Allowed sizes for video endpoints (grok2api-go).
-const ALLOWED_VIDEO_SIZES: &[(&str, f64)] = &[
-    ("1024x1024", 1.0),
-    ("1280x720", 1.778),
-    ("720x1280", 0.5625),
-    ("1792x1024", 1.75),
-    ("1024x1792", 0.571),
-];
-
-/// Grok Image provider — dual-backend:
-/// - Image generation via xAI official API through proxy (`/v1/images/generations`)
-/// - Video generation via grok2api-go (`/v1/video/generations`)
+/// Grok provider — image and video generation via xAI direct API.
+///
+/// - Image: `POST /v1/images/generations` (grok-imagine-image)
+/// - Video: `POST /v1/videos/generations` (grok-imagine-video, async poll)
 pub struct GrokImageProvider {
     pub id: String,
-    /// Proxy URL for image generation (api.xiaomao.chat → xAI official)
-    proxy_url: String,
-    proxy_key: String,
-    /// grok2api-go URL for video generation (grok.xiaomao.chat)
-    video_url: String,
-    video_key: String,
+    xai_key: String,
     http: reqwest::Client,
 }
 
 impl GrokImageProvider {
-    pub fn new(proxy_url: String, proxy_key: String, video_url: String, video_key: String) -> Self {
+    pub fn new(xai_key: String) -> Self {
+        let http = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(300))
+            .build()
+            .expect("failed to build Grok HTTP client");
         Self {
             id: "grok_image".into(),
-            proxy_url,
-            proxy_key,
-            video_url,
-            video_key,
-            http: reqwest::Client::new(),
+            xai_key,
+            http,
         }
     }
-}
 
-/// Map a "WxH" size string to the closest allowed grok2api-go video size.
-fn map_video_size(size: &str) -> &'static str {
-    let parts: Vec<&str> = size.split('x').chain(size.split('X')).take(2).collect();
-    if parts.len() < 2 {
-        return "1024x1024";
-    }
-    let w: f64 = parts[0].trim().parse().unwrap_or(0.0);
-    let h: f64 = parts[1].trim().parse().unwrap_or(0.0);
-    if w <= 0.0 || h <= 0.0 {
-        return "1024x1024";
-    }
-
-    let ratio = w / h;
-    let mut best = ALLOWED_VIDEO_SIZES[0].0;
-    let mut best_diff = f64::MAX;
-    for &(name, r) in ALLOWED_VIDEO_SIZES {
-        let diff = (ratio - r).abs();
-        if diff < best_diff {
-            best_diff = diff;
-            best = name;
+    /// Submit video generation and poll until done. Returns video URL.
+    async fn generate_video(
+        &self,
+        prompt: &str,
+        duration: u32,
+        image_url: Option<&str>,
+    ) -> anyhow::Result<String> {
+        let mut body = json!({
+            "model": VIDEO_MODEL,
+            "prompt": prompt,
+            "duration": duration,
+        });
+        if let Some(url) = image_url {
+            body["image_url"] = json!(url);
         }
+
+        let resp = self
+            .http
+            .post(format!("{}/v1/videos/generations", XAI_BASE))
+            .bearer_auth(&self.xai_key)
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let text = resp.text().await?;
+        if !status.is_success() {
+            anyhow::bail!("Grok video generation returned {}: {}", status, text);
+        }
+
+        let data: Value = serde_json::from_str(&text)?;
+        let request_id = data["request_id"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing request_id in video response"))?;
+
+        // Poll until done (up to 5 minutes)
+        for i in 0..60 {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            let poll = self
+                .http
+                .get(format!("{}/v1/videos/{}", XAI_BASE, request_id))
+                .bearer_auth(&self.xai_key)
+                .send()
+                .await?;
+
+            let poll_data: Value = poll.json().await?;
+            let poll_status = poll_data["status"].as_str().unwrap_or("");
+            tracing::debug!(attempt = i + 1, status = poll_status, "Grok video: polling");
+
+            match poll_status {
+                "done" => {
+                    let url = poll_data["video"]["url"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("missing video url in done response"))?;
+                    return Ok(url.to_string());
+                }
+                "expired" | "failed" => {
+                    anyhow::bail!("Grok video generation {}: {}", poll_status, poll_data);
+                }
+                _ => continue,
+            }
+        }
+        anyhow::bail!("Grok video generation timed out after 5 minutes")
     }
-    best
 }
 
 #[async_trait::async_trait]
@@ -78,7 +108,7 @@ impl AssetProvider for GrokImageProvider {
     }
 
     fn display_name(&self) -> &str {
-        "Grok Image (xAI)"
+        "Grok (xAI)"
     }
 
     fn asset_types(&self) -> &[AssetType] {
@@ -88,7 +118,7 @@ impl AssetProvider for GrokImageProvider {
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
             supports_transparency: false,
-            priority: 80,
+            priority: 95,
             ..Default::default()
         }
     }
@@ -97,117 +127,94 @@ impl AssetProvider for GrokImageProvider {
         let prompt = req.prompt.as_deref().unwrap_or("");
         let start = Instant::now();
 
-        let (url, auth_key, body, timeout, model, cost) = match req.asset_type {
+        match req.asset_type {
             AssetType::Video => {
-                let size = req
+                let duration = req
                     .params
-                    .get("size")
-                    .and_then(|v| v.as_str())
-                    .map(map_video_size)
-                    .unwrap_or("1792x1024");
-                let seconds = req
-                    .params
-                    .get("seconds")
+                    .get("duration")
                     .and_then(|v| v.as_u64())
-                    .map(|s| s.clamp(6, 30))
-                    .unwrap_or(6);
-                let quality = req
-                    .params
-                    .get("quality")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("standard");
+                    .unwrap_or(5) as u32;
+                let image_url = req.input_file.as_deref();
 
-                let mut video_body = json!({
-                    "model": VIDEO_MODEL,
-                    "prompt": prompt,
-                    "size": size,
-                    "seconds": seconds,
-                    "quality": quality,
-                });
-                if let Some(ref image_url) = req.input_file {
-                    video_body["image"] = json!(image_url);
-                }
+                let video_url = self.generate_video(prompt, duration, image_url).await?;
+                let cost = 0.05 * duration as f64;
 
-                (
-                    format!("{}/v1/video/generations", self.video_url),
-                    &self.video_key,
-                    video_body,
-                    Duration::from_secs(180),
-                    VIDEO_MODEL,
-                    0.10,
-                )
+                Ok(GenerateResponse {
+                    provider_id: self.id.clone(),
+                    output_path: None,
+                    output_url: Some(video_url),
+                    output_data: None,
+                    metadata: json!({
+                        "model": VIDEO_MODEL,
+                        "asset_type": "video",
+                        "duration": duration,
+                        "has_reference_image": image_url.is_some(),
+                    }),
+                    cost_usd: Some(cost),
+                    elapsed_ms: start.elapsed().as_millis() as u64,
+                })
             }
             _ => {
-                // Image: use xAI official API via proxy with aspect_ratio
+                // Image generation
                 let aspect_ratio = req
                     .params
                     .get("aspect_ratio")
                     .and_then(|v| v.as_str())
                     .unwrap_or("1:1");
 
-                (
-                    format!("{}/v1/images/generations", self.proxy_url),
-                    &self.proxy_key,
-                    json!({
+                let resp = self
+                    .http
+                    .post(format!("{}/v1/images/generations", XAI_BASE))
+                    .bearer_auth(&self.xai_key)
+                    .timeout(Duration::from_secs(60))
+                    .json(&json!({
                         "model": IMAGE_MODEL,
                         "prompt": prompt,
                         "n": 1,
                         "response_format": "url",
                         "aspect_ratio": aspect_ratio,
+                    }))
+                    .send()
+                    .await?;
+
+                let status = resp.status();
+                let text = resp.text().await?;
+                if !status.is_success() {
+                    anyhow::bail!("Grok Image returned {}: {}", status, text);
+                }
+
+                let payload: Value = serde_json::from_str(&text)?;
+                let output_url = payload["data"][0]["url"]
+                    .as_str()
+                    .map(String::from)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Grok Image response did not contain a valid URL")
+                    })?;
+
+                Ok(GenerateResponse {
+                    provider_id: self.id.clone(),
+                    output_path: None,
+                    output_url: Some(output_url),
+                    output_data: None,
+                    metadata: json!({
+                        "model": IMAGE_MODEL,
+                        "asset_type": "image",
+                        "aspect_ratio": aspect_ratio,
                     }),
-                    Duration::from_secs(60),
-                    IMAGE_MODEL,
-                    0.02,
-                )
+                    cost_usd: Some(0.02),
+                    elapsed_ms: start.elapsed().as_millis() as u64,
+                })
             }
-        };
-
-        let resp = self
-            .http
-            .post(&url)
-            .bearer_auth(auth_key)
-            .timeout(timeout)
-            .json(&body)
-            .send()
-            .await?;
-
-        let status = resp.status();
-        let text = resp.text().await?;
-
-        if !status.is_success() {
-            anyhow::bail!("Grok Image returned {}: {}", status, text);
         }
-
-        let payload: Value = serde_json::from_str(&text)?;
-
-        let output_url = match req.asset_type {
-            AssetType::Video => payload["url"].as_str().map(String::from),
-            _ => payload["data"][0]["url"].as_str().map(String::from),
-        };
-
-        let output_url = output_url
-            .ok_or_else(|| anyhow::anyhow!("Grok Image response did not contain a valid URL"))?;
-
-        Ok(GenerateResponse {
-            provider_id: self.id.clone(),
-            output_path: None,
-            output_url: Some(output_url),
-            output_data: None,
-            metadata: json!({
-                "model": model,
-                "asset_type": req.asset_type.to_string(),
-            }),
-            cost_usd: Some(cost),
-            elapsed_ms: start.elapsed().as_millis() as u64,
-        })
     }
 
     async fn health_check(&self) -> anyhow::Result<HealthStatus> {
         let start = Instant::now();
         let resp = self
             .http
-            .get(format!("{}/v1/models", self.proxy_url))
-            .bearer_auth(&self.proxy_key)
+            .get(format!("{}/v1/models", XAI_BASE))
+            .bearer_auth(&self.xai_key)
+            .timeout(Duration::from_secs(10))
             .send()
             .await;
 
@@ -223,43 +230,5 @@ impl AssetProvider for GrokImageProvider {
                 message: Some(e.to_string()),
             }),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn map_video_size_square() {
-        assert_eq!(map_video_size("1024x1024"), "1024x1024");
-        assert_eq!(map_video_size("512x512"), "1024x1024");
-    }
-
-    #[test]
-    fn map_video_size_landscape() {
-        assert_eq!(map_video_size("1280x720"), "1280x720");
-        assert_eq!(map_video_size("1920x1080"), "1280x720");
-        assert_eq!(map_video_size("1792x1024"), "1792x1024");
-    }
-
-    #[test]
-    fn map_video_size_portrait() {
-        assert_eq!(map_video_size("720x1280"), "720x1280");
-        assert_eq!(map_video_size("1024x1792"), "1024x1792");
-        assert_eq!(map_video_size("1080x1920"), "720x1280");
-    }
-
-    #[test]
-    fn map_video_size_invalid() {
-        assert_eq!(map_video_size("bad"), "1024x1024");
-        assert_eq!(map_video_size("0x0"), "1024x1024");
-        assert_eq!(map_video_size(""), "1024x1024");
-    }
-
-    #[test]
-    fn map_video_size_near_ratios() {
-        assert_eq!(map_video_size("800x600"), "1024x1024");
-        assert_eq!(map_video_size("1680x1050"), "1792x1024");
     }
 }

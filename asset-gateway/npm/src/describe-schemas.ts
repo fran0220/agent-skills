@@ -114,7 +114,7 @@ export const SCHEMAS: Record<string, object> = {
         },
       },
       sprite: {
-        description: "Generate character animation using SpriteForge AI",
+        description: "Generate character animation (Veo AI video + frame extraction)",
         params: {
           "--prompt": { type: "string", required: true, description: "Character description" },
           "--input": { type: "string", description: "Reference image path or URL" },

@@ -1,4 +1,5 @@
 pub mod routes;
+pub mod ws;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -13,17 +14,55 @@ use crate::core::dispatcher::Dispatcher;
 use crate::core::registry::ProviderRegistry;
 use crate::core::AssetProvider;
 use crate::frontend;
+use crate::server::ws::JobEventHub;
 
 pub struct ServerState {
     pub db: sqlx::PgPool,
     pub config: RwLock<AppConfig>,
     pub registry: Arc<ProviderRegistry>,
     pub dispatcher: Dispatcher,
+    pub job_events: JobEventHub,
+}
+
+fn expand_tilde(path: &str) -> String {
+    if path.starts_with("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!("{}{}", home, &path[1..]);
+        }
+    }
+    path.to_string()
 }
 
 /// Build all providers from config. A provider is enabled when its key is present.
-pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvider>> {
+pub async fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvider>> {
     let mut providers: Vec<Arc<dyn AssetProvider>> = Vec::new();
+
+    let vertex_auth: Option<crate::vertex_auth::VertexAuth> = if !config.vertex_sa_path.is_empty()
+        && !config.vertex_project.is_empty()
+        && !config.vertex_location.is_empty()
+    {
+        let sa_path = expand_tilde(&config.vertex_sa_path);
+
+        match crate::vertex_auth::VertexAuth::from_file(&sa_path) {
+            Ok(auth) => {
+                tracing::info!(
+                    project = %config.vertex_project,
+                    location = %config.vertex_location,
+                    "Vertex AI auth initialized"
+                );
+                Some(auth)
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "Failed to init Vertex AI auth, falling back to proxy"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     if !config.proxy_key.is_empty() {
         // LLM text
@@ -40,6 +79,13 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
             config.proxy_url.clone(),
             config.proxy_key.clone(),
         );
+        if let Some(ref auth) = vertex_auth {
+            gemini = gemini.with_vertex(
+                auth.clone(),
+                config.vertex_project.clone(),
+                config.vertex_location.clone(),
+            );
+        }
         gemini.id = "gemini_image".into();
         providers.push(Arc::new(gemini));
 
@@ -52,17 +98,32 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         providers.push(Arc::new(gpt));
 
         // Lyria — music/audio generation (Google, replaces ElevenLabs for BGM)
-        let lyria = crate::providers::lyria::LyriaProvider::new(
+        let mut lyria = crate::providers::lyria::LyriaProvider::new(
             config.proxy_url.clone(),
             config.proxy_key.clone(),
         );
+        if let Some(ref auth) = vertex_auth {
+            lyria = lyria.with_vertex(
+                auth.clone(),
+                config.vertex_project.clone(),
+                config.vertex_location.clone(),
+            );
+        }
         providers.push(Arc::new(lyria));
     }
 
-    // SpriteForge — character animation via xAI video generation
-    if !config.xai_key.is_empty() {
-        let sf = crate::providers::spriteforge::SpriteForgeProvider::new(config.xai_key.clone());
-        providers.push(Arc::new(sf));
+    // Character Animation — Veo video generation via Vertex AI
+    if let Some(ref auth) = vertex_auth {
+        let charanim = crate::providers::charanim::CharAnimProvider::new(
+            auth.clone(),
+            config.vertex_project.clone(),
+        );
+        providers.push(Arc::new(charanim));
+
+        // Veo — general video generation via Vertex AI
+        let veo =
+            crate::providers::veo::VeoProvider::new(auth.clone(), config.vertex_project.clone());
+        providers.push(Arc::new(veo));
     }
 
     if !config.jimeng_token.is_empty() && !config.jimeng_url.is_empty() {
@@ -74,14 +135,9 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
         providers.push(Arc::new(jimeng));
     }
 
-    // Grok Image: image via proxy (xAI official), video via grok2api-go
-    if !config.grok2api_url.is_empty() && !config.grok2api_key.is_empty() {
-        let mut grok = crate::providers::grok_image::GrokImageProvider::new(
-            config.proxy_url.clone(),
-            config.proxy_key.clone(),
-            config.grok2api_url.clone(),
-            config.grok2api_key.clone(),
-        );
+    // Grok — image + video via xAI direct API
+    if !config.xai_key.is_empty() {
+        let mut grok = crate::providers::grok_image::GrokImageProvider::new(config.xai_key.clone());
         grok.id = "grok_image".into();
         providers.push(Arc::new(grok));
     }
@@ -122,7 +178,7 @@ pub fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn AssetProvi
 /// Register all config-driven providers into the registry, replacing any existing ones.
 pub async fn load_providers(config: &AppConfig, registry: &Arc<ProviderRegistry>) -> usize {
     registry.clear().await;
-    let providers = build_providers_from_config(config);
+    let providers = build_providers_from_config(config).await;
     let count = providers.len();
     for provider in providers {
         registry.register(provider).await;
@@ -150,6 +206,7 @@ pub async fn run(
         config: RwLock::new(config),
         registry,
         dispatcher,
+        job_events: JobEventHub::default(),
     });
 
     // Ensure uploads directory exists
@@ -158,6 +215,7 @@ pub async fn run(
     let app = Router::new()
         .nest("/api", routes::api_router())
         .nest("/auth", routes::auth_router())
+        .merge(ws::router())
         .nest_service("/uploads", tower_http::services::ServeDir::new("uploads"))
         .merge(frontend::router())
         .layer(DefaultBodyLimit::max(500 * 1024 * 1024)) // 500MB

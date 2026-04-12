@@ -416,11 +416,11 @@ export function createGenerateCommand(): Command {
 
   command.addCommand(
     new Command("sprite")
-      .description("Generate character animation using SpriteForge AI")
+      .description("Generate character animation (Veo AI video + frame extraction)")
       .requiredOption("--prompt <text>", "Character description")
       .option("--input <path>", "Reference image for character consistency (local path or URL)")
       .option("--animation-type <type>", "Animation type (idle, walk, run, attack, death, jump, cast, dance, or any custom)", "walk")
-      .option("--direction <dir>", "Facing direction: right, left, front, back", "right")
+      .option("--direction <dir>", "Facing direction: front, left, right, back", "front")
       .option("--view <view>", "Camera view angle: auto, side, front, back, three-quarter, none", "auto")
       .option("--framing <framing>", "Framing: full-body, waist-up, close-up, none", "full-body")
       .option("--background <bg>", "Background: auto, white, none, or free text (e.g. 'forest clearing')", "auto")

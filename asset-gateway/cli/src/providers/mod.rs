@@ -1,3 +1,4 @@
+pub mod charanim;
 pub mod elevenlabs;
 pub mod gemini_image;
 pub mod gpt_image;
@@ -6,6 +7,6 @@ pub mod jimeng;
 pub mod llm_proxy;
 pub mod lyria;
 pub mod qwen_tts;
-pub mod spriteforge;
 pub mod tripo3d;
+pub mod veo;
 pub mod worldlabs;

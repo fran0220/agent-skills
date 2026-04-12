@@ -28,7 +28,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Speech | TTS, multilingual, instructed style | `generate tts` |
 | Voice Identity | Voice clone, voice design | `voice clone`, `voice design` |
 | 3D Model | Text/image → 3D, rig/animate/convert | `generate model`, `process3d ...` |
-| Sprite Animation | Text/image → sprite animation (spritesheet or GIF) via SpriteForge AI | `generate sprite` |
+| Character Animation | Text/image → character animation (spritesheet, GIF, or MP4) via Vertex AI Veo | `generate sprite` |
 | 3D World | Text/image → photorealistic 3D environment (Gaussian Splat) | `generate world` |
 | Text | Single-shot LLM text generation | `generate text` |
 | Image/Video Tools | Crop, resize, compose, extract frames, remove background | `process ...` |

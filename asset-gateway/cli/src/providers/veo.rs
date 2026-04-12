@@ -1,35 +1,38 @@
 use std::time::{Duration, Instant};
 
 use crate::core::*;
+use crate::vertex_auth::VertexAuth;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 
-const DEFAULT_MODEL: &str = "veo3.1";
-const POLL_INTERVAL: Duration = Duration::from_secs(5);
+const MODEL: &str = "veo-3.1-lite-generate-001";
+const LOCATION: &str = "us-central1";
+const POLL_INTERVAL: Duration = Duration::from_secs(10);
 const POLL_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// Veo video provider (Google) — async task-based video generation via the shared LLM proxy.
+/// Veo video provider (Google) — general video generation via Vertex AI direct access.
 ///
-/// Supports text-to-video and image-to-video. Uses the same proxy URL and API key
-/// as Gemini Image (configured under `[proxy]` in config.toml).
-///
-/// Models:
-/// - `veo3.1`        — fast mode, auto audio, supports first/last frame images (default)
-/// - `veo3.1-pro`    — high quality, expensive
-/// - `veo3.1-components` — multi-image reference (1-3 images)
+/// Supports text-to-video and image-to-video using Veo 3.1 Lite.
+/// Uses predictLongRunning + fetchPredictOperation pattern.
 pub struct VeoProvider {
     pub id: String,
-    pub base_url: String,
-    pub api_key: String,
+    vertex_auth: VertexAuth,
+    vertex_project: String,
     http: reqwest::Client,
 }
 
 impl VeoProvider {
-    pub fn new(base_url: String, api_key: String) -> Self {
+    pub fn new(auth: VertexAuth, project: String) -> Self {
+        let http = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(600))
+            .build()
+            .expect("failed to build Veo HTTP client");
         Self {
             id: "veo".into(),
-            base_url,
-            api_key,
-            http: reqwest::Client::new(),
+            vertex_auth: auth,
+            vertex_project: project,
+            http,
         }
     }
 
@@ -46,77 +49,112 @@ impl VeoProvider {
         } else if h > w {
             Some("9:16")
         } else {
-            None // square — let API auto-decide
+            Some("16:9") // square defaults to landscape
         }
     }
 
-    /// Submit a generation job and return the task_id.
-    async fn submit(&self, body: &Value) -> anyhow::Result<String> {
+    /// Fetch an image URL and return (base64, mime_type).
+    async fn fetch_image_b64(&self, url: &str) -> anyhow::Result<(String, String)> {
+        if url.starts_with("data:") {
+            let (header, data) = url
+                .split_once(";base64,")
+                .ok_or_else(|| anyhow::anyhow!("invalid data URI"))?;
+            let mime = header.strip_prefix("data:").unwrap_or("image/png");
+            return Ok((data.to_string(), mime.to_string()));
+        }
+        let resp = self.http.get(url).send().await?;
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("image/png")
+            .split(';')
+            .next()
+            .unwrap_or("image/png")
+            .to_string();
+        let bytes = resp.bytes().await?;
+        Ok((STANDARD.encode(&bytes), content_type))
+    }
+
+    /// Submit a predictLongRunning request. Returns the operation name.
+    async fn submit(&self, instance: Value, params: Value) -> anyhow::Result<String> {
+        let body = json!({
+            "instances": [instance],
+            "parameters": params,
+        });
+
+        let token = self.vertex_auth.access_token().await?;
         let resp = self
             .http
-            .post(format!("{}/v2/videos/generations", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(body)
+            .post(format!(
+                "https://{}-aiplatform.googleapis.com/v1/projects/{}/locations/{}/publishers/google/models/{}:predictLongRunning",
+                LOCATION, self.vertex_project, LOCATION, MODEL
+            ))
+            .header("Authorization", format!("Bearer {}", token))
+            .timeout(Duration::from_secs(30))
+            .json(&body)
             .send()
             .await?;
 
         let status = resp.status();
         let text = resp.text().await?;
-
         if !status.is_success() {
             anyhow::bail!("Veo submit returned {}: {}", status, text);
         }
 
         let payload: Value = serde_json::from_str(&text)?;
-        payload["task_id"]
+        payload["name"]
             .as_str()
             .map(String::from)
-            .ok_or_else(|| anyhow::anyhow!("Veo submit response missing task_id: {}", text))
+            .ok_or_else(|| anyhow::anyhow!("Veo submit response missing operation name: {}", text))
     }
 
-    /// Poll a task until SUCCESS or FAILURE (or timeout).
-    async fn poll(&self, task_id: &str) -> anyhow::Result<Value> {
+    /// Poll via fetchPredictOperation until done. Returns the response payload.
+    async fn poll(&self, operation_name: &str) -> anyhow::Result<Value> {
         let deadline = Instant::now() + POLL_TIMEOUT;
 
         loop {
             if Instant::now() > deadline {
                 anyhow::bail!(
-                    "Veo task {} timed out after {}s",
-                    task_id,
-                    POLL_TIMEOUT.as_secs()
+                    "Veo timed out after {}s: {}",
+                    POLL_TIMEOUT.as_secs(),
+                    operation_name
                 );
             }
 
             tokio::time::sleep(POLL_INTERVAL).await;
 
+            let token = self.vertex_auth.access_token().await?;
             let resp = self
                 .http
-                .get(format!(
-                    "{}/v2/videos/generations/{}",
-                    self.base_url, task_id
+                .post(format!(
+                    "https://{}-aiplatform.googleapis.com/v1beta1/projects/{}/locations/{}/publishers/google/models/{}:fetchPredictOperation",
+                    LOCATION, self.vertex_project, LOCATION, MODEL
                 ))
-                .header("Authorization", format!("Bearer {}", self.api_key))
+                .header("Authorization", format!("Bearer {}", token))
+                .json(&json!({"operationName": operation_name}))
+                .timeout(Duration::from_secs(30))
                 .send()
                 .await?;
 
             let status = resp.status();
             let text = resp.text().await?;
-
             if !status.is_success() {
                 anyhow::bail!("Veo poll returned {}: {}", status, text);
             }
 
             let payload: Value = serde_json::from_str(&text)?;
-            let task_status = payload["status"].as_str().unwrap_or("");
 
-            match task_status {
-                "SUCCESS" => return Ok(payload),
-                "FAILURE" => {
-                    let reason = payload["fail_reason"].as_str().unwrap_or("unknown");
-                    anyhow::bail!("Veo task {} failed: {}", task_id, reason);
-                }
-                _ => continue, // NOT_START, IN_PROGRESS
+            if !payload["done"].as_bool().unwrap_or(false) {
+                continue;
             }
+
+            if let Some(error) = payload.get("error") {
+                let msg = error["message"].as_str().unwrap_or("unknown error");
+                anyhow::bail!("Veo operation failed: {}", msg);
+            }
+
+            return Ok(payload);
         }
     }
 }
@@ -132,7 +170,7 @@ impl AssetProvider for VeoProvider {
     }
 
     fn display_name(&self) -> &str {
-        "Veo (Google)"
+        "Veo (Vertex AI)"
     }
 
     fn asset_types(&self) -> &[AssetType] {
@@ -142,73 +180,95 @@ impl AssetProvider for VeoProvider {
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
             supports_transparency: false,
-            priority: 100,
+            priority: 70,
             ..Default::default()
         }
     }
 
     async fn generate(&self, req: &GenerateRequest) -> anyhow::Result<GenerateResponse> {
         let prompt = req.prompt.as_deref().unwrap_or("");
-        let model = req.model.as_deref().unwrap_or(DEFAULT_MODEL);
         let start = Instant::now();
 
-        // Collect images: input_file first, then reference_images
-        let image_inputs = req.image_inputs();
-        let images: Vec<&str> = image_inputs.into_iter().collect();
+        // Build aspect ratio
+        let aspect_ratio = req
+            .params
+            .get("aspect_ratio")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .or_else(|| {
+                req.params
+                    .get("size")
+                    .and_then(|v| v.as_str())
+                    .and_then(Self::map_aspect_ratio)
+                    .map(String::from)
+            })
+            .unwrap_or_else(|| "16:9".into());
 
-        let mut body = json!({
-            "prompt": prompt,
-            "model": model,
+        let duration = req
+            .params
+            .get("duration")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(4) as u32;
+
+        // Build instance: text-to-video or image-to-video
+        let image_inputs = req.image_inputs();
+        let mut instance = json!({"prompt": prompt});
+
+        if let Some(first_image) = image_inputs.first() {
+            let (b64, mime) = self.fetch_image_b64(first_image).await?;
+            instance["image"] = json!({
+                "bytesBase64Encoded": b64,
+                "mimeType": mime,
+            });
+        }
+
+        let params = json!({
+            "sampleCount": 1,
+            "durationSeconds": duration,
+            "aspectRatio": aspect_ratio,
+            "generateAudio": true,
+            "resolution": "720p",
         });
 
-        if !images.is_empty() {
-            body["images"] = json!(images);
-        }
+        // Submit → poll
+        let operation_name = self.submit(instance, params).await?;
+        tracing::info!(operation = %operation_name, "Veo: operation started");
 
-        // Map size to aspect_ratio if provided
-        if let Some(size_str) = req.params.get("size").and_then(|v| v.as_str()) {
-            if let Some(ar) = Self::map_aspect_ratio(size_str) {
-                body["aspect_ratio"] = json!(ar);
-            }
-        }
+        let result = self.poll(&operation_name).await?;
 
-        // Pass through aspect_ratio if explicitly set
-        if let Some(ar) = req.params.get("aspect_ratio").and_then(|v| v.as_str()) {
-            body["aspect_ratio"] = json!(ar);
-        }
+        // Extract video — either base64 inline or GCS URI
+        let videos = result["response"]["videos"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("Veo response missing videos array"))?;
 
-        if let Some(enhance) = req.params.get("enhance_prompt").and_then(|v| v.as_bool()) {
-            body["enhance_prompt"] = json!(enhance);
-        }
+        let video = videos
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("Veo response has empty videos array"))?;
 
-        // Submit → poll → extract output URL
-        let task_id = self.submit(&body).await?;
-        let result = self.poll(&task_id).await?;
-
-        let output_url = result["data"]["output"]
-            .as_str()
-            .map(String::from)
-            .ok_or_else(|| {
-                anyhow::anyhow!("Veo task {} completed but no output URL found", task_id)
-            })?;
-
-        let cost = match model {
-            "veo3.1-pro" => 0.50,
-            "veo3.1-components" => 0.10,
-            _ => 0.08, // veo3.1 fast
+        let (output_url, output_data) = if let Some(b64) = video["bytesBase64Encoded"].as_str() {
+            (None, Some(b64.to_string()))
+        } else if let Some(uri) = video["gcsUri"].as_str() {
+            (Some(uri.to_string()), None)
+        } else {
+            anyhow::bail!("Veo response has no video data");
         };
+
+        // Veo Lite 720p: $0.03/s (video-only) or $0.05/s (with audio)
+        let cost = 0.05 * duration as f64;
 
         Ok(GenerateResponse {
             provider_id: self.id.clone(),
             output_path: None,
-            output_url: Some(output_url),
-            output_data: None,
+            output_url,
+            output_data,
             metadata: json!({
-                "model": model,
+                "model": MODEL,
                 "asset_type": "video",
-                "task_id": task_id,
-                "has_reference_images": !images.is_empty(),
-                "image_count": images.len(),
+                "operation": operation_name,
+                "aspect_ratio": aspect_ratio,
+                "duration": duration,
+                "has_reference_image": !image_inputs.is_empty(),
+                "image_count": image_inputs.len(),
             }),
             cost_usd: Some(cost),
             elapsed_ms: start.elapsed().as_millis() as u64,
@@ -217,24 +277,38 @@ impl AssetProvider for VeoProvider {
 
     async fn health_check(&self) -> anyhow::Result<HealthStatus> {
         let start = Instant::now();
-        // Use the models endpoint to verify connectivity
-        let resp = self
-            .http
-            .get(format!("{}/v1/models", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .send()
-            .await;
+        let token = self.vertex_auth.access_token().await;
 
-        match resp {
-            Ok(r) => Ok(HealthStatus {
-                healthy: r.status().is_success(),
-                latency_ms: Some(start.elapsed().as_millis() as u64),
-                message: None,
-            }),
+        match token {
+            Ok(t) => {
+                let resp = self
+                    .http
+                    .get(format!(
+                        "https://{}-aiplatform.googleapis.com/v1/projects/{}/locations/{}/publishers/google/models",
+                        LOCATION, self.vertex_project, LOCATION
+                    ))
+                    .header("Authorization", format!("Bearer {}", t))
+                    .timeout(Duration::from_secs(10))
+                    .send()
+                    .await;
+
+                match resp {
+                    Ok(r) => Ok(HealthStatus {
+                        healthy: r.status().is_success(),
+                        latency_ms: Some(start.elapsed().as_millis() as u64),
+                        message: None,
+                    }),
+                    Err(e) => Ok(HealthStatus {
+                        healthy: false,
+                        latency_ms: Some(start.elapsed().as_millis() as u64),
+                        message: Some(e.to_string()),
+                    }),
+                }
+            }
             Err(e) => Ok(HealthStatus {
                 healthy: false,
                 latency_ms: Some(start.elapsed().as_millis() as u64),
-                message: Some(e.to_string()),
+                message: Some(format!("Vertex AI auth failed: {e}")),
             }),
         }
     }
@@ -258,7 +332,7 @@ mod tests {
 
     #[test]
     fn map_aspect_ratio_square() {
-        assert_eq!(VeoProvider::map_aspect_ratio("1024x1024"), None);
+        assert_eq!(VeoProvider::map_aspect_ratio("1024x1024"), Some("16:9"));
     }
 
     #[test]

@@ -1,17 +1,24 @@
 # Sprite Animation Workflow
 
-一条命令生成精灵动画：文本/图片 → Grok 视频生成（2 秒） → ffmpeg 逐帧提取 → 条件白背景移除 → spritesheet/GIF。
+一条命令生成精灵动画：文本/图片 → Vertex AI Veo 视频生成（4 秒） → ffmpeg 逐帧提取 → 条件白背景移除 → spritesheet/GIF/MP4。
 
 ## 概览
 
-SpriteForge 基于 **xAI Grok 视频生成**（`grok-imagine-video`），直接从文本或参考图生成动画视频，再通过后处理提取帧并输出 spritesheet 或 GIF。核心流程：
+CharAnim 基于 **Vertex AI Veo**（`veo-3.1-lite-generate-001`），从文本或参考图生成动画视频，再通过后处理提取帧并输出 spritesheet、GIF 或 MP4。核心流程：
 
-1. **输入** → 文本描述（`--prompt`）+ 可选参考图（`--input`）
-2. **Grok 视频生成** → 生成 2 秒动画视频（默认 8fps = 16 帧，一个完整动画循环）
+### Text-only 输入
+1. **Gemini Image 生成角色静帧** → 根据 prompt 生成角色 still frame
+2. **Veo 视频生成** → 以静帧为 first_frame（= last_frame，实现完美循环），生成 4 秒 720p 9:16 动画视频
 3. **帧提取** → ffmpeg 按指定帧率从视频中提取帧序列
-4. **后处理** → 条件白背景移除（`--background auto/white` 时启用） → 输出 spritesheet PNG 或 animated GIF
+4. **后处理** → 条件白背景移除（`--background auto/white` 时启用） → 输出 spritesheet PNG、animated GIF 或 MP4
 
-> 与旧版 Gemini 网格图方案不同，SpriteForge 现在**直接生成视频**——动画流畅度和角色一致性大幅提升。无需 LLM prompt 增强，prompt 直接传给 Grok。
+### Image 输入
+1. **直接使用参考图作为 first_frame**（= last_frame）
+2. **Veo 视频生成** → 生成 4 秒 720p 9:16 动画视频
+3. **帧提取** → ffmpeg 按指定帧率提取帧序列
+4. **后处理** → 输出 spritesheet PNG、animated GIF 或 MP4
+
+> 关键特性：**first_frame = last_frame** 确保动画完美循环，特别适合 walk/run/idle/dance 等循环动画。视频 4 秒时长，720p 分辨率，9:16 竖版画幅。
 
 ## 基本用法（Text-to-Sprite）
 
@@ -22,12 +29,12 @@ asset-gateway generate sprite \
   --output-dir ./sprites
 ```
 
-输出：`sprites/sprite_<timestamp>.png` — 水平排列的 spritesheet（16 帧透明背景 PNG）。
+输出：`sprites/sprite_<timestamp>.png` — 水平排列的 spritesheet（透明背景 PNG）。
 
 **关键点：**
 - `--prompt` 描述**角色外观**，不描述动作序列
 - `--animation-type` 控制动画类型（walk、run、attack 等）
-- 无需 LLM 增强，prompt 直接发送给 Grok 视频模型
+- 纯文本输入时，Gemini Image 先生成角色静帧，再由 Veo 生成动画视频
 - 生成耗时约 **15-20 秒**
 
 ## 使用参考图（Image-to-Sprite）
@@ -50,7 +57,7 @@ asset-gateway generate sprite \
   --output-dir ./sprites
 ```
 
-`--input` 支持本地路径和 URL。Grok 会以参考图为基准生成角色动画视频（image-to-video）。
+`--input` 支持本地路径和 URL。参考图直接作为 Veo 的 first_frame 生成角色动画视频（image-to-video）。
 
 ## 动画类型
 
@@ -83,23 +90,8 @@ asset-gateway generate sprite \
 asset-gateway generate sprite \
   --prompt "slime monster" \
   --animation-type "split into two smaller slimes" \
-  --duration 4 \
   --output-dir ./sprites
 ```
-
-> 复杂动画建议增加 `--duration`，更长的视频能容纳更多动作细节。
-
-## 视频时长
-
-通过 `--duration` 控制 Grok 生成的视频时长（秒），直接影响帧数。
-
-| Duration | FPS=8 帧数 | 适用 | 费用 |
-|----------|-----------|------|------|
-| `1` | 8 帧 | 简单循环（idle、blink） | $0.05 |
-| `2`（默认） | 16 帧 | 标准动画（walk、run） | $0.10 |
-| `4` | 32 帧 | 复杂动画（attack combo） | $0.20 |
-| `8` | 64 帧 | 长序列（death、cutscene） | $0.40 |
-| `15`（最大） | 120 帧 | 超长序列 | $0.75 |
 
 ## GIF 输出
 
@@ -118,9 +110,23 @@ asset-gateway generate sprite \
 
 > GIF 适合预览和分享，游戏引擎中建议使用 spritesheet PNG（透明背景）。
 
+## MP4 输出
+
+保留原始视频质量，适合需要高质量动画素材的场景。
+
+```bash
+asset-gateway generate sprite \
+  --prompt "dragon breathing fire" \
+  --animation-type attack \
+  --output-format mp4 \
+  --output-dir ./sprites
+```
+
+输出：`sprites/sprite_<timestamp>.mp4` — 4 秒 720p 9:16 视频。
+
 ## 风格选项
 
-通过 `--style` 指定画面风格。SpriteForge 是**风格无关的**，任何视觉风格都可以：
+通过 `--style` 指定画面风格。CharAnim 是**风格无关的**，任何视觉风格都可以：
 
 | Style | 效果 |
 |-------|------|
@@ -141,7 +147,7 @@ asset-gateway generate sprite --prompt "pixel art knight"
 
 ## 视角与构图控制
 
-SpriteForge 现在支持独立控制视角、构图和背景，不再硬编码为"侧视图+白色背景"。
+CharAnim 支持独立控制视角、构图和背景。
 
 ### 视角（`--view`）
 
@@ -212,11 +218,10 @@ asset-gateway generate sprite \
 | `--prompt` | 必填 | **角色外观描述**（不描述动作） |
 | `--animation-type` | `walk` | 动画类型（预设或自定义文本） |
 | `--input` | — | 参考图（可选，本地路径或 URL，用于 image-to-video） |
-| `--output-format` | `spritesheet` | 输出格式：`spritesheet`（透明 PNG）或 `gif` |
-| `--duration` | `2` | 视频时长（秒），范围 1-15 |
+| `--output-format` | `spritesheet` | 输出格式：`spritesheet`（透明 PNG）、`gif` 或 `mp4` |
 | `--style` | — | 视觉风格（pixel art, realistic, anime 等） |
 | `--fps` | `8` | 帧提取率（每秒提取帧数） |
-| `--direction` | `right` | 角色朝向 |
+| `--direction` | `front` | 角色朝向（默认正面，可选 left/right/back） |
 | `--view` | `auto` | 视角：`auto`（从朝向推断）、`side`、`front`、`back`、`three-quarter`、`none` |
 | `--framing` | `full-body` | 构图：`full-body`、`waist-up`、`close-up`、`none` |
 | `--background` | `auto` | 背景：`auto`（白底+自动移除）、`white`、`none`、或自定义文本 |
@@ -231,7 +236,6 @@ asset-gateway generate sprite \
   --prompt "mage in dark blue robe, holding glowing staff" \
   --animation-type idle \
   --style "pixel art" \
-  --duration 1 \
   --output-dir ./sprites
 ```
 
@@ -251,7 +255,6 @@ asset-gateway generate sprite \
 asset-gateway generate sprite \
   --prompt "samurai with katana" \
   --animation-type attack \
-  --duration 3 \
   --output-dir ./sprites
 ```
 
@@ -304,18 +307,20 @@ asset-gateway generate sprite \
 
 ## 费用
 
-- 基于 Grok 视频生成按秒计费：**$0.05/秒**
-- 默认 2 秒视频：**$0.10/sprite**
+- 基于 Vertex AI Veo Lite 按视频计费：**~$0.12/video**
+- 纯文本输入需额外 Gemini Image 生成静帧：**~$0.16/sprite**（含 Gemini Image + Veo）
+- 有参考图输入：**~$0.12/sprite**（仅 Veo）
 - 后处理（ffmpeg + 背景移除）无额外费用
 
 ## Tips
 
 - **prompt 写角色，不写动作** — `--prompt` 只描述外观（服装、武器、颜色），动作由 `--animation-type` 控制
 - **自定义动画尽量具体** — `"charge up energy and release fireball"` 比 `"magic attack"` 效果好
-- **生成约 15-20 秒** — Grok 视频生成 + ffmpeg 后处理全流程
+- **生成约 15-20 秒** — Veo 视频生成 + ffmpeg 后处理全流程
 - **效果不满意就重试** — 调整 prompt 措辞或换个 style，重试 2-3 次是正常的
+- **完美循环动画** — first_frame = last_frame 确保 walk/run/idle/dance 等循环动画无缝衔接
 - **GIF 用于预览** — 最终游戏资源用 spritesheet PNG（透明背景），GIF 仅用于快速预览和分享
+- **MP4 保留原始质量** — 需要高质量动画素材时使用 MP4 输出
 - **参考图提升一致性** — 如果需要同一角色多套动画，用 `--input` 传入参考图保持外观统一
-- **短时长更稳定** — 2 秒（默认）对大多数动画循环已经足够，复杂动画再加长
 - **风格无限制** — 像素画、写实、卡通、动漫皆可，不再局限于像素风格
 - **视角默认自动推断** — 通常不需要手动设置 `--view`，`auto` 会根据 `--direction` 选择合适的视角

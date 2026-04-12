@@ -16,13 +16,13 @@ pub struct ConfigFile {
     #[serde(default)]
     pub dashscope: DashscopeSection,
     #[serde(default)]
-    pub grok2api: Grok2apiSection,
+    pub xai: ProviderKeySection,
     #[serde(default)]
     pub jimeng: JimengSection,
     #[serde(default)]
     pub worldlabs: ProviderKeySection,
     #[serde(default)]
-    pub xai: ProviderKeySection,
+    pub vertex: VertexSection,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -50,15 +50,16 @@ pub struct DashscopeSection {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct Grok2apiSection {
-    pub url: Option<String>,
-    pub key: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
 pub struct JimengSection {
     pub url: Option<String>,
     pub token: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct VertexSection {
+    pub service_account_path: Option<String>,
+    pub project_id: Option<String>,
+    pub location: Option<String>,
 }
 
 /// Runtime config derived from TOML file + env var overrides.
@@ -75,6 +76,11 @@ pub struct AppConfig {
     pub proxy_key: String,
     pub default_model: String,
 
+    // Vertex AI direct access (bypasses proxy for Google models)
+    pub vertex_sa_path: String,
+    pub vertex_project: String,
+    pub vertex_location: String,
+
     // External provider keys (empty = disabled)
     pub elevenlabs_key: String,
     pub tripo3d_keys: Vec<String>,
@@ -83,11 +89,8 @@ pub struct AppConfig {
     pub dashscope_url: String,
     pub dashscope_key: String,
 
-    // Grok2API (direct connection to grok2api-go reverse proxy)
-    #[allow(dead_code)]
-    pub grok2api_url: String,
-    #[allow(dead_code)]
-    pub grok2api_key: String,
+    // xAI direct API — Grok image + video generation
+    pub xai_key: String,
 
     // Jimeng video+image (ByteDance) — jimeng-api gateway
     pub jimeng_url: String,
@@ -95,9 +98,6 @@ pub struct AppConfig {
 
     // WorldLabs Marble — 3D world/environment generation
     pub worldlabs_key: String,
-
-    // xAI direct API — video generation (SpriteForge)
-    pub xai_key: String,
 }
 
 impl AppConfig {
@@ -146,6 +146,21 @@ impl AppConfig {
                 file_cfg.proxy.default_model.as_deref(),
                 "claude-sonnet-4-6",
             ),
+            vertex_sa_path: env_or(
+                "ASSET_GATEWAY_VERTEX_SA_PATH",
+                file_cfg.vertex.service_account_path.as_deref(),
+                "",
+            ),
+            vertex_project: env_or(
+                "ASSET_GATEWAY_VERTEX_PROJECT",
+                file_cfg.vertex.project_id.as_deref(),
+                "",
+            ),
+            vertex_location: env_or(
+                "ASSET_GATEWAY_VERTEX_LOCATION",
+                file_cfg.vertex.location.as_deref(),
+                "global",
+            ),
 
             elevenlabs_key: env_or(
                 "ASSET_GATEWAY_ELEVENLABS_KEY",
@@ -187,16 +202,7 @@ impl AppConfig {
                 "",
             ),
 
-            grok2api_url: env_or(
-                "ASSET_GATEWAY_GROK2API_URL",
-                file_cfg.grok2api.url.as_deref(),
-                "",
-            ),
-            grok2api_key: env_or(
-                "ASSET_GATEWAY_GROK2API_KEY",
-                file_cfg.grok2api.key.as_deref(),
-                "",
-            ),
+            xai_key: env_or("ASSET_GATEWAY_XAI_KEY", file_cfg.xai.key.as_deref(), ""),
 
             jimeng_url: env_or(
                 "ASSET_GATEWAY_JIMENG_URL",
@@ -214,8 +220,6 @@ impl AppConfig {
                 file_cfg.worldlabs.key.as_deref(),
                 "",
             ),
-
-            xai_key: env_or("ASSET_GATEWAY_XAI_KEY", file_cfg.xai.key.as_deref(), ""),
         })
     }
 
