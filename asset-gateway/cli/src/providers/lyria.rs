@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::core::*;
+use crate::vertex_auth::VertexAuth;
 use serde_json::{json, Value};
 
 const DEFAULT_MODEL: &str = "lyria-3-clip-preview";
@@ -12,6 +13,10 @@ pub struct LyriaProvider {
     pub id: String,
     proxy_url: String,
     proxy_key: String,
+    vertex_auth: Option<VertexAuth>,
+    vertex_endpoint: Option<String>,
+    vertex_project: Option<String>,
+    vertex_location: Option<String>,
     http: reqwest::Client,
 }
 
@@ -26,8 +31,24 @@ impl LyriaProvider {
             id: "lyria".into(),
             proxy_url,
             proxy_key,
+            vertex_auth: None,
+            vertex_endpoint: None,
+            vertex_project: None,
+            vertex_location: None,
             http,
         }
+    }
+
+    pub fn with_vertex(mut self, auth: VertexAuth, project: String, location: String) -> Self {
+        self.vertex_endpoint = Some(if location == "global" {
+            "https://aiplatform.googleapis.com".to_string()
+        } else {
+            format!("https://{}-aiplatform.googleapis.com", location)
+        });
+        self.vertex_project = Some(project);
+        self.vertex_location = Some(location);
+        self.vertex_auth = Some(auth);
+        self
     }
 
     fn build_prompt(req: &GenerateRequest) -> String {
@@ -50,7 +71,11 @@ impl AssetProvider for LyriaProvider {
     }
 
     fn display_name(&self) -> &str {
-        "Lyria 3 (Google Music Generation)"
+        if self.vertex_auth.is_some() {
+            "Lyria 3 (Vertex AI Music Generation)"
+        } else {
+            "Lyria 3 (Google Music Generation)"
+        }
     }
 
     fn asset_types(&self) -> &[AssetType] {
@@ -77,22 +102,39 @@ impl AssetProvider for LyriaProvider {
         let full_prompt = Self::build_prompt(req);
 
         let body = json!({
-            "contents": [{"parts": [{"text": full_prompt}]}],
+            "contents": [{"role": "user", "parts": [{"text": full_prompt}]}],
             "generationConfig": {
                 "responseModalities": ["AUDIO", "TEXT"]
             }
         });
 
-        let resp = self
-            .http
-            .post(format!(
-                "{}/v1beta/models/{}:generateContent",
-                self.proxy_url, model
-            ))
-            .header("x-goog-api-key", &self.proxy_key)
-            .json(&body)
-            .send()
-            .await?;
+        let resp = if let (Some(auth), Some(endpoint), Some(project), Some(location)) = (
+            &self.vertex_auth,
+            &self.vertex_endpoint,
+            &self.vertex_project,
+            &self.vertex_location,
+        ) {
+            let token = auth.access_token().await?;
+            self.http
+                .post(format!(
+                    "{}/v1/projects/{}/locations/{}/publishers/google/models/{}:generateContent",
+                    endpoint, project, location, model
+                ))
+                .header("Authorization", format!("Bearer {}", token))
+                .json(&body)
+                .send()
+                .await?
+        } else {
+            self.http
+                .post(format!(
+                    "{}/v1beta/models/{}:generateContent",
+                    self.proxy_url, model
+                ))
+                .header("x-goog-api-key", &self.proxy_key)
+                .json(&body)
+                .send()
+                .await?
+        };
 
         let status = resp.status();
         let text = resp.text().await?;
@@ -144,13 +186,30 @@ impl AssetProvider for LyriaProvider {
 
     async fn health_check(&self) -> anyhow::Result<HealthStatus> {
         let start = Instant::now();
-        let resp = self
-            .http
-            .get(format!("{}/v1beta/models", self.proxy_url))
-            .header("x-goog-api-key", &self.proxy_key)
-            .timeout(Duration::from_secs(10))
-            .send()
-            .await;
+        let resp = if let (Some(auth), Some(endpoint), Some(project), Some(location)) = (
+            &self.vertex_auth,
+            &self.vertex_endpoint,
+            &self.vertex_project,
+            &self.vertex_location,
+        ) {
+            let token = auth.access_token().await?;
+            self.http
+                .get(format!(
+                    "{}/v1/projects/{}/locations/{}/publishers/google/models",
+                    endpoint, project, location
+                ))
+                .header("Authorization", format!("Bearer {}", token))
+                .timeout(Duration::from_secs(10))
+                .send()
+                .await
+        } else {
+            self.http
+                .get(format!("{}/v1beta/models", self.proxy_url))
+                .header("x-goog-api-key", &self.proxy_key)
+                .timeout(Duration::from_secs(10))
+                .send()
+                .await
+        };
 
         match resp {
             Ok(r) => Ok(HealthStatus {

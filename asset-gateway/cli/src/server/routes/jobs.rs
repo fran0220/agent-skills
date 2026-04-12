@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use crate::error::{AppError, AppResult};
 use crate::server::routes::auth::CurrentUser;
+use crate::server::ws::{broadcast_job_update, JobUpdate};
 use crate::server::ServerState;
 
 fn format_datetime(value: DateTime<Utc>) -> String {
@@ -38,15 +39,35 @@ pub struct ListJobsQuery {
 
 async fn list_jobs(
     State(state): State<Arc<ServerState>>,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
     Query(query): Query<ListJobsQuery>,
 ) -> AppResult<Json<Value>> {
     let limit = query.limit.unwrap_or(20).clamp(1, 200) as i64;
 
-    let rows = if let Some(status) = query.status.as_deref() {
+    let rows = if current_user.is_admin() {
+        if let Some(status) = query.status.as_deref() {
+            sqlx::query(
+                "SELECT id, user_id, asset_type, provider_id, status, error_message, output_path, cost_usd, created_at, started_at, completed_at FROM jobs WHERE status = $1 ORDER BY created_at DESC LIMIT $2",
+            )
+            .bind(status)
+            .bind(limit)
+            .fetch_all(&state.db)
+            .await
+            .map_err(AppError::internal)?
+        } else {
+            sqlx::query(
+                "SELECT id, user_id, asset_type, provider_id, status, error_message, output_path, cost_usd, created_at, started_at, completed_at FROM jobs ORDER BY created_at DESC LIMIT $1",
+            )
+            .bind(limit)
+            .fetch_all(&state.db)
+            .await
+            .map_err(AppError::internal)?
+        }
+    } else if let Some(status) = query.status.as_deref() {
         sqlx::query(
-            "SELECT id, user_id, asset_type, provider_id, status, error_message, output_path, cost_usd, created_at, started_at, completed_at FROM jobs WHERE status = $1 ORDER BY created_at DESC LIMIT $2",
+            "SELECT id, user_id, asset_type, provider_id, status, error_message, output_path, cost_usd, created_at, started_at, completed_at FROM jobs WHERE user_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT $3",
         )
+        .bind(&current_user.id)
         .bind(status)
         .bind(limit)
         .fetch_all(&state.db)
@@ -54,8 +75,9 @@ async fn list_jobs(
         .map_err(AppError::internal)?
     } else {
         sqlx::query(
-            "SELECT id, user_id, asset_type, provider_id, status, error_message, output_path, cost_usd, created_at, started_at, completed_at FROM jobs ORDER BY created_at DESC LIMIT $1",
+            "SELECT id, user_id, asset_type, provider_id, status, error_message, output_path, cost_usd, created_at, started_at, completed_at FROM jobs WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2",
         )
+        .bind(&current_user.id)
         .bind(limit)
         .fetch_all(&state.db)
         .await
@@ -94,22 +116,32 @@ async fn list_jobs(
 
 async fn get_job(
     State(state): State<Arc<ServerState>>,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
     Path(id): Path<String>,
 ) -> AppResult<Json<Value>> {
-    let row = sqlx::query(
-        "SELECT id, user_id, asset_type, provider_id, status, request, response, error_message, output_path, cost_usd, created_at, started_at, completed_at FROM jobs WHERE id = $1",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
+    let row = if current_user.is_admin() {
+        sqlx::query(
+            "SELECT id, user_id, asset_type, provider_id, status, request, response, error_message, output_path, cost_usd, created_at, started_at, completed_at FROM jobs WHERE id = $1",
+        )
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+    } else {
+        sqlx::query(
+            "SELECT id, user_id, asset_type, provider_id, status, request, response, error_message, output_path, cost_usd, created_at, started_at, completed_at FROM jobs WHERE id = $1 AND user_id = $2",
+        )
+        .bind(&id)
+        .bind(&current_user.id)
+        .fetch_optional(&state.db)
+        .await
+    }
     .map_err(AppError::internal)?
     .ok_or_else(|| AppError::not_found(format!("job not found: {}", id)))?;
 
     let request_text: String = row.try_get("request").map_err(AppError::internal)?;
     let response_text: Option<String> = row.try_get("response").map_err(AppError::internal)?;
-    let request_json = serde_json::from_str::<Value>(&request_text)
-        .unwrap_or_else(|_| Value::String(request_text));
+    let request_json =
+        serde_json::from_str::<Value>(&request_text).unwrap_or(Value::String(request_text));
     let response_json = response_text
         .as_deref()
         .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
@@ -144,16 +176,29 @@ async fn get_job(
 
 async fn cancel_job(
     State(state): State<Arc<ServerState>>,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
     Path(id): Path<String>,
 ) -> AppResult<Json<Value>> {
-    let row = sqlx::query("SELECT status FROM jobs WHERE id = $1")
+    let row = if current_user.is_admin() {
+        sqlx::query("SELECT user_id, asset_type, provider_id, status FROM jobs WHERE id = $1")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+    } else {
+        sqlx::query(
+            "SELECT user_id, asset_type, provider_id, status FROM jobs WHERE id = $1 AND user_id = $2",
+        )
         .bind(&id)
+        .bind(&current_user.id)
         .fetch_optional(&state.db)
         .await
-        .map_err(AppError::internal)?
-        .ok_or_else(|| AppError::not_found(format!("job not found: {}", id)))?;
+    }
+    .map_err(AppError::internal)?
+    .ok_or_else(|| AppError::not_found(format!("job not found: {}", id)))?;
 
+    let user_id: Option<String> = row.try_get("user_id").map_err(AppError::internal)?;
+    let asset_type: String = row.try_get("asset_type").map_err(AppError::internal)?;
+    let provider_id: String = row.try_get("provider_id").map_err(AppError::internal)?;
     let status: String = row.try_get("status").map_err(AppError::internal)?;
     if !matches!(status.as_str(), "pending" | "running") {
         return Err(AppError::conflict(format!(
@@ -178,6 +223,23 @@ async fn cancel_job(
                     "Retry `asset-gateway job status <id>` to inspect the latest state.",
                 ),
         );
+    }
+
+    if let Some(user_id) = user_id.as_deref() {
+        broadcast_job_update(
+            &state,
+            JobUpdate {
+                user_id,
+                job_id: &id,
+                asset_type: &asset_type,
+                provider_id: Some(&provider_id),
+                status: "cancelled",
+                error_message: Some("cancelled by user"),
+                output_path: None,
+                cost_usd: None,
+            },
+        )
+        .await;
     }
 
     Ok(Json(json!({

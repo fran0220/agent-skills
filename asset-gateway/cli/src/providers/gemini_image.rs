@@ -12,6 +12,11 @@ pub struct GeminiImageProvider {
     pub id: String,
     pub base_url: String,
     pub api_key: String,
+    // Vertex AI direct access (priority over proxy)
+    vertex_auth: Option<crate::vertex_auth::VertexAuth>,
+    vertex_endpoint: Option<String>,
+    vertex_project: Option<String>,
+    vertex_location: Option<String>,
     http: reqwest::Client,
 }
 
@@ -21,8 +26,29 @@ impl GeminiImageProvider {
             id: "gemini_image".into(),
             base_url,
             api_key,
+            vertex_auth: None,
+            vertex_endpoint: None,
+            vertex_project: None,
+            vertex_location: None,
             http: reqwest::Client::new(),
         }
+    }
+
+    pub fn with_vertex(
+        mut self,
+        auth: crate::vertex_auth::VertexAuth,
+        project: String,
+        location: String,
+    ) -> Self {
+        self.vertex_endpoint = Some(if location == "global" {
+            "https://aiplatform.googleapis.com".to_string()
+        } else {
+            format!("https://{}-aiplatform.googleapis.com", location)
+        });
+        self.vertex_project = Some(project);
+        self.vertex_location = Some(location);
+        self.vertex_auth = Some(auth);
+        self
     }
 
     fn build_prompt(&self, req: &GenerateRequest) -> String {
@@ -177,7 +203,11 @@ impl AssetProvider for GeminiImageProvider {
     }
 
     fn display_name(&self) -> &str {
-        "Gemini Flash Image (Google)"
+        if self.vertex_auth.is_some() {
+            "Gemini Flash Image (Vertex AI)"
+        } else {
+            "Gemini Flash Image (Google)"
+        }
     }
 
     fn asset_types(&self) -> &[AssetType] {
@@ -240,16 +270,33 @@ impl AssetProvider for GeminiImageProvider {
             "generationConfig": gen_config,
         });
 
-        let resp = self
-            .http
-            .post(format!(
-                "{}/v1beta/models/{}:generateContent",
-                self.base_url, model
-            ))
-            .header("x-goog-api-key", &self.api_key)
-            .json(&body)
-            .send()
-            .await?;
+        let resp = if let (Some(auth), Some(endpoint), Some(project), Some(location)) = (
+            &self.vertex_auth,
+            &self.vertex_endpoint,
+            &self.vertex_project,
+            &self.vertex_location,
+        ) {
+            let token = auth.access_token().await?;
+            self.http
+                .post(format!(
+                    "{}/v1/projects/{}/locations/{}/publishers/google/models/{}:generateContent",
+                    endpoint, project, location, model
+                ))
+                .header("Authorization", format!("Bearer {}", token))
+                .json(&body)
+                .send()
+                .await?
+        } else {
+            self.http
+                .post(format!(
+                    "{}/v1beta/models/{}:generateContent",
+                    self.base_url, model
+                ))
+                .header("x-goog-api-key", &self.api_key)
+                .json(&body)
+                .send()
+                .await?
+        };
 
         let status = resp.status();
         let text = resp.text().await?;
@@ -303,12 +350,28 @@ impl AssetProvider for GeminiImageProvider {
 
     async fn health_check(&self) -> anyhow::Result<HealthStatus> {
         let start = Instant::now();
-        let resp = self
-            .http
-            .get(format!("{}/v1beta/models", self.base_url))
-            .header("x-goog-api-key", &self.api_key)
-            .send()
-            .await;
+        let resp = if let (Some(auth), Some(endpoint), Some(project), Some(location)) = (
+            &self.vertex_auth,
+            &self.vertex_endpoint,
+            &self.vertex_project,
+            &self.vertex_location,
+        ) {
+            let token = auth.access_token().await.ok();
+            let mut req = self.http.get(format!(
+                "{}/v1/projects/{}/locations/{}/publishers/google/models",
+                endpoint, project, location
+            ));
+            if let Some(token) = token {
+                req = req.header("Authorization", format!("Bearer {}", token));
+            }
+            req.send().await
+        } else {
+            self.http
+                .get(format!("{}/v1beta/models", self.base_url))
+                .header("x-goog-api-key", &self.api_key)
+                .send()
+                .await
+        };
 
         match resp {
             Ok(r) => Ok(HealthStatus {

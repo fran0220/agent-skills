@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::providers::tripo3d::Tripo3dProvider;
 use crate::server::routes::auth::CurrentUser;
+use crate::server::ws::{broadcast_job_update, JobUpdate};
 use crate::server::ServerState;
 
 const RENDER_SPRITES_SCRIPT: &str = include_str!("../../../scripts/render_sprites.py");
@@ -133,6 +134,40 @@ async fn process3d(
     .execute(&state.db)
     .await
     .map_err(AppError::internal)?;
+    broadcast_job_update(
+        &state,
+        JobUpdate {
+            user_id: &current_user.id,
+            job_id: &job_id,
+            asset_type: "model3d",
+            provider_id: Some("tripo3d"),
+            status: "pending",
+            error_message: None,
+            output_path: None,
+            cost_usd: None,
+        },
+    )
+    .await;
+
+    sqlx::query("UPDATE jobs SET status = 'running' WHERE id = $1")
+        .bind(&job_id)
+        .execute(&state.db)
+        .await
+        .map_err(AppError::internal)?;
+    broadcast_job_update(
+        &state,
+        JobUpdate {
+            user_id: &current_user.id,
+            job_id: &job_id,
+            asset_type: "model3d",
+            provider_id: Some("tripo3d"),
+            status: "running",
+            error_message: None,
+            output_path: None,
+            cost_usd: None,
+        },
+    )
+    .await;
 
     let params = req.merged_params();
 
@@ -149,6 +184,20 @@ async fn process3d(
             .execute(&state.db)
             .await
             .map_err(AppError::internal)?;
+            broadcast_job_update(
+                &state,
+                JobUpdate {
+                    user_id: &current_user.id,
+                    job_id: &job_id,
+                    asset_type: "model3d",
+                    provider_id: Some("tripo3d"),
+                    status: "completed",
+                    error_message: None,
+                    output_path: None,
+                    cost_usd: None,
+                },
+            )
+            .await;
 
             sqlx::query(
                 "UPDATE users SET api_key_quota_used = api_key_quota_used + 1, updated_at = now() WHERE id = $1 AND api_key_quota IS NOT NULL",
@@ -170,6 +219,20 @@ async fn process3d(
             .execute(&state.db)
             .await
             .map_err(AppError::internal)?;
+            broadcast_job_update(
+                &state,
+                JobUpdate {
+                    user_id: &current_user.id,
+                    job_id: &job_id,
+                    asset_type: "model3d",
+                    provider_id: Some("tripo3d"),
+                    status: "failed",
+                    error_message: Some(&error_message),
+                    output_path: None,
+                    cost_usd: None,
+                },
+            )
+            .await;
             return Err(AppError::provider(error_message));
         }
     };

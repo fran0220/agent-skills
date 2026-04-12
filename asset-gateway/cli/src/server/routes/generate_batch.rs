@@ -12,6 +12,7 @@ use crate::core::{AssetType, GenerateRequest};
 use crate::error::{AppError, AppResult};
 use crate::server::routes::auth::CurrentUser;
 use crate::server::routes::generate::enforce_quota;
+use crate::server::ws::{broadcast_job_update, JobUpdate};
 use crate::server::ServerState;
 
 const MAX_CONCURRENT_BATCH_REQUESTS: usize = 4;
@@ -129,6 +130,40 @@ async fn generate_batch(
     .execute(&state.db)
     .await
     .map_err(AppError::internal)?;
+    broadcast_job_update(
+        &state,
+        JobUpdate {
+            user_id: &user_id,
+            job_id: &job_id,
+            asset_type: req.asset_type.as_str(),
+            provider_id: Some(&provider_hint),
+            status: "pending",
+            error_message: None,
+            output_path: None,
+            cost_usd: None,
+        },
+    )
+    .await;
+
+    sqlx::query("UPDATE jobs SET status = 'running' WHERE id = $1")
+        .bind(&job_id)
+        .execute(&state.db)
+        .await
+        .map_err(AppError::internal)?;
+    broadcast_job_update(
+        &state,
+        JobUpdate {
+            user_id: &user_id,
+            job_id: &job_id,
+            asset_type: req.asset_type.as_str(),
+            provider_id: Some(&provider_hint),
+            status: "running",
+            error_message: None,
+            output_path: None,
+            cost_usd: None,
+        },
+    )
+    .await;
 
     let shared_params = build_shared_params(&req.shared);
     let batch_requests = req
@@ -205,7 +240,7 @@ async fn generate_batch(
         if inputs.is_empty() {
             None
         } else {
-            let result = Pipeline::run(&ProcessRequest {
+            let result = match Pipeline::run(&ProcessRequest {
                 input: None,
                 inputs,
                 operations: vec![ProcessOp::Compose {
@@ -217,7 +252,35 @@ async fn generate_batch(
                 }],
             })
             .await
-            .map_err(|error| AppError::provider(error.to_string()))?;
+            {
+                Ok(result) => result,
+                Err(error) => {
+                    let error_message = error.to_string();
+                    sqlx::query(
+                        "UPDATE jobs SET status = 'failed', error_message = $1, completed_at = now() WHERE id = $2",
+                    )
+                    .bind(&error_message)
+                    .bind(&job_id)
+                    .execute(&state.db)
+                    .await
+                    .map_err(AppError::internal)?;
+                    broadcast_job_update(
+                        &state,
+                        JobUpdate {
+                            user_id: &user_id,
+                            job_id: &job_id,
+                            asset_type: req.asset_type.as_str(),
+                            provider_id: Some(&provider_hint),
+                            status: "failed",
+                            error_message: Some(&error_message),
+                            output_path: None,
+                            cost_usd: None,
+                        },
+                    )
+                    .await;
+                    return Err(AppError::provider(error_message));
+                }
+            };
 
             Some(SpriteSheetData {
                 output_data: result.output_data,
@@ -267,6 +330,20 @@ async fn generate_batch(
     .execute(&state.db)
     .await
     .map_err(AppError::internal)?;
+    broadcast_job_update(
+        &state,
+        JobUpdate {
+            user_id: &user_id,
+            job_id: &job_id,
+            asset_type: req.asset_type.as_str(),
+            provider_id: Some(&resolved_provider_id),
+            status: "completed",
+            error_message: None,
+            output_path: None,
+            cost_usd: Some(total_cost_usd),
+        },
+    )
+    .await;
 
     sqlx::query(
         "UPDATE users SET api_key_quota_used = api_key_quota_used + 1, updated_at = now() WHERE id = $1 AND api_key_quota IS NOT NULL",

@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::core::{AssetType, GenerateRequest, ImageEditMode};
 use crate::error::{AppError, AppResult};
 use crate::server::routes::auth::CurrentUser;
+use crate::server::ws::{broadcast_job_update, JobUpdate};
 use crate::server::ServerState;
 
 #[derive(Deserialize)]
@@ -90,20 +91,6 @@ async fn generate(
         params,
     };
 
-    let request_payload = serde_json::to_string(&gen_req).map_err(AppError::internal)?;
-    sqlx::query(
-        "INSERT INTO jobs (id, user_id, asset_type, provider_id, status, request, started_at) VALUES ($1, $2, $3, $4, 'pending', $5, now())",
-    )
-    .bind(&job_id)
-    .bind(&current_user.id)
-    .bind(gen_req.asset_type.as_str())
-    .bind(&provider_hint)
-    .bind(request_payload)
-    .execute(&state.db)
-    .await
-    .map_err(AppError::internal)?;
-
-    // Load session state if session_id provided
     let mut gen_req = gen_req;
     if let Some(ref sid) = gen_req.session_id {
         let session_row = sqlx::query(
@@ -125,6 +112,53 @@ async fn generate(
         }
     }
 
+    let request_payload = serde_json::to_string(&gen_req).map_err(AppError::internal)?;
+    sqlx::query(
+        "INSERT INTO jobs (id, user_id, asset_type, provider_id, status, request, started_at) VALUES ($1, $2, $3, $4, 'pending', $5, now())",
+    )
+    .bind(&job_id)
+    .bind(&current_user.id)
+    .bind(gen_req.asset_type.as_str())
+    .bind(&provider_hint)
+    .bind(request_payload)
+    .execute(&state.db)
+    .await
+    .map_err(AppError::internal)?;
+    broadcast_job_update(
+        &state,
+        JobUpdate {
+            user_id: &current_user.id,
+            job_id: &job_id,
+            asset_type: gen_req.asset_type.as_str(),
+            provider_id: Some(&provider_hint),
+            status: "pending",
+            error_message: None,
+            output_path: None,
+            cost_usd: None,
+        },
+    )
+    .await;
+
+    sqlx::query("UPDATE jobs SET status = 'running' WHERE id = $1")
+        .bind(&job_id)
+        .execute(&state.db)
+        .await
+        .map_err(AppError::internal)?;
+    broadcast_job_update(
+        &state,
+        JobUpdate {
+            user_id: &current_user.id,
+            job_id: &job_id,
+            asset_type: gen_req.asset_type.as_str(),
+            provider_id: Some(&provider_hint),
+            status: "running",
+            error_message: None,
+            output_path: None,
+            cost_usd: None,
+        },
+    )
+    .await;
+
     let dispatch_result = state
         .dispatcher
         .dispatch(&gen_req, req.provider.as_deref())
@@ -144,6 +178,20 @@ async fn generate(
             .execute(&state.db)
             .await
             .map_err(AppError::internal)?;
+            broadcast_job_update(
+                &state,
+                JobUpdate {
+                    user_id: &current_user.id,
+                    job_id: &job_id,
+                    asset_type: gen_req.asset_type.as_str(),
+                    provider_id: Some(&result.provider_id),
+                    status: "completed",
+                    error_message: None,
+                    output_path: result.output_path.as_deref(),
+                    cost_usd: result.cost_usd,
+                },
+            )
+            .await;
 
             // -- Session management --
             let mut session_id_out: Option<String> = gen_req.session_id.clone();
@@ -207,6 +255,20 @@ async fn generate(
             .execute(&state.db)
             .await
             .map_err(AppError::internal)?;
+            broadcast_job_update(
+                &state,
+                JobUpdate {
+                    user_id: &current_user.id,
+                    job_id: &job_id,
+                    asset_type: gen_req.asset_type.as_str(),
+                    provider_id: Some(&provider_hint),
+                    status: "failed",
+                    error_message: Some(&error_message),
+                    output_path: None,
+                    cost_usd: None,
+                },
+            )
+            .await;
             return Err(AppError::provider(error_message));
         }
     };

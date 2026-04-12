@@ -4,9 +4,12 @@ use axum::{
     routing::post,
     Json, Router,
 };
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Utc};
+use rand::{rngs::OsRng, RngCore};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 use std::sync::Arc;
 
@@ -19,6 +22,7 @@ pub struct CurrentUser {
     pub username: String,
     pub role: String,
     pub status: String,
+    pub auth_expires_at: Option<DateTime<Utc>>,
 }
 
 impl CurrentUser {
@@ -63,9 +67,26 @@ pub(crate) async fn authenticate_token(
             username: "admin".into(),
             role: "admin".into(),
             status: "active".into(),
+            auth_expires_at: None,
         });
     }
     load_user_by_api_key(token, state).await
+}
+
+pub(crate) fn hash_api_key(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    URL_SAFE_NO_PAD.encode(hasher.finalize())
+}
+
+pub(crate) fn generate_api_key_value() -> String {
+    let mut bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut bytes);
+    format!("agk_{}", URL_SAFE_NO_PAD.encode(bytes))
+}
+
+pub(crate) fn api_key_prefix(token: &str) -> String {
+    token.chars().take(16).collect()
 }
 
 impl FromRequestParts<Arc<ServerState>> for CurrentUser {
@@ -120,15 +141,54 @@ async fn load_user_by_api_key(api_key: &str, state: &Arc<ServerState>) -> AppRes
     .bind(api_key)
     .fetch_optional(&state.db)
     .await
+    .map_err(AppError::internal)?;
+
+    if let Some(row) = row {
+        let status: String = row.try_get("status").map_err(AppError::internal)?;
+        ensure_active_status(&status)?;
+
+        let api_key_expires_at: Option<DateTime<Utc>> = row
+            .try_get("api_key_expires_at")
+            .map_err(AppError::internal)?;
+        if let Some(expires_at) = api_key_expires_at {
+            if expires_at < Utc::now() {
+                return Err(AppError::unauthorized("api_key is expired"));
+            }
+        }
+
+        let quota_limit: Option<i64> = row.try_get("api_key_quota").map_err(AppError::internal)?;
+        let quota_used: i64 = row
+            .try_get("api_key_quota_used")
+            .map_err(AppError::internal)?;
+        if let Some(limit) = quota_limit {
+            if quota_used >= limit {
+                return Err(AppError::forbidden("api_key quota exceeded"));
+            }
+        }
+
+        return Ok(CurrentUser {
+            id: row.try_get("id").map_err(AppError::internal)?,
+            username: row.try_get("username").map_err(AppError::internal)?,
+            role: row.try_get("role").map_err(AppError::internal)?,
+            status,
+            auth_expires_at: api_key_expires_at,
+        });
+    }
+
+    let row = sqlx::query(
+        "SELECT u.id, u.username, u.role, u.status, u.api_key_quota, u.api_key_quota_used, k.id AS key_id, k.expires_at FROM api_keys k JOIN users u ON u.id = k.user_id WHERE k.key_hash = $1",
+    )
+    .bind(hash_api_key(api_key))
+    .fetch_optional(&state.db)
+    .await
     .map_err(AppError::internal)?
     .ok_or_else(|| AppError::unauthorized("invalid api_key"))?;
 
     let status: String = row.try_get("status").map_err(AppError::internal)?;
     ensure_active_status(&status)?;
 
-    let api_key_expires_at: Option<DateTime<Utc>> = row
-        .try_get("api_key_expires_at")
-        .map_err(AppError::internal)?;
+    let api_key_expires_at: Option<DateTime<Utc>> =
+        row.try_get("expires_at").map_err(AppError::internal)?;
     if let Some(expires_at) = api_key_expires_at {
         if expires_at < Utc::now() {
             return Err(AppError::unauthorized("api_key is expired"));
@@ -145,11 +205,19 @@ async fn load_user_by_api_key(api_key: &str, state: &Arc<ServerState>) -> AppRes
         }
     }
 
+    let key_id: String = row.try_get("key_id").map_err(AppError::internal)?;
+    sqlx::query("UPDATE api_keys SET last_used_at = now() WHERE id = $1")
+        .bind(&key_id)
+        .execute(&state.db)
+        .await
+        .map_err(AppError::internal)?;
+
     Ok(CurrentUser {
         id: row.try_get("id").map_err(AppError::internal)?,
         username: row.try_get("username").map_err(AppError::internal)?,
         role: row.try_get("role").map_err(AppError::internal)?,
         status,
+        auth_expires_at: api_key_expires_at,
     })
 }
 
@@ -180,9 +248,12 @@ async fn login(
 
         match row {
             Some(r) => {
-                let expires: Option<DateTime<Utc>> = r
-                    .try_get("api_key_expires_at")
-                    .map_err(AppError::internal)?;
+                let expires = user.auth_expires_at.or_else(|| {
+                    r.try_get("api_key_expires_at")
+                        .map_err(AppError::internal)
+                        .ok()
+                        .flatten()
+                });
                 let quota: Option<i64> = r.try_get("api_key_quota").map_err(AppError::internal)?;
                 let used: i64 = r
                     .try_get("api_key_quota_used")
