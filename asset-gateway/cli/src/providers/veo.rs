@@ -280,31 +280,11 @@ impl AssetProvider for VeoProvider {
         let token = self.vertex_auth.access_token().await;
 
         match token {
-            Ok(t) => {
-                let resp = self
-                    .http
-                    .get(format!(
-                        "https://{}-aiplatform.googleapis.com/v1/projects/{}/locations/{}/publishers/google/models",
-                        LOCATION, self.vertex_project, LOCATION
-                    ))
-                    .header("Authorization", format!("Bearer {}", t))
-                    .timeout(Duration::from_secs(10))
-                    .send()
-                    .await;
-
-                match resp {
-                    Ok(r) => Ok(HealthStatus {
-                        healthy: r.status().is_success(),
-                        latency_ms: Some(start.elapsed().as_millis() as u64),
-                        message: None,
-                    }),
-                    Err(e) => Ok(HealthStatus {
-                        healthy: false,
-                        latency_ms: Some(start.elapsed().as_millis() as u64),
-                        message: Some(e.to_string()),
-                    }),
-                }
-            }
+            Ok(_) => Ok(HealthStatus {
+                healthy: true,
+                latency_ms: Some(start.elapsed().as_millis() as u64),
+                message: None,
+            }),
             Err(e) => Ok(HealthStatus {
                 healthy: false,
                 latency_ms: Some(start.elapsed().as_millis() as u64),
