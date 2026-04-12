@@ -332,11 +332,15 @@ impl AssetProvider for WorldLabsProvider {
 
     async fn health_check(&self) -> anyhow::Result<HealthStatus> {
         let start = Instant::now();
+        // Use prepare_upload as a lightweight auth + connectivity check
         let resp = self
             .http
-            .get(format!("{}/worlds", self.base_url))
+            .post(format!(
+                "{}/media-assets:prepare_upload",
+                self.base_url
+            ))
             .header("WLT-Api-Key", &self.api_key)
-            .query(&[("page_size", "1")])
+            .json(&json!({"file_name": "health.png", "kind": "image", "extension": "png"}))
             .timeout(Duration::from_secs(10))
             .send()
             .await;
@@ -345,7 +349,7 @@ impl AssetProvider for WorldLabsProvider {
             Ok(r) if r.status().is_success() => Ok(HealthStatus {
                 healthy: true,
                 latency_ms: Some(start.elapsed().as_millis() as u64),
-                message: Some("WorldLabs API reachable".into()),
+                message: None,
             }),
             Ok(r) => Ok(HealthStatus {
                 healthy: false,
