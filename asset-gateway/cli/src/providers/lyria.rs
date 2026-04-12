@@ -186,42 +186,40 @@ impl AssetProvider for LyriaProvider {
 
     async fn health_check(&self) -> anyhow::Result<HealthStatus> {
         let start = Instant::now();
-        let resp = if let (Some(auth), Some(endpoint), Some(project), Some(location)) = (
-            &self.vertex_auth,
-            &self.vertex_endpoint,
-            &self.vertex_project,
-            &self.vertex_location,
-        ) {
-            let token = auth.access_token().await?;
-            self.http
-                .get(format!(
-                    "{}/v1/projects/{}/locations/{}/publishers/google/models",
-                    endpoint, project, location
-                ))
-                .header("Authorization", format!("Bearer {}", token))
-                .timeout(Duration::from_secs(10))
-                .send()
-                .await
+        if let Some(auth) = &self.vertex_auth {
+            match auth.access_token().await {
+                Ok(_) => Ok(HealthStatus {
+                    healthy: true,
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
+                    message: None,
+                }),
+                Err(e) => Ok(HealthStatus {
+                    healthy: false,
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
+                    message: Some(format!("Vertex AI auth failed: {e}")),
+                }),
+            }
         } else {
-            self.http
+            let resp = self
+                .http
                 .get(format!("{}/v1beta/models", self.proxy_url))
                 .header("x-goog-api-key", &self.proxy_key)
                 .timeout(Duration::from_secs(10))
                 .send()
-                .await
-        };
+                .await;
 
-        match resp {
-            Ok(r) => Ok(HealthStatus {
-                healthy: r.status().is_success(),
-                latency_ms: Some(start.elapsed().as_millis() as u64),
-                message: None,
-            }),
-            Err(e) => Ok(HealthStatus {
-                healthy: false,
-                latency_ms: Some(start.elapsed().as_millis() as u64),
-                message: Some(e.to_string()),
-            }),
+            match resp {
+                Ok(r) => Ok(HealthStatus {
+                    healthy: r.status().is_success(),
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
+                    message: None,
+                }),
+                Err(e) => Ok(HealthStatus {
+                    healthy: false,
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
+                    message: Some(e.to_string()),
+                }),
+            }
         }
     }
 }
