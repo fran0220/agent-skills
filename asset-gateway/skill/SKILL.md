@@ -31,6 +31,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Character Animation | Text/image → character animation (spritesheet, GIF, or MP4) via Vertex AI Veo | `generate sprite` |
 | 3D World | Text/image → photorealistic 3D environment (Gaussian Splat) | `generate world` |
 | Text | Single-shot LLM text generation | `generate text` |
+| Batch | Batch generate multiple assets with shared params, optional auto-compose | `generate batch` |
 | Image/Video Tools | Crop, resize, compose, extract frames, remove background | `process ...` |
 
 ## Quick Decision Guide
@@ -61,6 +62,7 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Animate a sprite | `generate sprite` | `--prompt`, `--animation-type`, `--view`, `--background`, `--output-dir` |
 | Generate 3D world | `generate world` | `--prompt`, `--input <image>`, `--model`, `--output-dir` |
 | Generate text | `generate text` | `--prompt`, `--model`, `--output-dir` |
+| Batch generate (e.g. sprite frames) | `generate batch` | `--prompt <p1> <p2> ...`, `--asset-type`, `--compose`, `--output-dir` |
 
 All `generate`, `process`, `process3d` commands should include `--output-dir` to save output locally.
 

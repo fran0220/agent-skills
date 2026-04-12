@@ -1,0 +1,31 @@
+{
+  "name": "asset-gateway-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "framer-motion": "^12.6.5",
+    "lucide-react": "^0.511.0",
+    "next": "^15.3.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "wavesurfer.js": "^7.9.4"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@tailwindcss/postcss": "^4.1.7",
+    "@types/node": "^22.15.17",
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.4",
+    "eslint": "^9.26.0",
+    "eslint-config-next": "^15.3.2",
+    "tailwindcss": "^4.1.7",
+    "typescript": "^5.8.3"
+  }
+}
