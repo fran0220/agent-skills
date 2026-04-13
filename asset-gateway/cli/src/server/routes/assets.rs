@@ -22,7 +22,7 @@ fn is_allowed_content_type(ct: &str) -> bool {
 }
 
 async fn upload(
-    State(_state): State<Arc<ServerState>>,
+    State(state): State<Arc<ServerState>>,
     _user: CurrentUser,
     mut multipart: Multipart,
 ) -> AppResult<Json<Value>> {
@@ -84,7 +84,7 @@ async fn upload(
             "command": "asset.upload",
             "data": {
                 "filename": filename,
-                "url": format!("/uploads/{filename}"),
+                "url": format!("{}/uploads/{filename}", state.config.read().await.public_url.trim_end_matches('/')),
                 "size": size,
                 "content_type": content_type,
             }
@@ -120,7 +120,7 @@ async fn delete_file(
 }
 
 async fn list_files(
-    State(_state): State<Arc<ServerState>>,
+    State(state): State<Arc<ServerState>>,
     _user: CurrentUser,
 ) -> AppResult<Json<Value>> {
     let dir = std::path::Path::new(UPLOAD_DIR);
@@ -149,9 +149,16 @@ async fn list_files(
 
         if metadata.is_file() {
             let name = entry.file_name().to_string_lossy().to_string();
+            let base = state
+                .config
+                .read()
+                .await
+                .public_url
+                .trim_end_matches('/')
+                .to_string();
             files.push(json!({
                 "filename": name,
-                "url": format!("/uploads/{name}"),
+                "url": format!("{base}/uploads/{name}"),
                 "size": metadata.len(),
             }));
         }

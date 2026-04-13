@@ -28,6 +28,7 @@ pub struct ConfigFile {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ServerSection {
     pub admin_token: Option<String>,
+    pub public_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -70,6 +71,7 @@ pub struct AppConfig {
     pub database_url: String,
     pub config_path: PathBuf,
     pub admin_token: String,
+    pub public_url: String,
 
     // Shared LLM proxy (covers llm_proxy, gemini_image, gpt_image)
     pub proxy_url: String,
@@ -133,6 +135,11 @@ impl AppConfig {
                 "ASSET_GATEWAY_ADMIN_TOKEN",
                 file_cfg.server.admin_token.as_deref(),
                 "",
+            ),
+            public_url: env_or(
+                "ASSET_GATEWAY_PUBLIC_URL",
+                file_cfg.server.public_url.as_deref(),
+                "https://upload.xiaomao.chat",
             ),
 
             proxy_url: env_or(
