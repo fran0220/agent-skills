@@ -173,9 +173,7 @@ pub async fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn Asse
     }
 
     if !config.voicebox_url.is_empty() {
-        let mut vb = crate::providers::voicebox::VoiceBoxProvider::new(
-            config.voicebox_url.clone(),
-        );
+        let mut vb = crate::providers::voicebox::VoiceBoxProvider::new(config.voicebox_url.clone());
         vb.id = "voicebox".into();
         providers.push(Arc::new(vb));
     }

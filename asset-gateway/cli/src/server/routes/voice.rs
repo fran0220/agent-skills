@@ -229,11 +229,20 @@ async fn create_custom_voice(
         .ok_or_else(|| AppError::internal("provider qwen_tts has unexpected concrete type"))?;
 
     let language = req.language.as_deref().unwrap_or(DEFAULT_LANGUAGE);
-    let target_model = req.target_model.as_deref().unwrap_or(DEFAULT_VD_TARGET_MODEL);
+    let target_model = req
+        .target_model
+        .as_deref()
+        .unwrap_or(DEFAULT_VD_TARGET_MODEL);
 
     // Step 2: Design voice via DashScope (one-time API call)
     let design_result = qwen
-        .design_voice(target_model, &req.name, &req.voice_prompt, &req.preview_text, language)
+        .design_voice(
+            target_model,
+            &req.name,
+            &req.voice_prompt,
+            &req.preview_text,
+            language,
+        )
         .await
         .map_err(|e| AppError::provider(e.to_string()))?;
 
@@ -275,7 +284,9 @@ async fn create_custom_voice(
             .await
             .map_err(|e| AppError::provider(format!("VoiceBox upload sample failed: {}", e)))?;
     } else {
-        return Err(AppError::provider("DashScope voice design returned no preview audio".to_string()));
+        return Err(AppError::provider(
+            "DashScope voice design returned no preview audio".to_string(),
+        ));
     }
 
     Ok(Json(json!({

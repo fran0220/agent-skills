@@ -187,10 +187,7 @@ impl AssetProvider for VoiceBoxProvider {
             .map(str::trim)
             .filter(|v| !v.is_empty());
 
-        let seed = req
-            .params
-            .get("seed")
-            .and_then(Value::as_u64);
+        let seed = req.params.get("seed").and_then(Value::as_u64);
 
         // POST /generate
         let mut gen_body = json!({
@@ -273,10 +270,7 @@ impl AssetProvider for VoiceBoxProvider {
             .await?;
         let audio_status = resp.status();
         if !audio_status.is_success() {
-            anyhow::bail!(
-                "VoiceBox TTS: audio download returned {}",
-                audio_status
-            );
+            anyhow::bail!("VoiceBox TTS: audio download returned {}", audio_status);
         }
         let wav_bytes = resp.bytes().await?;
         let output_data = STANDARD.encode(&wav_bytes);
