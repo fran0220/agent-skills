@@ -1,4 +1,4 @@
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
 use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -11,7 +11,7 @@ use crate::core::pipeline::{ComposeDirection, Pipeline, ProcessOp, ProcessReques
 use crate::core::{AssetType, GenerateRequest};
 use crate::error::{AppError, AppResult};
 use crate::server::routes::auth::CurrentUser;
-use crate::server::routes::generate::enforce_quota;
+use crate::server::routes::generate::{enforce_quota, resolve_upload_url};
 use crate::server::ws::{broadcast_job_update, JobUpdate};
 use crate::server::ServerState;
 
@@ -94,9 +94,21 @@ fn parse_compose_direction(raw: Option<&str>) -> AppResult<ComposeDirection> {
 
 async fn generate_batch(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     current_user: CurrentUser,
-    Json(req): Json<BatchGenerateReq>,
+    Json(mut req): Json<BatchGenerateReq>,
 ) -> AppResult<Json<Value>> {
+    // Resolve relative /uploads/ paths to full URLs.
+    let host = headers
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost");
+    req.shared.input_file = req.shared.input_file.map(|p| resolve_upload_url(host, &p));
+    req.shared.reference_images = req.shared.reference_images.map(|imgs| {
+        imgs.into_iter()
+            .map(|p| resolve_upload_url(host, &p))
+            .collect()
+    });
     if req.prompts.is_empty() {
         return Err(AppError::bad_request("prompts array must not be empty"));
     }

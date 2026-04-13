@@ -1,4 +1,4 @@
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::Row;
@@ -30,6 +30,21 @@ pub struct GenerateReq {
     pub params: serde_json::Value,
 }
 
+/// Resolve relative paths like `/uploads/foo.png` to full URLs using the request Host.
+pub fn resolve_upload_url(host: &str, path: &str) -> String {
+    let trimmed = path.trim();
+    if trimmed.starts_with("/uploads/") {
+        let scheme = if host.starts_with("localhost") || host.starts_with("127.0.0.1") {
+            "http"
+        } else {
+            "https"
+        };
+        format!("{scheme}://{host}{trimmed}")
+    } else {
+        trimmed.to_string()
+    }
+}
+
 pub(crate) async fn enforce_quota(state: &ServerState, user_id: &str) -> AppResult<()> {
     let row = sqlx::query("SELECT api_key_quota, api_key_quota_used FROM users WHERE id = $1")
         .bind(user_id)
@@ -54,9 +69,14 @@ pub(crate) async fn enforce_quota(state: &ServerState, user_id: &str) -> AppResu
 
 async fn generate(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     current_user: CurrentUser,
     Json(req): Json<GenerateReq>,
 ) -> AppResult<Json<Value>> {
+    let host = headers
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost");
     if !current_user.is_admin() {
         enforce_quota(&state, &current_user.id).await?;
     }
@@ -80,12 +100,20 @@ async fn generate(
         }
     }
 
+    // Resolve relative /uploads/ paths to full URLs for external provider APIs.
+    let input_file = req.input_file.map(|path| resolve_upload_url(host, &path));
+    let reference_images: Vec<String> = req
+        .reference_images
+        .into_iter()
+        .map(|path| resolve_upload_url(host, &path))
+        .collect();
+
     let gen_req = GenerateRequest {
         asset_type: req.asset_type,
         prompt: req.prompt,
         model: req.model,
-        input_file: req.input_file,
-        reference_images: req.reference_images,
+        input_file,
+        reference_images,
         edit_mode: req.edit_mode,
         session_id: req.session_id.clone(),
         params,
