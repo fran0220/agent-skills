@@ -79,18 +79,18 @@ impl TripoClient {
             let status = resp.status();
             let text = resp.text().await?;
 
-            if status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::PAYMENT_REQUIRED {
-                if attempt + 1 < max_retries {
-                    let key_hint = &self.current_key()[..8.min(self.current_key().len())];
-                    tracing::warn!(
-                        status = %status,
-                        key = key_hint,
-                        attempt = attempt + 1,
-                        "Tripo3D key limited, rotating to next key"
-                    );
-                    self.next_key();
-                    continue;
-                }
+            if (status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::PAYMENT_REQUIRED)
+                && attempt + 1 < max_retries
+            {
+                let key_hint = &self.current_key()[..8.min(self.current_key().len())];
+                tracing::warn!(
+                    status = %status,
+                    key = key_hint,
+                    attempt = attempt + 1,
+                    "Tripo3D key limited, rotating to next key"
+                );
+                self.next_key();
+                continue;
             }
 
             if !status.is_success() {
@@ -190,19 +190,19 @@ impl TripoClient {
                     continue;
                 }
 
-                if status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::PAYMENT_REQUIRED
+                if (status == StatusCode::TOO_MANY_REQUESTS
+                    || status == StatusCode::PAYMENT_REQUIRED)
+                    && attempt + 1 < max_retries
                 {
-                    if attempt + 1 < max_retries {
-                        let key_hint = &self.current_key()[..8.min(self.current_key().len())];
-                        tracing::warn!(
-                            status = %status,
-                            key = key_hint,
-                            attempt = attempt + 1,
-                            "Tripo3D upload key limited, rotating to next key"
-                        );
-                        self.next_key();
-                        break;
-                    }
+                    let key_hint = &self.current_key()[..8.min(self.current_key().len())];
+                    tracing::warn!(
+                        status = %status,
+                        key = key_hint,
+                        attempt = attempt + 1,
+                        "Tripo3D upload key limited, rotating to next key"
+                    );
+                    self.next_key();
+                    break;
                 }
 
                 if !status.is_success() {

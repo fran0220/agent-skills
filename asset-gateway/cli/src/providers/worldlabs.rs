@@ -137,7 +137,7 @@ impl AssetProvider for WorldLabsProvider {
         let world_prompt = if let Some(input) = req.input_file.as_deref() {
             // Image mode — resolve image bytes
             let image_bytes = if input.starts_with("data:") {
-                let raw = input.splitn(2, ',').nth(1).unwrap_or(input);
+                let raw = input.split_once(',').map_or(input, |(_, r)| r);
                 STANDARD.decode(raw)?
             } else if input.starts_with("http://") || input.starts_with("https://") {
                 tracing::debug!(url = input, "downloading image for WorldLabs");
