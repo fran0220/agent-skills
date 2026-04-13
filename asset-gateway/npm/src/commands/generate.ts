@@ -309,7 +309,7 @@ export function createGenerateCommand(): Command {
         "ElevenLabs voice_id (use with --provider elevenlabs; routes to TTS API)"
       )
       .option("--language <lang>", "Language hint: Auto, Chinese, English, Japanese, etc.", "Auto")
-      .option("--model <model>", "Model id (Qwen TTS or ElevenLabs model_id)", "qwen3-tts-flash")
+      .option("--model <model>", "Model id (default: auto-detect from voice; qwen3-tts-flash for built-in voices)")
       .option("--instructions <text>", "Natural language speaking instructions (for instruct models)")
       .option("--provider <id>", "qwen_tts | elevenlabs")
       .option("--output-dir <dir>", "Directory to save output", ".")
@@ -326,9 +326,9 @@ export function createGenerateCommand(): Command {
           const body: Record<string, unknown> = {
             asset_type: "tts",
             prompt: options.prompt,
-            model: options.model,
             params,
           };
+          if (options.model) body.model = options.model;
           if (options.provider) body.provider = options.provider;
 
           const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
