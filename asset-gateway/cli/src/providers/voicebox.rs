@@ -246,7 +246,12 @@ impl AssetProvider for VoiceBoxProvider {
                     let audio_path = history
                         .get("audio_path")
                         .and_then(Value::as_str)
+                        .filter(|v| !v.is_empty())
                         .map(str::to_string);
+                    // VoiceBox may report completed before audio_path is populated
+                    if audio_path.is_none() {
+                        continue;
+                    }
                     let duration = history.get("duration").and_then(Value::as_f64);
                     break (audio_path, duration);
                 }
