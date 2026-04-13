@@ -335,10 +335,7 @@ impl AssetProvider for WorldLabsProvider {
         // Use prepare_upload as a lightweight auth + connectivity check
         let resp = self
             .http
-            .post(format!(
-                "{}/media-assets:prepare_upload",
-                self.base_url
-            ))
+            .post(format!("{}/media-assets:prepare_upload", self.base_url))
             .header("WLT-Api-Key", &self.api_key)
             .json(&json!({"file_name": "health.png", "kind": "image", "extension": "png"}))
             .timeout(Duration::from_secs(10))
