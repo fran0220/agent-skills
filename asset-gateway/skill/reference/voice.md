@@ -10,6 +10,8 @@ Create a custom voice from an audio sample:
 asset-gateway voice clone --audio ./voice-sample.wav --name narrator_v1
 ```
 
+**Name rules**: 1–16 characters, only letters, digits, and underscores. No hyphens or spaces.
+
 ## Design a Voice
 
 Create a voice from a text description:
@@ -32,12 +34,13 @@ asset-gateway voice delete host_v1
 
 ## Using Custom Voices with TTS
 
-After cloning or designing, use the voice name in TTS:
+After cloning or designing, use the returned voice ID in TTS. The correct model is **auto-detected** from the voice ID prefix — no need to specify `--model`:
 
 ```bash
-asset-gateway generate tts --prompt "Welcome back, adventurer." --voice narrator_v1 --output-dir ./assets
+# Clone returns a voice ID like: qwen-tts-vc-narrator_v1-voice-20260413-xxxx
+asset-gateway generate tts --prompt "Welcome back, adventurer." --voice qwen-tts-vc-narrator_v1-voice-20260413-xxxx --output-dir ./assets
 ```
 
 ### System Voices
 
-Built-in voices available without cloning: `Cherry`, `Serena`, `Ethan`, `Chelsie`.
+Built-in voices available without cloning (use directly by name): `Cherry`, `Serena`, `Ethan`, `Chelsie`.
