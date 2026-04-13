@@ -243,9 +243,26 @@ impl CharAnimProvider {
             }
 
             // Extract video data
-            let videos = payload["response"]["videos"]
-                .as_array()
-                .ok_or_else(|| anyhow::anyhow!("Veo response missing videos array"))?;
+            let videos = payload["response"]["videos"].as_array().ok_or_else(|| {
+                let rai = payload
+                    .pointer("/response/raiMediaFilteredReasons")
+                    .or_else(|| payload.pointer("/response/raiFilteredReasons"));
+                if let Some(reasons) = rai {
+                    tracing::warn!(
+                        operation = operation_name,
+                        reasons = %reasons,
+                        "CharAnim: Veo output filtered by safety"
+                    );
+                    anyhow::anyhow!("Veo output filtered by safety: {}", reasons)
+                } else {
+                    tracing::warn!(
+                        operation = operation_name,
+                        response = %payload,
+                        "CharAnim: Veo response missing videos array"
+                    );
+                    anyhow::anyhow!("Veo response missing videos array")
+                }
+            })?;
 
             let video_b64 = videos
                 .first()
