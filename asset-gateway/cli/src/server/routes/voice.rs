@@ -273,21 +273,56 @@ async fn create_custom_voice(
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::internal("VoiceBox profile missing id"))?;
 
-    // Step 6: Decode preview audio and upload as sample
-    if let Some(preview_audio) = &design_result.preview_audio_data {
+    // Step 6: Get reference audio — from preview or generate via TTS
+    let audio_bytes = if let Some(preview_audio) = &design_result.preview_audio_data {
         use base64::{engine::general_purpose::STANDARD, Engine as _};
-        let audio_bytes = STANDARD
+        STANDARD
             .decode(preview_audio)
-            .map_err(|e| AppError::internal(format!("Failed to decode preview audio: {}", e)))?;
-
-        vb.upload_sample(profile_id, &audio_bytes, &req.preview_text)
-            .await
-            .map_err(|e| AppError::provider(format!("VoiceBox upload sample failed: {}", e)))?;
+            .map_err(|e| AppError::internal(format!("Failed to decode preview audio: {}", e)))?
     } else {
-        return Err(AppError::provider(
-            "DashScope voice design returned no preview audio".to_string(),
-        ));
-    }
+        // Voice design API doesn't return preview audio — generate a sample
+        // using the newly designed voice via DashScope TTS
+        let tts_req = crate::core::GenerateRequest {
+            asset_type: crate::core::AssetType::Tts,
+            prompt: Some(req.preview_text.clone()),
+            model: None,
+            input_file: None,
+            reference_images: vec![],
+            edit_mode: None,
+            session_id: None,
+            params: serde_json::json!({
+                "voice": &design_result.voice,
+                "language_type": language,
+            }),
+        };
+        let tts_resp = qwen_provider
+            .generate(&tts_req)
+            .await
+            .map_err(|e| AppError::provider(format!("TTS sample generation failed: {}", e)))?;
+
+        if let Some(data) = &tts_resp.output_data {
+            use base64::{engine::general_purpose::STANDARD, Engine as _};
+            STANDARD.decode(data).map_err(|e| {
+                AppError::internal(format!("Failed to decode TTS audio data: {}", e))
+            })?
+        } else if let Some(url) = &tts_resp.output_url {
+            let resp = reqwest::get(url)
+                .await
+                .map_err(|e| AppError::provider(format!("Failed to download TTS audio: {}", e)))?;
+            resp.bytes()
+                .await
+                .map_err(|e| AppError::provider(format!("Failed to read TTS audio bytes: {}", e)))?
+                .to_vec()
+        } else {
+            return Err(AppError::provider(
+                "DashScope TTS returned no audio output".to_string(),
+            ));
+        }
+    };
+
+    vb.upload_sample(profile_id, &audio_bytes, &req.preview_text)
+        .await
+        .map_err(|e| AppError::provider(format!("VoiceBox upload sample failed: {}", e)))?;
 
     Ok(Json(json!({
         "ok": true,
