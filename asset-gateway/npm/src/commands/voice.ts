@@ -93,6 +93,30 @@ export function createVoiceCommand(): Command {
   );
 
   command.addCommand(
+    new Command("create-custom")
+      .description("Design a custom voice and register it for self-hosted TTS (DashScope design → VoiceBox clone)")
+      .requiredOption("--prompt <text>", "Voice description (e.g. '年轻女性，温暖亲切，标准普通话')")
+      .requiredOption("--preview-text <text>", "Sample text for voice preview")
+      .requiredOption("--name <name>", "Name for the custom voice")
+      .option("--language <lang>", "Language: zh, en, ja, ko, etc.", "zh")
+      .action(async function (options: { prompt: string; previewText: string; name: string; language: string }) {
+        try {
+          const ctx = createContext(this);
+          const body = {
+            voice_prompt: options.prompt,
+            preview_text: options.previewText,
+            name: options.name,
+            language: options.language,
+          };
+          const data = await ctx.client.post("/api/voice/create-custom", body);
+          printSuccess("voice.create_custom", data, ctx);
+        } catch (error) {
+          printError("voice.create_custom", error);
+        }
+      })
+  );
+
+  command.addCommand(
     new Command("list")
       .description("List custom cloned or designed voices")
       .option("--type <type>", "Voice type: vc or vd")

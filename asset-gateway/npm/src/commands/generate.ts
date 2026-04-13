@@ -311,7 +311,8 @@ export function createGenerateCommand(): Command {
       .option("--language <lang>", "Language hint: Auto, Chinese, English, Japanese, etc.", "Auto")
       .option("--model <model>", "Model id (default: auto-detect from voice; qwen3-tts-flash for built-in voices)")
       .option("--instructions <text>", "Natural language speaking instructions (for instruct models)")
-      .option("--provider <id>", "qwen_tts | elevenlabs")
+      .option("--provider <id>", "qwen_tts | elevenlabs | voicebox")
+      .option("--profile-id <id>", "VoiceBox profile_id (use with --provider voicebox)")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
@@ -322,6 +323,7 @@ export function createGenerateCommand(): Command {
           };
           if (options.instructions) params.instructions = options.instructions;
           if (options.voiceId) params.voice_id = options.voiceId;
+          if (options.profileId) params.profile_id = options.profileId;
 
           const body: Record<string, unknown> = {
             asset_type: "tts",

@@ -9,4 +9,5 @@ pub mod lyria;
 pub mod qwen_tts;
 pub mod tripo3d;
 pub mod veo;
+pub mod voicebox;
 pub mod worldlabs;

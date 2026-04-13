@@ -22,6 +22,8 @@ pub struct ConfigFile {
     #[serde(default)]
     pub worldlabs: ProviderKeySection,
     #[serde(default)]
+    pub voicebox: VoiceBoxSection,
+    #[serde(default)]
     pub vertex: VertexSection,
 }
 
@@ -54,6 +56,11 @@ pub struct DashscopeSection {
 pub struct JimengSection {
     pub url: Option<String>,
     pub token: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct VoiceBoxSection {
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -100,6 +107,9 @@ pub struct AppConfig {
 
     // WorldLabs Marble — 3D world/environment generation
     pub worldlabs_key: String,
+
+    // VoiceBox — voice synthesis service
+    pub voicebox_url: String,
 }
 
 impl AppConfig {
@@ -226,6 +236,12 @@ impl AppConfig {
                 "ASSET_GATEWAY_WORLDLABS_KEY",
                 file_cfg.worldlabs.key.as_deref(),
                 "",
+            ),
+
+            voicebox_url: env_or(
+                "ASSET_GATEWAY_VOICEBOX_URL",
+                file_cfg.voicebox.url.as_deref(),
+                "http://127.0.0.1:17493",
             ),
         })
     }

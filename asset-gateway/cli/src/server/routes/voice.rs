@@ -207,10 +207,94 @@ async fn delete_voice(
     })))
 }
 
+#[derive(Deserialize)]
+pub struct CreateCustomVoiceReq {
+    pub voice_prompt: String,
+    pub preview_text: String,
+    pub name: String,
+    pub language: Option<String>,
+    pub target_model: Option<String>,
+}
+
+async fn create_custom_voice(
+    State(state): State<Arc<ServerState>>,
+    _current_user: CurrentUser,
+    Json(req): Json<CreateCustomVoiceReq>,
+) -> AppResult<Json<Value>> {
+    // Step 1: Get DashScope provider for voice design
+    let qwen_provider = get_qwen_provider(&state).await?;
+    let qwen = qwen_provider
+        .as_any()
+        .downcast_ref::<QwenTtsProvider>()
+        .ok_or_else(|| AppError::internal("provider qwen_tts has unexpected concrete type"))?;
+
+    let language = req.language.as_deref().unwrap_or(DEFAULT_LANGUAGE);
+    let target_model = req.target_model.as_deref().unwrap_or(DEFAULT_VD_TARGET_MODEL);
+
+    // Step 2: Design voice via DashScope (one-time API call)
+    let design_result = qwen
+        .design_voice(target_model, &req.name, &req.voice_prompt, &req.preview_text, language)
+        .await
+        .map_err(|e| AppError::provider(e.to_string()))?;
+
+    // Step 3: Get VoiceBox provider
+    let vb_provider = state
+        .registry
+        .get("voicebox")
+        .await
+        .ok_or_else(|| AppError::not_found("provider not loaded: voicebox"))?;
+    let vb = vb_provider
+        .as_any()
+        .downcast_ref::<crate::providers::voicebox::VoiceBoxProvider>()
+        .ok_or_else(|| AppError::internal("provider voicebox has unexpected concrete type"))?;
+
+    // Step 4: Ensure VoiceBox model is loaded
+    vb.ensure_model_loaded()
+        .await
+        .map_err(|e| AppError::provider(format!("VoiceBox model load failed: {}", e)))?;
+
+    // Step 5: Create VoiceBox profile
+    let profile = vb
+        .create_profile(&req.name, language)
+        .await
+        .map_err(|e| AppError::provider(format!("VoiceBox create profile failed: {}", e)))?;
+
+    let profile_id = profile
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| AppError::internal("VoiceBox profile missing id"))?;
+
+    // Step 6: Decode preview audio and upload as sample
+    if let Some(preview_audio) = &design_result.preview_audio_data {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        let audio_bytes = STANDARD
+            .decode(preview_audio)
+            .map_err(|e| AppError::internal(format!("Failed to decode preview audio: {}", e)))?;
+
+        vb.upload_sample(profile_id, &audio_bytes, &req.preview_text)
+            .await
+            .map_err(|e| AppError::provider(format!("VoiceBox upload sample failed: {}", e)))?;
+    } else {
+        return Err(AppError::provider("DashScope voice design returned no preview audio".to_string()));
+    }
+
+    Ok(Json(json!({
+        "ok": true,
+        "command": "voice.create_custom",
+        "data": {
+            "voicebox_profile_id": profile_id,
+            "dashscope_voice_id": design_result.voice,
+            "name": req.name,
+            "language": language,
+        }
+    })))
+}
+
 pub fn router() -> Router<Arc<ServerState>> {
     Router::new()
         .route("/voice/clone", post(clone_voice))
         .route("/voice/design", post(design_voice))
+        .route("/voice/create-custom", post(create_custom_voice))
         .route("/voice/list", get(list_voices))
         .route("/voice/{voice_id}", delete(delete_voice))
 }
