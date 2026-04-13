@@ -44,7 +44,7 @@ impl GrokImageProvider {
             "duration": duration,
         });
         if let Some(url) = image_url {
-            body["image_url"] = json!(url);
+            body["image"] = json!({"url": url});
         }
 
         let resp = self
