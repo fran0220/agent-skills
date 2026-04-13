@@ -12,6 +12,8 @@ const INSTRUCT_MODEL: &str = "qwen3-tts-instruct-flash";
 const DEFAULT_VOICE: &str = "Cherry";
 const VOICE_ENROLLMENT_MODEL: &str = "qwen-voice-enrollment";
 const VOICE_DESIGN_MODEL: &str = "qwen-voice-design";
+const DEFAULT_VC_TARGET_MODEL: &str = "qwen3-tts-vc-2026-01-22";
+const DEFAULT_VD_TARGET_MODEL: &str = "qwen3-tts-vd-2026-01-26";
 const COST_PER_100_CHARACTERS_USD: f64 = 0.00115;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -34,6 +36,18 @@ impl QwenVoiceKind {
             Self::Clone => "voice clone",
             Self::Design => "voice design",
         }
+    }
+}
+
+/// Auto-detect the TTS model from a custom voice ID prefix.
+/// Cloned voices use `qwen-tts-vc-*`, designed voices use `qwen-tts-vd-*`.
+fn infer_model_from_voice(voice: &str) -> Option<&'static str> {
+    if voice.starts_with("qwen-tts-vc-") {
+        Some(DEFAULT_VC_TARGET_MODEL)
+    } else if voice.starts_with("qwen-tts-vd-") {
+        Some(DEFAULT_VD_TARGET_MODEL)
+    } else {
+        None
     }
 }
 
@@ -173,6 +187,15 @@ impl QwenTtsProvider {
             .map(str::trim)
             .filter(|value| !value.is_empty());
 
+        let voice = req
+            .params
+            .get("voice")
+            .or_else(|| req.params.get("voice_id"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(DEFAULT_VOICE);
+
         let requested_model = req
             .model
             .as_deref()
@@ -183,7 +206,7 @@ impl QwenTtsProvider {
         let model = match (requested_model, instructions.is_some()) {
             (Some(model), _) => model,
             (None, true) => INSTRUCT_MODEL,
-            (None, false) => DEFAULT_MODEL,
+            (None, false) => infer_model_from_voice(voice).unwrap_or(DEFAULT_MODEL),
         };
 
         if instructions.is_some() && model != INSTRUCT_MODEL {
@@ -193,15 +216,6 @@ impl QwenTtsProvider {
                 model
             );
         }
-
-        let voice = req
-            .params
-            .get("voice")
-            .or_else(|| req.params.get("voice_id"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or(DEFAULT_VOICE);
 
         let mut input = json!({
             "text": text,
@@ -251,6 +265,15 @@ impl QwenTtsProvider {
         let preferred_name = preferred_name.trim();
         if preferred_name.is_empty() {
             anyhow::bail!("Qwen voice clone requires preferred_name");
+        }
+        if preferred_name.len() > 16
+            || !preferred_name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            anyhow::bail!(
+                "preferred_name must be 1-16 characters, only letters/digits/underscores (got '{preferred_name}')"
+            );
         }
 
         let audio_data_uri = audio_data_uri.trim();
@@ -313,6 +336,15 @@ impl QwenTtsProvider {
         let preferred_name = preferred_name.trim();
         if preferred_name.is_empty() {
             anyhow::bail!("Qwen voice design requires preferred_name");
+        }
+        if preferred_name.len() > 16
+            || !preferred_name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            anyhow::bail!(
+                "preferred_name must be 1-16 characters, only letters/digits/underscores (got '{preferred_name}')"
+            );
         }
 
         let voice_prompt = voice_prompt.trim();
