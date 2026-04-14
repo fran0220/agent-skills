@@ -1,4 +1,4 @@
-pub mod charanim;
+pub mod autosprite;
 pub mod elevenlabs;
 pub mod gemini_image;
 pub mod gpt_image;

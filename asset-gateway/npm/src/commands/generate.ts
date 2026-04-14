@@ -418,32 +418,24 @@ export function createGenerateCommand(): Command {
 
   command.addCommand(
     new Command("sprite")
-      .description("Generate character animation (Veo AI video + frame extraction)")
+      .description("Generate character animation spritesheet (AutoSprite)")
       .requiredOption("--prompt <text>", "Character description")
       .option("--input <path>", "Reference image for character consistency (local path or URL)")
-      .option("--animation-type <type>", "Animation type (idle, walk, run, attack, death, jump, cast, dance, or any custom)", "walk")
-      .option("--direction <dir>", "Facing direction: front, left, right, back", "front")
-      .option("--view <view>", "Camera view angle: auto, side, front, back, three-quarter, none", "auto")
-      .option("--framing <framing>", "Framing: full-body, waist-up, close-up, none", "full-body")
-      .option("--background <bg>", "Background: auto, white, none, or free text (e.g. 'forest clearing')", "auto")
-      .option("--duration <n>", "Video duration in seconds (1-15)", "2")
-      .option("--style <style>", "Visual style (e.g. pixel art, hand-drawn, chibi)")
-      .option("--output-format <fmt>", "Output format: spritesheet or gif", "spritesheet")
-      .option("--fps <n>", "GIF frame rate", "8")
+      .option("--animation-type <type>", "Animation type: walk, run, idle, jump, attack, death, cast, dance, wave, interact, or custom text", "walk")
+      .option("--style <style>", "Art style: 16-bit, hd-pixel, isometric, retro-8bit, anime, chibi, painterly, vector, or any text")
+      .option("--frame-count <n>", "Number of animation frames", "8")
+      .option("--frame-size <n>", "Frame size in pixels (square)", "256")
+      .option("--is-humanoid", "Character is humanoid (default true)", true)
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
           const ctx = createContext(this);
           const params: Record<string, unknown> = {
             animation_type: options.animationType,
-            direction: options.direction,
-            duration: Number(options.duration),
-            output_format: options.outputFormat,
-            fps: Number(options.fps),
+            frame_count: Number(options.frameCount),
+            frame_size: Number(options.frameSize),
+            is_humanoid: options.isHumanoid,
           };
-          if (options.view && options.view !== "auto") params.view = options.view;
-          if (options.framing && options.framing !== "full-body") params.framing = options.framing;
-          if (options.background && options.background !== "auto") params.background = options.background;
           if (options.style) params.style = options.style;
 
           let inputFile = options.input as string | undefined;

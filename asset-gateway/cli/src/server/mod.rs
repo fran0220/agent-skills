@@ -112,18 +112,18 @@ pub async fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn Asse
         providers.push(Arc::new(lyria));
     }
 
-    // Character Animation — Veo video generation via Vertex AI
+    // Veo — general video generation via Vertex AI
     if let Some(ref auth) = vertex_auth {
-        let charanim = crate::providers::charanim::CharAnimProvider::new(
-            auth.clone(),
-            config.vertex_project.clone(),
-        );
-        providers.push(Arc::new(charanim));
-
-        // Veo — general video generation via Vertex AI
         let veo =
             crate::providers::veo::VeoProvider::new(auth.clone(), config.vertex_project.clone());
         providers.push(Arc::new(veo));
+    }
+
+    // AutoSprite — dedicated sprite sheet generation
+    if !config.autosprite_key.is_empty() {
+        let autosprite =
+            crate::providers::autosprite::AutoSpriteProvider::new(config.autosprite_key.clone());
+        providers.push(Arc::new(autosprite));
     }
 
     if !config.jimeng_token.is_empty() && !config.jimeng_url.is_empty() {

@@ -79,7 +79,9 @@ impl TripoClient {
             let status = resp.status();
             let text = resp.text().await?;
 
-            if (status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::PAYMENT_REQUIRED)
+            if (status == StatusCode::TOO_MANY_REQUESTS
+                || status == StatusCode::PAYMENT_REQUIRED
+                || status == StatusCode::FORBIDDEN)
                 && attempt + 1 < max_retries
             {
                 let key_hint = &self.current_key()[..8.min(self.current_key().len())];

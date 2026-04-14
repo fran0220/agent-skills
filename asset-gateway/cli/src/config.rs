@@ -25,6 +25,8 @@ pub struct ConfigFile {
     pub voicebox: VoiceBoxSection,
     #[serde(default)]
     pub vertex: VertexSection,
+    #[serde(default)]
+    pub autosprite: ProviderKeySection,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -110,6 +112,9 @@ pub struct AppConfig {
 
     // VoiceBox — voice synthesis service
     pub voicebox_url: String,
+
+    // AutoSprite — sprite sheet generation
+    pub autosprite_key: String,
 }
 
 impl AppConfig {
@@ -242,6 +247,12 @@ impl AppConfig {
                 "ASSET_GATEWAY_VOICEBOX_URL",
                 file_cfg.voicebox.url.as_deref(),
                 "http://127.0.0.1:17493",
+            ),
+
+            autosprite_key: env_or(
+                "ASSET_GATEWAY_AUTOSPRITE_KEY",
+                file_cfg.autosprite.key.as_deref(),
+                "",
             ),
         })
     }
