@@ -5,7 +5,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use reqwest::header::CONTENT_TYPE;
 use serde_json::{json, Value};
 
-/// ElevenLabs audio generation provider — BGM/SFX and text-to-speech.
+/// ElevenLabs audio generation provider — sound effects (SFX).
 pub struct ElevenLabsProvider {
     pub id: String,
     pub api_key: String,
@@ -95,83 +95,6 @@ impl ElevenLabsProvider {
         let (bytes, content_type) = self.send_audio_request(request, "sound-generation").await?;
         Ok((bytes, content_type, "sound_generation"))
     }
-
-    async fn generate_music(
-        &self,
-        req: &GenerateRequest,
-        prompt: &str,
-    ) -> anyhow::Result<(Vec<u8>, Option<String>, &'static str)> {
-        // ElevenLabs music API (2025+): POST /v1/music — not the legacy /v1/music-generation path (404).
-        // See: https://elevenlabs.io/docs/api-reference/music/compose
-        let mut body = json!({
-            "prompt": prompt,
-            "model_id": "music_v1",
-        });
-
-        if let Some(duration) = req.params.get("duration_seconds").and_then(Value::as_f64) {
-            let ms = (duration * 1000.0).round() as i64;
-            let clamped = ms.clamp(3_000, 600_000);
-            body["music_length_ms"] = json!(clamped);
-        }
-
-        if let Some(force) = req
-            .params
-            .get("force_instrumental")
-            .and_then(Value::as_bool)
-        {
-            body["force_instrumental"] = json!(force);
-        }
-
-        // Query param must be a known codec string (see ElevenLabs AllowedOutputFormats).
-        let output_format = req
-            .params
-            .get("output_format")
-            .and_then(Value::as_str)
-            .filter(|s| s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
-            .unwrap_or("mp3_44100_128");
-        let endpoint = format!("{}/v1/music?output_format={}", self.base_url, output_format);
-
-        let request = self
-            .http
-            .post(endpoint)
-            .header("xi-api-key", &self.api_key)
-            .json(&body);
-
-        let (bytes, content_type) = self.send_audio_request(request, "music").await?;
-        Ok((bytes, content_type, "music_generation"))
-    }
-
-    async fn generate_tts(
-        &self,
-        req: &GenerateRequest,
-        prompt: &str,
-        voice_id: &str,
-    ) -> anyhow::Result<(Vec<u8>, Option<String>, &'static str)> {
-        let model_id = req
-            .model
-            .as_deref()
-            .or_else(|| req.params.get("model_id").and_then(Value::as_str))
-            .unwrap_or("eleven_multilingual_v2");
-
-        let mut body = json!({
-            "text": prompt,
-            "model_id": model_id,
-        });
-
-        if let Some(settings) = req.params.get("voice_settings").and_then(Value::as_object) {
-            body["voice_settings"] = json!(settings);
-        }
-
-        let endpoint = format!("{}/v1/text-to-speech/{}", self.base_url, voice_id);
-        let request = self
-            .http
-            .post(endpoint)
-            .header("xi-api-key", &self.api_key)
-            .json(&body);
-
-        let (bytes, content_type) = self.send_audio_request(request, "text-to-speech").await?;
-        Ok((bytes, content_type, "text_to_speech"))
-    }
 }
 
 #[async_trait::async_trait]
@@ -185,12 +108,11 @@ impl AssetProvider for ElevenLabsProvider {
     }
 
     fn display_name(&self) -> &str {
-        "ElevenLabs (Audio BGM/SFX/Music/TTS)"
+        "ElevenLabs (Audio SFX)"
     }
 
     fn asset_types(&self) -> &[AssetType] {
-        // Tts: when `params.voice_id` is set, `generate()` routes to ElevenLabs text-to-speech.
-        &[AssetType::Audio, AssetType::Music, AssetType::Tts]
+        &[AssetType::Audio]
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
@@ -207,24 +129,9 @@ impl AssetProvider for ElevenLabsProvider {
             anyhow::bail!("ElevenLabs requires a non-empty prompt");
         }
 
-        // Registered for Tts so `--provider elevenlabs` works; auto-routing should prefer Qwen
-        // when `voice_id` is absent — fail fast so the dispatcher can fall back to `qwen_tts`.
-        if req.asset_type == AssetType::Tts && req.params.get("voice_id").is_none() {
-            anyhow::bail!(
-                "ElevenLabs TTS requires params.voice_id (omit --provider to use qwen_tts)"
-            );
-        }
-
         let start = Instant::now();
 
-        let (bytes, content_type, route) =
-            if let Some(voice_id) = req.params.get("voice_id").and_then(Value::as_str) {
-                self.generate_tts(req, prompt, voice_id).await?
-            } else if req.asset_type == AssetType::Music {
-                self.generate_music(req, prompt).await?
-            } else {
-                self.generate_sound(req, prompt).await?
-            };
+        let (bytes, content_type, route) = self.generate_sound(req, prompt).await?;
 
         let b64 = STANDARD.encode(bytes);
 

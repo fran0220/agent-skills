@@ -6,6 +6,7 @@ pub mod grok_image;
 pub mod jimeng;
 pub mod llm_proxy;
 pub mod lyria;
+pub mod moss_tts;
 pub mod qwen_tts;
 pub mod tripo3d;
 pub mod veo;

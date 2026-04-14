@@ -22,7 +22,7 @@ pub struct ConfigFile {
     #[serde(default)]
     pub worldlabs: ProviderKeySection,
     #[serde(default)]
-    pub voicebox: VoiceBoxSection,
+    pub moss_tts: MossTtsSection,
     #[serde(default)]
     pub vertex: VertexSection,
     #[serde(default)]
@@ -61,8 +61,9 @@ pub struct JimengSection {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct VoiceBoxSection {
+pub struct MossTtsSection {
     pub url: Option<String>,
+    pub key: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -110,8 +111,9 @@ pub struct AppConfig {
     // WorldLabs Marble — 3D world/environment generation
     pub worldlabs_key: String,
 
-    // VoiceBox — voice synthesis service
-    pub voicebox_url: String,
+    // MOSS-TTS-Nano — self-hosted TTS service
+    pub moss_tts_url: String,
+    pub moss_tts_key: String,
 
     // AutoSprite — sprite sheet generation
     pub autosprite_key: String,
@@ -243,10 +245,15 @@ impl AppConfig {
                 "",
             ),
 
-            voicebox_url: env_or(
-                "ASSET_GATEWAY_VOICEBOX_URL",
-                file_cfg.voicebox.url.as_deref(),
-                "http://127.0.0.1:17493",
+            moss_tts_url: env_or(
+                "ASSET_GATEWAY_MOSS_TTS_URL",
+                file_cfg.moss_tts.url.as_deref(),
+                "",
+            ),
+            moss_tts_key: env_or(
+                "ASSET_GATEWAY_MOSS_TTS_KEY",
+                file_cfg.moss_tts.key.as_deref(),
+                "",
             ),
 
             autosprite_key: env_or(

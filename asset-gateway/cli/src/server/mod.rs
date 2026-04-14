@@ -172,10 +172,13 @@ pub async fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn Asse
         providers.push(Arc::new(qwen));
     }
 
-    if !config.voicebox_url.is_empty() {
-        let mut vb = crate::providers::voicebox::VoiceBoxProvider::new(config.voicebox_url.clone());
-        vb.id = "voicebox".into();
-        providers.push(Arc::new(vb));
+    if !config.moss_tts_url.is_empty() {
+        let mut moss = crate::providers::moss_tts::MossTtsProvider::new(
+            config.moss_tts_url.clone(),
+            config.moss_tts_key.clone(),
+        );
+        moss.id = "moss_tts".into();
+        providers.push(Arc::new(moss));
     }
 
     providers

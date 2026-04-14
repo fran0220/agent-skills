@@ -1,69 +1,16 @@
-use std::time::Instant;
-
 use crate::core::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 const DEFAULT_BASE_URL: &str = "https://dashscope-intl.aliyuncs.com";
-const SYNTHESIS_PATH: &str = "/api/v1/services/aigc/multimodal-generation/generation";
 const CUSTOMIZATION_PATH: &str = "/api/v1/services/audio/tts/customization";
-const DEFAULT_MODEL: &str = "qwen3-tts-flash";
-const INSTRUCT_MODEL: &str = "qwen3-tts-instruct-flash";
-const DEFAULT_VOICE: &str = "Cherry";
-const VOICE_ENROLLMENT_MODEL: &str = "qwen-voice-enrollment";
 const VOICE_DESIGN_MODEL: &str = "qwen-voice-design";
-const DEFAULT_VC_TARGET_MODEL: &str = "qwen3-tts-vc-2026-01-22";
-const DEFAULT_VD_TARGET_MODEL: &str = "qwen3-tts-vd-2026-01-26";
-const COST_PER_100_CHARACTERS_USD: f64 = 0.00115;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum QwenVoiceKind {
-    Clone,
-    Design,
-}
-
-impl QwenVoiceKind {
-    fn customization_model(self) -> &'static str {
-        match self {
-            Self::Clone => VOICE_ENROLLMENT_MODEL,
-            Self::Design => VOICE_DESIGN_MODEL,
-        }
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::Clone => "voice clone",
-            Self::Design => "voice design",
-        }
-    }
-}
-
-/// Auto-detect the TTS model from a custom voice ID prefix.
-/// Cloned voices use `qwen-tts-vc-*`, designed voices use `qwen-tts-vd-*`.
-fn infer_model_from_voice(voice: &str) -> Option<&'static str> {
-    if voice.starts_with("qwen-tts-vc-") {
-        Some(DEFAULT_VC_TARGET_MODEL)
-    } else if voice.starts_with("qwen-tts-vd-") {
-        Some(DEFAULT_VD_TARGET_MODEL)
-    } else {
-        None
-    }
-}
-
-fn parse_voice_kind(raw: &str) -> anyhow::Result<QwenVoiceKind> {
+fn parse_voice_kind(raw: &str) -> anyhow::Result<&'static str> {
     match raw.trim().to_ascii_lowercase().as_str() {
-        "vc" | "clone" => Ok(QwenVoiceKind::Clone),
-        "vd" | "design" => Ok(QwenVoiceKind::Design),
-        other => anyhow::bail!("invalid voice type '{other}', expected 'vc' or 'vd'"),
+        "vd" | "design" => Ok("design"),
+        other => anyhow::bail!("invalid voice type '{other}', expected 'vd'"),
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QwenVoiceCloneResult {
-    pub voice: String,
-    pub request_id: Option<String>,
-    pub response: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,7 +22,7 @@ pub struct QwenVoiceDesignResult {
     pub response: Value,
 }
 
-/// Qwen3-TTS provider backed by DashScope International (Singapore region).
+/// Qwen3-TTS voice customization provider (clone / design / list / delete).
 pub struct QwenTtsProvider {
     pub id: String,
     pub base_url: String,
@@ -110,10 +57,6 @@ impl QwenTtsProvider {
             .header("Content-Type", "application/json")
     }
 
-    fn estimate_cost_usd(characters: u64) -> f64 {
-        (characters as f64 / 100.0) * COST_PER_100_CHARACTERS_USD
-    }
-
     fn response_message(json: &Value) -> String {
         json.get("message")
             .and_then(Value::as_str)
@@ -128,26 +71,6 @@ impl QwenTtsProvider {
             .and_then(Value::as_u64)
             .map(|status| status == 200)
             .unwrap_or(true)
-    }
-
-    fn extract_audio_url(json: &Value) -> Option<String> {
-        json.pointer("/output/audio/url")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    }
-
-    fn extract_audio_data(json: &Value) -> Option<String> {
-        json.pointer("/output/audio/data")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    }
-
-    fn has_valid_audio_output(json: &Value) -> bool {
-        Self::extract_audio_url(json).is_some() || Self::extract_audio_data(json).is_some()
     }
 
     async fn parse_json_response(resp: reqwest::Response, label: &str) -> anyhow::Result<Value> {
@@ -170,154 +93,6 @@ impl QwenTtsProvider {
         }
 
         Ok(json)
-    }
-
-    fn build_synthesis_body(req: &GenerateRequest) -> anyhow::Result<Value> {
-        let text = req
-            .prompt
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| anyhow::anyhow!("Qwen TTS requires a non-empty prompt (text)"))?;
-
-        let instructions = req
-            .params
-            .get("instructions")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-
-        let voice = req
-            .params
-            .get("voice")
-            .or_else(|| req.params.get("voice_id"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or(DEFAULT_VOICE);
-
-        let requested_model = req
-            .model
-            .as_deref()
-            .or_else(|| req.params.get("model").and_then(Value::as_str))
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-
-        let model = match (requested_model, instructions.is_some()) {
-            (Some(model), _) => model,
-            (None, true) => INSTRUCT_MODEL,
-            (None, false) => infer_model_from_voice(voice).unwrap_or(DEFAULT_MODEL),
-        };
-
-        if instructions.is_some() && model != INSTRUCT_MODEL {
-            anyhow::bail!(
-                "Qwen TTS instructions require model {} (got {})",
-                INSTRUCT_MODEL,
-                model
-            );
-        }
-
-        let mut input = json!({
-            "text": text,
-            "voice": voice,
-        });
-
-        if let Some(language_type) = req
-            .params
-            .get("language_type")
-            .or_else(|| req.params.get("language_boost"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            input["language_type"] = json!(language_type);
-        }
-
-        if let Some(instructions) = instructions {
-            input["instructions"] = json!(instructions);
-        }
-
-        if let Some(optimize_instructions) = req
-            .params
-            .get("optimize_instructions")
-            .and_then(Value::as_bool)
-        {
-            input["optimize_instructions"] = json!(optimize_instructions);
-        }
-
-        Ok(json!({
-            "model": model,
-            "input": input,
-        }))
-    }
-
-    pub async fn clone_voice(
-        &self,
-        target_model: &str,
-        preferred_name: &str,
-        audio_data_uri: &str,
-    ) -> anyhow::Result<QwenVoiceCloneResult> {
-        let target_model = target_model.trim();
-        if target_model.is_empty() {
-            anyhow::bail!("Qwen voice clone requires target_model");
-        }
-
-        let preferred_name = preferred_name.trim();
-        if preferred_name.is_empty() {
-            anyhow::bail!("Qwen voice clone requires preferred_name");
-        }
-        if preferred_name.len() > 16
-            || !preferred_name
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        {
-            anyhow::bail!(
-                "preferred_name must be 1-16 characters, only letters/digits/underscores (got '{preferred_name}')"
-            );
-        }
-
-        let audio_data_uri = audio_data_uri.trim();
-        if audio_data_uri.is_empty() {
-            anyhow::bail!("Qwen voice clone requires audio data");
-        }
-
-        let body = json!({
-            "model": VOICE_ENROLLMENT_MODEL,
-            "input": {
-                "action": "create",
-                "target_model": target_model,
-                "preferred_name": preferred_name,
-                "audio": {
-                    "data": audio_data_uri,
-                },
-            },
-        });
-
-        let json = Self::parse_json_response(
-            self.request_builder(CUSTOMIZATION_PATH)
-                .json(&body)
-                .send()
-                .await?,
-            "voice clone",
-        )
-        .await?;
-
-        let voice = json
-            .pointer("/output/voice")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| anyhow::anyhow!("Qwen voice clone: missing output.voice in response"))?
-            .to_string();
-
-        Ok(QwenVoiceCloneResult {
-            voice,
-            request_id: json
-                .get("request_id")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            response: json,
-        })
     }
 
     pub async fn design_voice(
@@ -416,9 +191,9 @@ impl QwenTtsProvider {
         page_size: u32,
         page_index: u32,
     ) -> anyhow::Result<Value> {
-        let kind = parse_voice_kind(voice_type)?;
+        let _kind = parse_voice_kind(voice_type)?;
         let body = json!({
-            "model": kind.customization_model(),
+            "model": VOICE_DESIGN_MODEL,
             "input": {
                 "action": "list",
                 "page_size": page_size,
@@ -431,20 +206,20 @@ impl QwenTtsProvider {
                 .json(&body)
                 .send()
                 .await?,
-            kind.label(),
+            "voice design list",
         )
         .await
     }
 
     pub async fn delete_voice(&self, voice_type: &str, voice_id: &str) -> anyhow::Result<Value> {
-        let kind = parse_voice_kind(voice_type)?;
+        let _kind = parse_voice_kind(voice_type)?;
         let voice_id = voice_id.trim();
         if voice_id.is_empty() {
             anyhow::bail!("Qwen voice delete requires a voice id");
         }
 
         let body = json!({
-            "model": kind.customization_model(),
+            "model": VOICE_DESIGN_MODEL,
             "input": {
                 "action": "delete",
                 "voice": voice_id,
@@ -456,7 +231,7 @@ impl QwenTtsProvider {
                 .json(&body)
                 .send()
                 .await?,
-            &format!("{} delete", kind.label()),
+            "voice design delete",
         )
         .await
     }
@@ -473,108 +248,26 @@ impl AssetProvider for QwenTtsProvider {
     }
 
     fn display_name(&self) -> &str {
-        "Qwen3 TTS (DashScope Intl)"
+        "Qwen TTS Voice Customization"
     }
 
     fn asset_types(&self) -> &[AssetType] {
-        &[AssetType::Tts]
+        &[]
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities {
-            max_concurrent: 3,
-            priority: 100,
-            ..Default::default()
-        }
+        ProviderCapabilities::default()
     }
 
-    async fn generate(&self, req: &GenerateRequest) -> anyhow::Result<GenerateResponse> {
-        let start = Instant::now();
-        let body = Self::build_synthesis_body(req)?;
-        let json = Self::parse_json_response(
-            self.request_builder(SYNTHESIS_PATH)
-                .json(&body)
-                .send()
-                .await?,
-            "synthesis",
-        )
-        .await?;
-
-        let output_url = Self::extract_audio_url(&json);
-        let output_data = Self::extract_audio_data(&json);
-        if output_url.is_none() && output_data.is_none() {
-            anyhow::bail!("Qwen TTS: missing output.audio.url or output.audio.data in response");
-        }
-
-        let usage_characters = json.pointer("/usage/characters").and_then(Value::as_u64);
-
-        Ok(GenerateResponse {
-            provider_id: self.id.clone(),
-            output_path: None,
-            output_url,
-            output_data,
-            metadata: json!({
-                "model": body["model"],
-                "voice": body["input"]["voice"],
-                "language_type": body["input"]["language_type"],
-                "instructions": body["input"]["instructions"],
-                "optimize_instructions": body["input"]["optimize_instructions"],
-                "request_id": json["request_id"],
-                "finish_reason": json["output"]["finish_reason"],
-                "audio_id": json["output"]["audio"]["id"],
-                "audio_expires_at": json["output"]["audio"]["expires_at"],
-                "usage_characters": usage_characters,
-            }),
-            cost_usd: usage_characters.map(Self::estimate_cost_usd),
-            elapsed_ms: start.elapsed().as_millis() as u64,
-        })
+    async fn generate(&self, _req: &GenerateRequest) -> anyhow::Result<GenerateResponse> {
+        anyhow::bail!("QwenTtsProvider does not support direct generation; use MOSS-TTS-Nano instead")
     }
 
     async fn health_check(&self) -> anyhow::Result<HealthStatus> {
-        let start = Instant::now();
-        let body = json!({
-            "model": DEFAULT_MODEL,
-            "input": {
-                "text": "hi",
-                "voice": DEFAULT_VOICE,
-            },
-        });
-
-        let resp = self
-            .request_builder(SYNTHESIS_PATH)
-            .json(&body)
-            .send()
-            .await;
-
-        match resp {
-            Ok(r) => {
-                let http_ok = r.status().is_success();
-                let text = r.text().await.unwrap_or_default();
-                let json: Value = serde_json::from_str(&text).unwrap_or_default();
-                let healthy =
-                    http_ok && Self::api_status_ok(&json) && Self::has_valid_audio_output(&json);
-
-                Ok(HealthStatus {
-                    healthy,
-                    latency_ms: Some(start.elapsed().as_millis() as u64),
-                    message: if healthy {
-                        None
-                    } else {
-                        Some(format!(
-                            "http_ok={}, api_status_ok={}, has_audio_output={}, message={}",
-                            http_ok,
-                            Self::api_status_ok(&json),
-                            Self::has_valid_audio_output(&json),
-                            Self::response_message(&json)
-                        ))
-                    },
-                })
-            }
-            Err(error) => Ok(HealthStatus {
-                healthy: false,
-                latency_ms: Some(start.elapsed().as_millis() as u64),
-                message: Some(error.to_string()),
-            }),
-        }
+        Ok(HealthStatus {
+            healthy: true,
+            latency_ms: None,
+            message: Some("voice customization only — no TTS generation".into()),
+        })
     }
 }

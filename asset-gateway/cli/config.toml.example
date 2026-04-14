@@ -33,6 +33,11 @@ key = ""
 [xai]
 key = ""
 
+# MOSS-TTS-Nano (self-hosted)
+[moss_tts]
+url = "http://8.156.89.38:18083"
+key = ""
+
 # Vertex AI — direct access for Google models (Gemini Image, Lyria, Veo, CharAnim)
 [vertex]
 service_account_path = "~/vertex-ai-key.json"
