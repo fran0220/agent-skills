@@ -172,13 +172,15 @@ impl QwenTtsProvider {
                 .and_then(Value::as_str)
                 .map(str::to_string),
             preview_audio_data: json
-                .pointer("/output/data")
+                .pointer("/output/preview_audio/data")
+                .or_else(|| json.pointer("/output/data"))
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(str::to_string),
             sample_rate: json
-                .pointer("/output/sample_rate")
+                .pointer("/output/preview_audio/sample_rate")
+                .or_else(|| json.pointer("/output/sample_rate"))
                 .and_then(Value::as_u64)
                 .map(|value| value as u32),
             response: json,

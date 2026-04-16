@@ -15,12 +15,13 @@ export function createVoiceCommand(): Command {
 
   command.addCommand(
     new Command("design")
-      .description("Create a synthetic voice from a text description")
+      .description("Create a synthetic voice and save the preview audio file")
       .requiredOption("--prompt <text>", "Voice description prompt")
       .requiredOption("--preview-text <text>", "Preview text for the generated sample")
       .requiredOption("--name <name>", "Name for the designed voice")
       .option("--target-model <model>", "Voice design model, e.g. qwen3-tts-vd-2026-01-26")
-      .action(async function (options: { prompt: string; previewText: string; name: string; targetModel?: string }) {
+      .option("--output-dir <dir>", "Directory to save preview audio", ".")
+      .action(async function (options: { prompt: string; previewText: string; name: string; targetModel?: string; outputDir: string }) {
         try {
           const ctx = createContext(this);
           const body: Record<string, unknown> = {
@@ -30,7 +31,21 @@ export function createVoiceCommand(): Command {
           };
           if (options.targetModel) body.target_model = options.targetModel;
 
-          const data = await ctx.client.post("/api/voice/design", body);
+          const data = await ctx.client.post("/api/voice/design", body) as Record<string, unknown>;
+
+          // Save preview audio to file for use as TTS reference
+          const designData = data?.data as Record<string, unknown> | undefined;
+          const b64Audio = designData?.preview_audio_data as string | undefined;
+          if (b64Audio) {
+            const { mkdirSync, writeFileSync } = await import("fs");
+            const { join } = await import("path");
+            mkdirSync(options.outputDir, { recursive: true });
+            const buf = Buffer.from(b64Audio, "base64");
+            const outPath = join(options.outputDir, `${options.name}_preview.wav`);
+            writeFileSync(outPath, buf);
+            (data as Record<string, unknown>).preview_audio_path = outPath;
+          }
+
           printSuccess("voice.design", data, ctx);
         } catch (error) {
           printError("voice.design", error);
