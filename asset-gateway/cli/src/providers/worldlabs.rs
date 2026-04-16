@@ -35,14 +35,15 @@ impl WorldLabsProvider {
 
     /// Upload an image to WorldLabs and return the media_asset id.
     async fn upload_image(&self, image_bytes: &[u8]) -> anyhow::Result<String> {
-        // Step 1: Prepare upload
+        // Step 1: Prepare upload (v1 API format)
         let prepare_resp = self
             .http
             .post(format!("{}/media-assets:prepare_upload", self.base_url))
             .header("WLT-Api-Key", &self.api_key)
             .json(&json!({
-                "media_type": "image/png",
-                "display_name": "input.png"
+                "file_name": "input.png",
+                "kind": "image",
+                "extension": "png"
             }))
             .send()
             .await?;
@@ -58,24 +59,36 @@ impl WorldLabsProvider {
         }
 
         let data: Value = prepare_resp.json().await?;
-        let media_asset_id = data["media_asset"]["id"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("missing media_asset.id in prepare_upload response"))?
-            .to_string();
-        let upload_uri = data["media_asset"]["upload"]["uri"]
+        let media_asset_id = data["media_asset"]["media_asset_id"]
             .as_str()
             .ok_or_else(|| {
-                anyhow::anyhow!("missing media_asset.upload.uri in prepare_upload response")
+                anyhow::anyhow!("missing media_asset.media_asset_id in prepare_upload response")
+            })?
+            .to_string();
+        let upload_url = data["upload_info"]["upload_url"]
+            .as_str()
+            .ok_or_else(|| {
+                anyhow::anyhow!("missing upload_info.upload_url in prepare_upload response")
             })?;
 
-        // Step 2: PUT image bytes to the signed upload URI
-        let put_resp = self
+        // Collect required headers from upload_info
+        let required_headers = data["upload_info"]["required_headers"].as_object();
+
+        // Step 2: PUT image bytes to the signed upload URL
+        let mut put_req = self
             .http
-            .put(upload_uri)
-            .header(reqwest::header::CONTENT_TYPE, "image/png")
-            .body(image_bytes.to_vec())
-            .send()
-            .await?;
+            .put(upload_url)
+            .header(reqwest::header::CONTENT_TYPE, "image/png");
+
+        if let Some(headers) = required_headers {
+            for (k, v) in headers {
+                if let Some(val) = v.as_str() {
+                    put_req = put_req.header(k.as_str(), val);
+                }
+            }
+        }
+
+        let put_resp = put_req.body(image_bytes.to_vec()).send().await?;
 
         let put_status = put_resp.status();
         if !put_status.is_success() {
@@ -156,7 +169,10 @@ impl AssetProvider for WorldLabsProvider {
 
             json!({
                 "type": "image",
-                "media_asset_id": media_asset_id
+                "image_prompt": {
+                    "source": "media_asset",
+                    "media_asset_id": media_asset_id
+                }
             })
         } else {
             // Text mode
@@ -228,7 +244,7 @@ impl AssetProvider for WorldLabsProvider {
                 "polling operation"
             );
 
-            if let Some(err) = op.get("error") {
+            if let Some(err) = op.get("error").filter(|v| !v.is_null()) {
                 let msg = err["message"]
                     .as_str()
                     .or_else(|| err.as_str())
@@ -237,7 +253,12 @@ impl AssetProvider for WorldLabsProvider {
             }
 
             if op["done"].as_bool() == Some(true) {
-                world_id = op["response"]["world_id"].as_str().map(String::from);
+                // world_id may be in response.id or metadata.world_id
+                world_id = op["response"]["id"]
+                    .as_str()
+                    .or_else(|| op["metadata"]["world_id"].as_str())
+                    .or_else(|| op["response"]["world_id"].as_str())
+                    .map(String::from);
                 break;
             }
         }
@@ -267,30 +288,22 @@ impl AssetProvider for WorldLabsProvider {
             );
         }
 
-        let world: Value = world_resp.json().await?;
-        let assets = world["assets"].as_array();
+        let world_data: Value = world_resp.json().await?;
+        // GET /worlds/{id} wraps in "world" key
+        let world = if world_data.get("world").is_some() {
+            &world_data["world"]
+        } else {
+            &world_data
+        };
+        let assets = &world["assets"];
 
-        // Find the full_res gaussian_splat (SPZ) asset
-        let full_res_asset = assets
-            .and_then(|arr| {
-                arr.iter().find(|a| {
-                    a["type"].as_str() == Some("gaussian_splat")
-                        && a["variant"].as_str() == Some("full_res")
-                })
-            })
-            .or_else(|| {
-                // Fallback: largest gaussian_splat by size_bytes
-                assets.and_then(|arr| {
-                    arr.iter()
-                        .filter(|a| a["type"].as_str() == Some("gaussian_splat"))
-                        .max_by_key(|a| a["size_bytes"].as_u64().unwrap_or(0))
-                })
-            });
-
-        let spz_url = full_res_asset
-            .and_then(|a| a["url"].as_str())
+        // New API: assets.splats.spz_urls.{full_res, 500k, 100k}
+        let spz_url = assets["splats"]["spz_urls"]["full_res"]
+            .as_str()
+            .or_else(|| assets["splats"]["spz_urls"]["500k"].as_str())
+            .or_else(|| assets["splats"]["spz_urls"]["100k"].as_str())
             .ok_or_else(|| {
-                anyhow::anyhow!("no gaussian_splat asset found in world {}", world_id)
+                anyhow::anyhow!("no splat SPZ URL found in world {}", world_id)
             })?;
 
         // Download the SPZ file
@@ -303,15 +316,21 @@ impl AssetProvider for WorldLabsProvider {
 
         // Collect all asset URLs for metadata
         let mut asset_urls = json!({});
-        if let Some(arr) = assets {
-            for asset in arr {
-                let variant = asset["variant"].as_str().unwrap_or("unknown");
-                let asset_type = asset["type"].as_str().unwrap_or("unknown");
-                let key = format!("{}_{}", asset_type, variant);
-                if let Some(url) = asset["url"].as_str() {
-                    asset_urls[key] = json!(url);
+        if let Some(spz_urls) = assets["splats"]["spz_urls"].as_object() {
+            for (variant, url) in spz_urls {
+                if let Some(u) = url.as_str() {
+                    asset_urls[format!("gaussian_splat_{}", variant)] = json!(u);
                 }
             }
+        }
+        if let Some(collider) = assets["mesh"]["collider_mesh_url"].as_str() {
+            asset_urls["collider_mesh"] = json!(collider);
+        }
+        if let Some(pano) = assets["imagery"]["pano_url"].as_str() {
+            asset_urls["panorama"] = json!(pano);
+        }
+        if let Some(thumb) = assets["thumbnail_url"].as_str() {
+            asset_urls["thumbnail"] = json!(thumb);
         }
 
         Ok(GenerateResponse {
@@ -323,6 +342,8 @@ impl AssetProvider for WorldLabsProvider {
                 "world_id": world_id,
                 "model": model,
                 "operation_id": operation_id,
+                "world_marble_url": world.get("world_marble_url"),
+                "caption": assets.get("caption"),
                 "assets": asset_urls,
             }),
             cost_usd: Some(0.50),
@@ -337,7 +358,7 @@ impl AssetProvider for WorldLabsProvider {
             .http
             .post(format!("{}/media-assets:prepare_upload", self.base_url))
             .header("WLT-Api-Key", &self.api_key)
-            .json(&json!({"file_name": "health.png", "kind": "image", "extension": "png"}))
+            .json(&json!({"file_name": "health.png", "kind": "image"}))
             .timeout(Duration::from_secs(10))
             .send()
             .await;
