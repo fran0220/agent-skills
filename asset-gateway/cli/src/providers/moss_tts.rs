@@ -102,8 +102,14 @@ impl AssetProvider for MossTtsProvider {
                     .mime_str("audio/wav")?,
             );
             has_prompt_audio = true;
-        } else if let Some(url) = req.input_file.as_deref() {
-            let audio_data = self.download_bytes(url).await?;
+        } else if let Some(input) = req.input_file.as_deref() {
+            let audio_data = if input.starts_with("data:") {
+                use base64::{engine::general_purpose::STANDARD, Engine as _};
+                let raw = input.split_once(',').map_or(input, |(_, r)| r);
+                STANDARD.decode(raw)?
+            } else {
+                self.download_bytes(input).await?
+            };
             form = form.part(
                 "prompt_audio",
                 reqwest::multipart::Part::bytes(audio_data)
