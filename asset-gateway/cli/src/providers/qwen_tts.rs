@@ -211,6 +211,60 @@ impl QwenTtsProvider {
         .await
     }
 
+    /// Synthesize speech using a designed voice via DashScope TTS API.
+    pub async fn synthesize(
+        &self,
+        voice: &str,
+        text: &str,
+        model: Option<&str>,
+        language: Option<&str>,
+    ) -> anyhow::Result<Value> {
+        let voice = voice.trim();
+        if voice.is_empty() {
+            anyhow::bail!("Qwen TTS synthesize requires a voice name");
+        }
+        let text = text.trim();
+        if text.is_empty() {
+            anyhow::bail!("Qwen TTS synthesize requires non-empty text");
+        }
+
+        // Default model for voice-design voices
+        let model = model
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or("qwen3-tts-vd-realtime-2025-12-16");
+
+        let language = language
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or("Auto");
+
+        let url = format!(
+            "{}/api/v1/services/aigc/multimodal-generation/generation",
+            self.base_url
+        );
+
+        let body = json!({
+            "model": model,
+            "input": {
+                "text": text,
+                "voice": voice,
+                "language_type": language,
+            },
+        });
+
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        Self::parse_json_response(resp, "synthesize").await
+    }
+
     pub async fn delete_voice(&self, voice_type: &str, voice_id: &str) -> anyhow::Result<Value> {
         let _kind = parse_voice_kind(voice_type)?;
         let voice_id = voice_id.trim();

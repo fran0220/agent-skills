@@ -135,6 +135,45 @@ async fn list_voices(
     })))
 }
 
+#[derive(Deserialize)]
+pub struct SynthesizeReq {
+    pub voice: String,
+    pub text: String,
+    pub model: Option<String>,
+    pub language: Option<String>,
+}
+
+async fn synthesize_voice(
+    State(state): State<Arc<ServerState>>,
+    _current_user: CurrentUser,
+    Json(req): Json<SynthesizeReq>,
+) -> AppResult<Json<Value>> {
+    let provider = get_qwen_provider(&state).await?;
+    let qwen = provider
+        .as_any()
+        .downcast_ref::<QwenTtsProvider>()
+        .ok_or_else(|| AppError::internal("provider qwen_tts has unexpected concrete type"))?;
+
+    let voice = require_non_empty(&req.voice, "voice")?;
+    let text = require_non_empty(&req.text, "text")?;
+
+    let data = qwen
+        .synthesize(
+            voice,
+            text,
+            req.model.as_deref(),
+            req.language.as_deref(),
+        )
+        .await
+        .map_err(|error| AppError::provider(error.to_string()))?;
+
+    Ok(Json(json!({
+        "ok": true,
+        "command": "voice.synthesize",
+        "data": data,
+    })))
+}
+
 async fn delete_voice(
     State(state): State<Arc<ServerState>>,
     _current_user: CurrentUser,
@@ -165,6 +204,7 @@ async fn delete_voice(
 pub fn router() -> Router<Arc<ServerState>> {
     Router::new()
         .route("/voice/design", post(design_voice))
+        .route("/voice/synthesize", post(synthesize_voice))
         .route("/voice/list", get(list_voices))
         .route("/voice/{voice_id}", delete(delete_voice))
 }
