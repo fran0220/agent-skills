@@ -50,17 +50,31 @@ asset-gateway generate image --prompt "mobile splash screen" --size 1024x1792 --
 
 ## Video
 
-Image-to-video via Jimeng Seedance (ByteDance). Requires an input image — use `--input` with an image URL.
+Generate video from text prompt or image-to-video with `--input`. Multiple providers available.
 
-### Image-to-Video
-
-Pass an input image with `--input` for image-to-video generation. The image serves as the reference frame. Seedance models (`seedance-2.0-fast-vip`, `seedance-2.0-vip`) require at least one image.
+### Text-to-Video
 
 ```bash
-asset-gateway generate video --prompt "walk cycle animation, smooth movement" --input https://upload.xiaomao.chat/uploads/character.png --output-dir ./assets
+asset-gateway generate video --prompt "sweeping aerial shot of a Ming dynasty palace at golden hour" --output-dir ./assets
 ```
 
-> Seedance produces consistent character frames from the input image. Default model: `seedance-2.0-fast-vip` (faster), or use `--provider jimeng` with `--model seedance-2.0-vip` for higher quality.
+### Image-to-Video (recommended for consistency)
+
+Pass a reference image with `--input` to ground the video in an existing visual. Upload local files first with `asset-gateway upload file`.
+
+```bash
+asset-gateway generate video --prompt "slow camera pan across the palace courtyard, morning mist" --input https://upload.xiaomao.chat/uploads/bg_court.png --output-dir ./assets
+```
+
+### Provider Selection
+
+| Provider | Flag | Strengths |
+|----------|------|-----------|
+| **Veo** (default) | `--provider veo` | Highest quality, cinematic, good text-to-video and image-to-video |
+| **Grok** | `--provider grok_image` | Fast, supports `--input` for image-to-video |
+| **Jimeng/Seedance** | `--provider jimeng` | Character animation, requires `--input` image |
+
+> **Best practice**: Use `--input` with a relevant background/CG image to maintain visual consistency across video beats. Upload the reference image first, then pass its URL.
 
 ## Audio
 
@@ -83,18 +97,28 @@ asset-gateway generate music --prompt "8-bit chiptune battle theme in C minor" -
 
 ## TTS
 
-### Standard TTS
+Text-to-speech. Free and unlimited (self-hosted GPU).
+
+### Basic TTS
 
 ```bash
-asset-gateway generate tts --prompt "欢迎来到今天的产品演示。" --voice Cherry --language Chinese --output-dir ./assets
-asset-gateway generate tts --prompt "Welcome to the launch event." --voice Ethan --language English --output-dir ./assets
+asset-gateway generate tts --prompt "欢迎来到今天的产品演示。" --output-dir ./assets
 ```
 
-### Instructed TTS
+### TTS with Designed Voice
+
+Design a voice once, then reuse for all TTS:
 
 ```bash
-asset-gateway generate tts --prompt "This is the emergency broadcast." --instructions "calm, authoritative, slow pacing" --output-dir ./assets
+# Step 1: Design voice (one-time)
+asset-gateway voice design --prompt "温柔女声" --preview-text "你好世界" --name my_voice --output-dir ./voices
+# → ./voices/my_voice_preview.wav
+
+# Step 2: Generate TTS using that voice (unlimited, free)
+asset-gateway generate tts --prompt "要合成的文本" --input ./voices/my_voice_preview.wav --output-dir ./assets
 ```
+
+See **reference/voice.md** for full voice design workflow and examples.
 
 ## World
 

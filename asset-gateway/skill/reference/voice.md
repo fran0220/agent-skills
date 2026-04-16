@@ -1,46 +1,58 @@
 # Voice Commands
 
-Manage custom voices for TTS.
+## Voice Design → TTS Pipeline
 
-## Clone a Voice
+Design a custom voice once, then use it for unlimited free TTS generation.
 
-Create a custom voice from an audio sample:
+### Step 1: Design a Voice
 
-```bash
-asset-gateway voice clone --audio ./voice-sample.wav --name narrator_v1
-```
-
-**Name rules**: 1–16 characters, only letters, digits, and underscores. No hyphens or spaces.
-
-## Design a Voice
-
-Create a voice from a text description:
+Create a voice from a text description. Outputs a preview audio file:
 
 ```bash
-asset-gateway voice design --prompt "young female narrator, bright and friendly" --preview-text "Hello, welcome to our studio." --name host_v1
+asset-gateway voice design \
+  --prompt "温柔知性的年轻女性声音，语速适中" \
+  --preview-text "你好，欢迎来到我们的世界" \
+  --name gentle_girl \
+  --output-dir ./voices
+# → ./voices/gentle_girl_preview.wav
 ```
 
-## List Voices
+### Step 2: Generate TTS with Designed Voice
+
+Use the preview audio as reference for voice cloning:
+
+```bash
+asset-gateway generate tts \
+  --prompt "今天天气真不错，我们一起去公园散步吧" \
+  --input ./voices/gentle_girl_preview.wav \
+  --output-dir ./audio
+```
+
+The preview `.wav` file can be reused indefinitely for any text.
+
+### Example: Male Announcer
+
+```bash
+# Design
+asset-gateway voice design \
+  --prompt "成熟稳重的男性播音员，声音低沉有磁性" \
+  --preview-text "各位听众朋友们，大家晚上好" \
+  --name anchor_male \
+  --output-dir ./voices
+
+# Generate multiple lines with the same voice
+asset-gateway generate tts --prompt "第一段台词" --input ./voices/anchor_male_preview.wav --output-dir ./audio
+asset-gateway generate tts --prompt "第二段台词" --input ./voices/anchor_male_preview.wav --output-dir ./audio
+```
+
+## Manage Voices
 
 ```bash
 asset-gateway voice list
+asset-gateway voice delete <voice-id>
 ```
 
-## Delete a Voice
+## Cost
 
-```bash
-asset-gateway voice delete host_v1
-```
-
-## Using Custom Voices with TTS
-
-After cloning or designing, use the returned voice ID in TTS. The correct model is **auto-detected** from the voice ID prefix — no need to specify `--model`:
-
-```bash
-# Clone returns a voice ID like: qwen-tts-vc-narrator_v1-voice-20260413-xxxx
-asset-gateway generate tts --prompt "Welcome back, adventurer." --voice qwen-tts-vc-narrator_v1-voice-20260413-xxxx --output-dir ./assets
-```
-
-### System Voices
-
-Built-in voices available without cloning (use directly by name): `Cherry`, `Serena`, `Ethan`, `Chelsie`.
+- **Voice design**: small one-time cost per design (Qwen API)
+- **TTS generation**: free, unlimited (self-hosted GPU)

@@ -25,8 +25,8 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Video | Image-to-video (Jimeng Seedance 2.0 VIP) | `generate video` |
 | Audio | SFX, BGM | `generate audio` |
 | Music | Music generation (Lyria 3) | `generate music` |
-| Speech | TTS, multilingual, instructed style | `generate tts` |
-| Voice Identity | Voice clone, voice design, **custom voice (self-hosted)** | `voice clone`, `voice design`, `voice create-custom` |
+| Speech | TTS with voice cloning via reference audio (self-hosted, free) | `generate tts` |
+| Voice Design | Design a voice from text description, outputs preview audio for TTS | `voice design` |
 | 3D Model | Text/image → 3D, rig/animate/convert | `generate model`, `process3d ...` |
 | Character Animation | Text/image → character animation (spritesheet, GIF, or MP4) via Vertex AI Veo | `generate sprite` |
 | 3D World | Text/image → photorealistic 3D environment (Gaussian Splat) | `generate world` |
@@ -47,12 +47,9 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Generate video | `generate video` | `--prompt`, `--input <image_url>`, `--output-dir` |
 | Generate SFX / BGM | `generate audio` | `--prompt`, `--type`, `--duration`, `--output-dir` |
 | Generate music | `generate music` | `--prompt`, `--duration`, `--output-dir` |
-| Text-to-speech | `generate tts` | `--prompt`, `--voice`, `--language`, `--output-dir` |
-| Instructed TTS | `generate tts` | `--prompt`, `--instructions`, `--output-dir` |
-| Clone a voice | `voice clone` | `--audio`, `--name` |
-| Design a voice | `voice design` | `--prompt`, `--preview-text`, `--name` |
-| Create custom voice (free) | `voice create-custom` | `--prompt`, `--preview-text`, `--name` |
-| TTS with custom voice | `generate tts` | `--prompt`, `--provider voicebox`, `--profile-id <id>` |
+| Text-to-speech | `generate tts` | `--prompt`, `--output-dir` |
+| TTS with designed voice | `generate tts` | `--prompt`, `--input <preview.wav>`, `--output-dir` |
+| Design a voice | `voice design` | `--prompt`, `--preview-text`, `--name`, `--output-dir` |
 | Generate 3D model | `generate model` | `--prompt` or `--image`, `--output-dir` |
 | Rig / animate 3D | `process3d rig`, `process3d animate` | `--task-id`, `--output-dir` |
 | Convert 3D format | `process3d convert` | `--task-id`, `--format`, `--output-dir` |
@@ -79,41 +76,11 @@ asset-gateway upload file ./reference.png
 For detailed usage, examples, and workflows, read the reference files:
 
 - **reference/generate.md** — Image, video, audio, music, TTS, text generation
-- **reference/voice.md** — Voice clone, design, list, delete
+- **reference/voice.md** — Voice design, list, delete
 - **reference/process.md** — Crop, resize, compose, extract-frames, remove-bg
 - **reference/3d-pipeline.md** — 3D model generation and process3d chain
 - **reference/sprite-workflow.md** — Full sprite animation pipeline (recommended approach)
 - **reference/world-workflow.md** — 3D world generation with WorldLabs Marble
-
-## Self-Hosted TTS (VoiceBox)
-
-VoiceBox provides free, unlimited TTS via a self-hosted Qwen3-TTS model on GPU.
-
-### Create a Custom Voice (one-time)
-
-```bash
-asset-gateway voice create-custom \
-  --prompt "年轻女性，温暖亲切，语速适中，标准普通话" \
-  --preview-text "你好，欢迎使用我们的语音服务。" \
-  --name "warm-girl"
-```
-
-Returns a `voicebox_profile_id` for future use.
-
-### Generate TTS with Custom Voice
-
-```bash
-asset-gateway generate tts \
-  --prompt "今天天气真不错" \
-  --provider voicebox \
-  --profile-id <voicebox_profile_id> \
-  --output-dir .
-```
-
-### Workflow
-1. `voice create-custom` → DashScope designs voice (one-time, ~¥0.01) → auto-registers in VoiceBox
-2. `generate tts --provider voicebox --profile-id <id>` → free, unlimited generation
-3. Same profile_id = consistent voice across all generations
 
 ## Schema Introspection
 
