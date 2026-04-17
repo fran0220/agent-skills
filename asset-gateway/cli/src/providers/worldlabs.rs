@@ -65,11 +65,9 @@ impl WorldLabsProvider {
                 anyhow::anyhow!("missing media_asset.media_asset_id in prepare_upload response")
             })?
             .to_string();
-        let upload_url = data["upload_info"]["upload_url"]
-            .as_str()
-            .ok_or_else(|| {
-                anyhow::anyhow!("missing upload_info.upload_url in prepare_upload response")
-            })?;
+        let upload_url = data["upload_info"]["upload_url"].as_str().ok_or_else(|| {
+            anyhow::anyhow!("missing upload_info.upload_url in prepare_upload response")
+        })?;
 
         // Collect required headers from upload_info
         let required_headers = data["upload_info"]["required_headers"].as_object();
@@ -302,9 +300,7 @@ impl AssetProvider for WorldLabsProvider {
             .as_str()
             .or_else(|| assets["splats"]["spz_urls"]["500k"].as_str())
             .or_else(|| assets["splats"]["spz_urls"]["100k"].as_str())
-            .ok_or_else(|| {
-                anyhow::anyhow!("no splat SPZ URL found in world {}", world_id)
-            })?;
+            .ok_or_else(|| anyhow::anyhow!("no splat SPZ URL found in world {}", world_id))?;
 
         // Download the SPZ file
         let dl_resp = self.http.get(spz_url).send().await?;
