@@ -217,7 +217,7 @@ impl AssetProvider for GeminiImageProvider {
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
             supports_transparency: false,
-            priority: 100,
+            priority: 50, // Fallback — chatgpt2api is primary
             ..Default::default()
         }
     }

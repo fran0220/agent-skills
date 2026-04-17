@@ -195,7 +195,7 @@ impl AssetProvider for GptImageProvider {
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
             supports_transparency: true,
-            priority: 50, // Lower than gemini (100) for non-transparent; dispatcher boosts for transparent
+            priority: 150, // Primary image provider via chatgpt2api
             ..Default::default()
         }
     }

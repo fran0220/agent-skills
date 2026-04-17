@@ -89,13 +89,30 @@ pub async fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn Asse
         gemini.id = "gemini_image".into();
         providers.push(Arc::new(gemini));
 
-        // GPT Image (transparent-capable)
-        let mut gpt = crate::providers::gpt_image::GptImageProvider::new(
+        // Gemini TTS
+        let mut gemini_tts = crate::providers::gemini_tts::GeminiTtsProvider::new(
             config.proxy_url.clone(),
             config.proxy_key.clone(),
         );
-        gpt.id = "gpt_image".into();
-        providers.push(Arc::new(gpt));
+        if let Some(ref auth) = vertex_auth {
+            gemini_tts = gemini_tts.with_vertex(
+                auth.clone(),
+                config.vertex_project.clone(),
+                config.vertex_location.clone(),
+            );
+        }
+        gemini_tts.id = "gemini_tts".into();
+        providers.push(Arc::new(gemini_tts));
+
+        // GPT Image via proxy (fallback, only if chatgpt2api is not configured)
+        if config.chatgpt2api_url.is_empty() {
+            let mut gpt = crate::providers::gpt_image::GptImageProvider::new(
+                config.proxy_url.clone(),
+                config.proxy_key.clone(),
+            );
+            gpt.id = "gpt_image".into();
+            providers.push(Arc::new(gpt));
+        }
 
         // Lyria — music/audio generation (Google, replaces ElevenLabs for BGM)
         let mut lyria = crate::providers::lyria::LyriaProvider::new(
@@ -124,6 +141,16 @@ pub async fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn Asse
         let autosprite =
             crate::providers::autosprite::AutoSpriteProvider::new(config.autosprite_key.clone());
         providers.push(Arc::new(autosprite));
+    }
+
+    // ChatGPT2API — primary image generation via ChatGPT Plus
+    if !config.chatgpt2api_url.is_empty() {
+        let mut gpt = crate::providers::gpt_image::GptImageProvider::new(
+            config.chatgpt2api_url.clone(),
+            config.chatgpt2api_key.clone(),
+        );
+        gpt.id = "gpt_image".into();
+        providers.push(Arc::new(gpt));
     }
 
     if !config.jimeng_token.is_empty() && !config.jimeng_url.is_empty() {
@@ -161,24 +188,6 @@ pub async fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn Asse
             crate::providers::worldlabs::WorldLabsProvider::new(config.worldlabs_key.clone());
         wl.id = "worldlabs".into();
         providers.push(Arc::new(wl));
-    }
-
-    if !config.dashscope_key.is_empty() {
-        let mut qwen = crate::providers::qwen_tts::QwenTtsProvider::new(
-            config.dashscope_url.clone(),
-            config.dashscope_key.clone(),
-        );
-        qwen.id = "qwen_tts".into();
-        providers.push(Arc::new(qwen));
-    }
-
-    if !config.moss_tts_url.is_empty() {
-        let mut moss = crate::providers::moss_tts::MossTtsProvider::new(
-            config.moss_tts_url.clone(),
-            config.moss_tts_key.clone(),
-        );
-        moss.id = "moss_tts".into();
-        providers.push(Arc::new(moss));
     }
 
     providers

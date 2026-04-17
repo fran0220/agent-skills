@@ -56,12 +56,11 @@ export const SCHEMAS: Record<string, object> = {
           "--output-dir": { type: "string", default: "." },
         },
       },
-      audio: {
-        description: "Generate audio from a text prompt",
+      sfx: {
+        description: "Generate sound effects (impacts, footsteps, UI sounds, ambience)",
         params: {
           "--prompt": { type: "string", required: true },
-          "--type": { type: "string", description: "bgm | sfx" },
-          "--duration": { type: "number", description: "Seconds" },
+          "--duration": { type: "number", required: true, description: "Duration in seconds (1-5s for short SFX, 5-15s for ambience, max 30s)" },
           "--output-dir": { type: "string", default: "." },
         },
       },
@@ -76,16 +75,11 @@ export const SCHEMAS: Record<string, object> = {
         },
       },
       tts: {
-        description:
-          "TTS: default Qwen3-TTS (voice/language/instructions). ElevenLabs: --provider elevenlabs --voice-id <id>",
+        description: "Text-to-speech via Gemini 3.1 Flash TTS",
         params: {
           "--prompt": { type: "string", required: true },
-          "--voice": { type: "string", description: "Qwen voice name or custom id", default: "Cherry" },
-          "--voice-id": { type: "string", description: "ElevenLabs voice id (with --provider elevenlabs)" },
-          "--language": { type: "string", default: "Auto" },
-          "--model": { type: "string", default: "qwen3-tts-flash" },
-          "--instructions": { type: "string", description: "Instruct-model style control" },
-          "--provider": { type: "string", description: "qwen_tts | elevenlabs" },
+          "--voice": { type: "string", description: "Prebuilt voice name (default: Kore)" },
+          "--speakers": { type: "string", description: "Multi-speaker config JSON, e.g. '{\"Name1\":\"Puck\",\"Name2\":\"Kore\"}'" },
           "--output-dir": { type: "string", default: "." },
         },
       },
@@ -297,30 +291,7 @@ export const SCHEMAS: Record<string, object> = {
       },
     },
   },
-  voice: {
-    description: "Qwen3-TTS custom voices (clone / design / list / delete)",
-    subcommands: {
-      clone: {
-        description: "Clone from audio sample",
-        params: {
-          "--audio": { type: "string", required: true },
-          "--name": { type: "string", required: true },
-          "--target-model": { type: "string" },
-        },
-      },
-      design: {
-        description: "Design voice from text",
-        params: {
-          "--prompt": { type: "string", required: true },
-          "--preview-text": { type: "string", required: true },
-          "--name": { type: "string", required: true },
-          "--target-model": { type: "string" },
-        },
-      },
-      list: { description: "List custom voices", params: { "--type": { type: "string" } } },
-      delete: { description: "Delete by voice id", params: { "<voice-id>": { type: "string", required: true }, "--type": { type: "string" } } },
-    },
-  },
+
   upload: {
     description: "Upload and list gateway assets",
     subcommands: {

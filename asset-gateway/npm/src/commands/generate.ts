@@ -4,7 +4,7 @@ import { Command } from "commander";
 import { createContext, printError, printSuccess } from "./common.js";
 
 function inferExtension(assetType: string): string {
-  const map: Record<string, string> = { image: "png", audio: "mp3", music: "mp3", tts: "mp3", video: "mp4", model3d: "glb", text: "txt", sprite: "png", world: "spz" };
+  const map: Record<string, string> = { image: "png", audio: "mp3", sfx: "mp3", music: "mp3", tts: "mp3", video: "mp4", model3d: "glb", text: "txt", sprite: "png", world: "spz" };
   return map[assetType] ?? "bin";
 }
 
@@ -235,30 +235,29 @@ export function createGenerateCommand(): Command {
   );
 
   command.addCommand(
-    new Command("audio")
-      .description("Generate audio from a text prompt")
-      .requiredOption("--prompt <text>", "Audio description prompt")
-      .option("--type <type>", "Audio type: bgm or sfx")
-      .option("--duration <seconds>", "Duration in seconds")
+    new Command("sfx")
+      .description("Generate sound effects (short audio clips: impacts, footsteps, UI sounds, ambience)")
+      .requiredOption("--prompt <text>", "Sound effect description")
+      .requiredOption("--duration <seconds>", "Duration in seconds (1-5s for short SFX, 5-15s for ambience, max 30s)")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
           const ctx = createContext(this);
+          const params: Record<string, unknown> = {
+            duration_seconds: Number(options.duration),
+          };
           const body: Record<string, unknown> = {
             asset_type: "audio",
             prompt: options.prompt,
+            params,
           };
-          const params: Record<string, unknown> = {};
-          if (options.type) params.audio_type = options.type;
-          if (options.duration) params.duration_seconds = Number(options.duration);
-          if (Object.keys(params).length > 0) body.params = params;
 
           const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
           const localPath = await saveOutput(data, "audio", options.outputDir);
           if (localPath) data.local_path = localPath;
-          printSuccess("generate.audio", data, ctx);
+          printSuccess("generate.sfx", data, ctx);
         } catch (error) {
-          printError("generate.audio", error);
+          printError("generate.sfx", error);
         }
       })
   );
@@ -299,39 +298,22 @@ export function createGenerateCommand(): Command {
 
   command.addCommand(
     new Command("tts")
-      .description(
-        "Text-to-speech: default Qwen3-TTS; use --provider elevenlabs --voice-id for ElevenLabs"
-      )
+      .description("Text-to-speech via Gemini 3.1 Flash TTS")
       .requiredOption("--prompt <text>", "Text to synthesize")
-      .option("--voice <name>", "Qwen voice name or custom voice id", "Cherry")
-      .option(
-        "--voice-id <id>",
-        "ElevenLabs voice_id (use with --provider elevenlabs; routes to TTS API)"
-      )
-      .option("--language <lang>", "Language hint: Auto, Chinese, English, Japanese, etc.", "Auto")
-      .option("--model <model>", "Model id (default: auto-detect from voice; qwen3-tts-flash for built-in voices)")
-      .option("--instructions <text>", "Natural language speaking instructions (for instruct models)")
-      .option("--provider <id>", "qwen_tts | elevenlabs | voicebox")
-      .option("--profile-id <id>", "VoiceBox profile_id (use with --provider voicebox)")
+      .option("--voice <name>", "Prebuilt voice name (default: Kore)")
+      .option("--speakers <json>", "Multi-speaker config JSON, e.g. '{\"Name1\":\"Puck\",\"Name2\":\"Kore\"}'")
       .option("--output-dir <dir>", "Directory to save output", ".")
       .action(async function (options) {
         try {
           const ctx = createContext(this);
-          const params: Record<string, unknown> = {
-            voice: options.voice,
-            language_type: options.language,
-          };
-          if (options.instructions) params.instructions = options.instructions;
-          if (options.voiceId) params.voice_id = options.voiceId;
-          if (options.profileId) params.profile_id = options.profileId;
-
           const body: Record<string, unknown> = {
             asset_type: "tts",
             prompt: options.prompt,
-            params,
           };
-          if (options.model) body.model = options.model;
-          if (options.provider) body.provider = options.provider;
+          const params: Record<string, unknown> = {};
+          if (options.voice) params.voice = options.voice;
+          if (options.speakers) params.speakers = JSON.parse(options.speakers);
+          if (Object.keys(params).length > 0) body.params = params;
 
           const data = await ctx.client.post("/api/generate", body) as Record<string, unknown>;
           const localPath = await saveOutput(data, "tts", options.outputDir);

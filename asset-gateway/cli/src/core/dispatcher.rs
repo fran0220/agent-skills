@@ -250,10 +250,10 @@ mod tests {
 
         registry
             .register(Arc::new(MockProvider {
-                id: "gemini_image",
+                id: "gpt_image",
                 asset_types: &[AssetType::Image],
                 caps: ProviderCapabilities {
-                    priority: 100,
+                    priority: 150,
                     ..Default::default()
                 },
                 healthy: true,
@@ -287,7 +287,7 @@ mod tests {
         };
 
         let result = dispatcher.dispatch(&req, None).await.unwrap();
-        assert_eq!(result.provider_id, "gemini_image");
+        assert_eq!(result.provider_id, "gpt_image");
     }
 
     #[tokio::test]
@@ -296,10 +296,10 @@ mod tests {
 
         registry
             .register(Arc::new(MockProvider {
-                id: "gemini_image",
+                id: "gpt_image",
                 asset_types: &[AssetType::Image],
                 caps: ProviderCapabilities {
-                    priority: 100,
+                    priority: 150,
                     ..Default::default()
                 },
                 healthy: true,
@@ -425,7 +425,7 @@ mod tests {
                 asset_types: &[AssetType::Image],
                 caps: ProviderCapabilities {
                     supports_transparency: false,
-                    priority: 100,
+                    priority: 50,
                     ..Default::default()
                 },
                 healthy: true,
@@ -439,7 +439,7 @@ mod tests {
                 asset_types: &[AssetType::Image],
                 caps: ProviderCapabilities {
                     supports_transparency: true,
-                    priority: 50,
+                    priority: 150,
                     ..Default::default()
                 },
                 healthy: true,
@@ -449,7 +449,7 @@ mod tests {
 
         let dispatcher = Dispatcher::new(registry);
 
-        // Non-transparent: gemini wins (priority 100 > 50)
+        // Non-transparent: gpt_image wins (priority 150 > 50)
         let req = GenerateRequest {
             asset_type: AssetType::Image,
             prompt: Some("icon".to_string()),
@@ -461,9 +461,9 @@ mod tests {
             params: json!({}),
         };
         let result = dispatcher.dispatch(&req, None).await.unwrap();
-        assert_eq!(result.provider_id, "gemini_image");
+        assert_eq!(result.provider_id, "gpt_image");
 
-        // Transparent: gpt_image wins (50 + 200 = 250 > 100)
+        // Transparent: gpt_image still wins (150 + 200 = 350 > 50)
         let req_transparent = GenerateRequest {
             asset_type: AssetType::Image,
             prompt: Some("icon".to_string()),

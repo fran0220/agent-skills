@@ -1,14 +1,12 @@
 pub mod autosprite;
 pub mod elevenlabs;
 pub mod gemini_image;
+pub mod gemini_tts;
 pub mod gpt_image;
 pub mod grok_image;
 pub mod jimeng;
 pub mod llm_proxy;
 pub mod lyria;
-pub mod moss_tts;
-pub mod qwen_tts;
 pub mod tripo3d;
 pub mod veo;
-pub mod voicebox;
 pub mod worldlabs;

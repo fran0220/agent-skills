@@ -1,6 +1,6 @@
 ---
 name: asset-gateway
-description: "Unified asset generation and post-processing CLI for images, video, audio, music, TTS, voice cloning, 3D, text, and image/video tools. Use when an agent needs to create or transform assets through one stable command surface."
+description: "Unified asset generation and post-processing CLI for images, video, sound effects, music, TTS, 3D, text, and image/video tools. Use when an agent needs to create or transform assets through one stable command surface."
 ---
 
 # Asset Gateway
@@ -19,20 +19,19 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 
 ## Capabilities
 
-| Category | Use Case | Command |
-|----------|----------|---------|
-| Image | Generate, edit, reference, inpaint, restyle, expand | `generate image` |
-| Video | Image-to-video (Jimeng Seedance 2.0 VIP) | `generate video` |
-| Audio | SFX, BGM | `generate audio` |
-| Music | Music generation (Lyria 3) | `generate music` |
-| Speech | TTS with voice cloning via reference audio (self-hosted, free) | `generate tts` |
-| Voice Design | Design a voice from text description, outputs preview audio for TTS | `voice design` |
-| 3D Model | Text/image → 3D, rig/animate/convert | `generate model`, `process3d ...` |
-| Character Animation | Text/image → character animation (spritesheet, GIF, or MP4) via Vertex AI Veo | `generate sprite` |
-| 3D World | Text/image → photorealistic 3D environment (Gaussian Splat) | `generate world` |
-| Text | Single-shot LLM text generation | `generate text` |
-| Batch | Batch generate multiple assets with shared params, optional auto-compose | `generate batch` |
-| Image/Video Tools | Crop, resize, compose, extract frames, remove background | `process ...` |
+| Category | Use Case | Command | Provider |
+|----------|----------|---------|----------|
+| Image | Generate, edit, reference, inpaint, restyle, expand | `generate image` | ChatGPT2API (primary) / Gemini (fallback) |
+| Video | Text/image-to-video | `generate video` | Veo (Vertex AI) / Grok / Jimeng |
+| Sound Effects | SFX, ambient sounds | `generate sfx` | ElevenLabs |
+| Music | Music generation | `generate music` | Lyria 3 (Vertex AI) |
+| Speech | TTS with 21 prebuilt voices, multi-speaker | `generate tts` | Gemini 3.1 Flash TTS |
+| Sprite | Character animation spritesheet | `generate sprite` | AutoSprite |
+| 3D Model | Text/image → 3D, rig/animate/convert | `generate model`, `process3d ...` | Tripo3D |
+| 3D World | Photorealistic 3D environment (Gaussian Splat) | `generate world` | WorldLabs Marble |
+| Text | Single-shot LLM text generation | `generate text` | LLM Proxy |
+| Batch | Batch generate with shared params, auto-compose | `generate batch` | (any) |
+| Image/Video Tools | Crop, resize, compose, extract frames, remove bg | `process ...` | Local |
 
 ## Quick Decision Guide
 
@@ -45,23 +44,21 @@ Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or
 | Inpaint / restyle / expand | `generate image` | `--prompt`, `--input`, `--edit-mode`, `--output-dir` |
 | Continue editing (multi-turn) | `generate image` | `--prompt`, `--session <id>`, `--output-dir` |
 | Generate video | `generate video` | `--prompt`, `--input <image_url>`, `--output-dir` |
-| Generate SFX / BGM | `generate audio` | `--prompt`, `--type`, `--duration`, `--output-dir` |
+| Generate sound effects | `generate sfx` | `--prompt`, `--duration` (required! 1-5s short, 5-15s ambience), `--output-dir` |
 | Generate music | `generate music` | `--prompt`, `--duration`, `--output-dir` |
-| Text-to-speech | `generate tts` | `--prompt`, `--output-dir` |
-| TTS with designed voice | `generate tts` | `--prompt`, `--input <preview.wav>`, `--output-dir` |
-| Design a voice | `voice design` | `--prompt`, `--preview-text`, `--name`, `--output-dir` |
+| Text-to-speech | `generate tts` | `--prompt`, `--voice`, `--output-dir` |
+| Generate sprite animation | `generate sprite` | `--prompt`, `--animation-type`, `--output-dir` |
 | Generate 3D model | `generate model` | `--prompt` or `--image`, `--output-dir` |
 | Rig / animate 3D | `process3d rig`, `process3d animate` | `--task-id`, `--output-dir` |
 | Convert 3D format | `process3d convert` | `--task-id`, `--format`, `--output-dir` |
+| Generate 3D world | `generate world` | `--prompt`, `--input <image>`, `--model`, `--output-dir` |
 | Crop transparent borders | `process crop` | `--input`, `--mode`, `--output-dir` |
 | Resize image | `process resize` | `--input`, `--width`, `--height`, `--output-dir` |
 | Compose sprite sheet | `process compose` | `--input <files...>`, `--direction`, `--output-dir` |
 | Extract video frames | `process extract-frames` | `--input`, `--count`, `--output-dir` |
 | Remove background | `process remove-bg` | `--input <files...>`, `--output-dir` |
-| Animate a sprite | `generate sprite` | `--prompt`, `--animation-type`, `--view`, `--background`, `--output-dir` |
-| Generate 3D world | `generate world` | `--prompt`, `--input <image>`, `--model`, `--output-dir` |
 | Generate text | `generate text` | `--prompt`, `--model`, `--output-dir` |
-| Batch generate (e.g. sprite frames) | `generate batch` | `--prompt <p1> <p2> ...`, `--asset-type`, `--compose`, `--output-dir` |
+| Batch generate | `generate batch` | `--prompt <p1> <p2> ...`, `--asset-type`, `--compose`, `--output-dir` |
 
 All `generate`, `process`, `process3d` commands should include `--output-dir` to save output locally.
 
@@ -75,11 +72,10 @@ asset-gateway upload file ./reference.png
 
 For detailed usage, examples, and workflows, read the reference files:
 
-- **reference/generate.md** — Image, video, audio, music, TTS, text generation
-- **reference/voice.md** — Voice design, list, delete
+- **reference/generate.md** — Image, video, SFX, music, TTS, text generation
 - **reference/process.md** — Crop, resize, compose, extract-frames, remove-bg
 - **reference/3d-pipeline.md** — 3D model generation and process3d chain
-- **reference/sprite-workflow.md** — Full sprite animation pipeline (recommended approach)
+- **reference/sprite-workflow.md** — Sprite animation via AutoSprite
 - **reference/world-workflow.md** — 3D world generation with WorldLabs Marble
 
 ## Schema Introspection

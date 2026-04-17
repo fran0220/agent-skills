@@ -15,7 +15,6 @@ import { createProcessCommand } from "./commands/process.js";
 import { createProcess3dCommand } from "./commands/process3d.js";
 import { createProviderCommand } from "./commands/provider.js";
 import { createUploadCommand } from "./commands/upload.js";
-import { createVoiceCommand } from "./commands/voice.js";
 import { CLI_VERSION, DEFAULT_GATEWAY_URL } from "./meta.js";
 
 const program = new Command()
@@ -36,7 +35,6 @@ program.addCommand(createProcessCommand());
 program.addCommand(createProcess3dCommand());
 program.addCommand(createProviderCommand());
 program.addCommand(createUploadCommand());
-program.addCommand(createVoiceCommand());
 program.addCommand(createJobCommand());
 program.addCommand(createDescribeCommand());
 

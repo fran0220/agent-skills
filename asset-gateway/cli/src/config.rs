@@ -14,19 +14,23 @@ pub struct ConfigFile {
     #[serde(default)]
     pub tripo3d: ProviderKeySection,
     #[serde(default)]
-    pub dashscope: DashscopeSection,
-    #[serde(default)]
     pub xai: ProviderKeySection,
     #[serde(default)]
     pub jimeng: JimengSection,
     #[serde(default)]
     pub worldlabs: ProviderKeySection,
     #[serde(default)]
-    pub moss_tts: MossTtsSection,
-    #[serde(default)]
     pub vertex: VertexSection,
     #[serde(default)]
     pub autosprite: ProviderKeySection,
+    #[serde(default)]
+    pub chatgpt2api: Chatgpt2apiSection,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Chatgpt2apiSection {
+    pub url: Option<String>,
+    pub key: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -49,21 +53,9 @@ pub struct ProviderKeySection {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct DashscopeSection {
-    pub url: Option<String>,
-    pub key: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
 pub struct JimengSection {
     pub url: Option<String>,
     pub token: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct MossTtsSection {
-    pub url: Option<String>,
-    pub key: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -97,10 +89,6 @@ pub struct AppConfig {
     pub elevenlabs_key: String,
     pub tripo3d_keys: Vec<String>,
 
-    // DashScope Qwen3-TTS (International Singapore region)
-    pub dashscope_url: String,
-    pub dashscope_key: String,
-
     // xAI direct API — Grok image + video generation
     pub xai_key: String,
 
@@ -111,12 +99,12 @@ pub struct AppConfig {
     // WorldLabs Marble — 3D world/environment generation
     pub worldlabs_key: String,
 
-    // MOSS-TTS-Nano — self-hosted TTS service
-    pub moss_tts_url: String,
-    pub moss_tts_key: String,
-
     // AutoSprite — sprite sheet generation
     pub autosprite_key: String,
+
+    // ChatGPT2API — ChatGPT Plus image generation gateway
+    pub chatgpt2api_url: String,
+    pub chatgpt2api_key: String,
 }
 
 impl AppConfig {
@@ -215,17 +203,6 @@ impl AppConfig {
                 }
             },
 
-            dashscope_url: env_or(
-                "ASSET_GATEWAY_DASHSCOPE_URL",
-                file_cfg.dashscope.url.as_deref(),
-                "https://dashscope-intl.aliyuncs.com",
-            ),
-            dashscope_key: env_or(
-                "ASSET_GATEWAY_DASHSCOPE_KEY",
-                file_cfg.dashscope.key.as_deref(),
-                "",
-            ),
-
             xai_key: env_or("ASSET_GATEWAY_XAI_KEY", file_cfg.xai.key.as_deref(), ""),
 
             jimeng_url: env_or(
@@ -245,20 +222,20 @@ impl AppConfig {
                 "",
             ),
 
-            moss_tts_url: env_or(
-                "ASSET_GATEWAY_MOSS_TTS_URL",
-                file_cfg.moss_tts.url.as_deref(),
-                "",
-            ),
-            moss_tts_key: env_or(
-                "ASSET_GATEWAY_MOSS_TTS_KEY",
-                file_cfg.moss_tts.key.as_deref(),
-                "",
-            ),
-
             autosprite_key: env_or(
                 "ASSET_GATEWAY_AUTOSPRITE_KEY",
                 file_cfg.autosprite.key.as_deref(),
+                "",
+            ),
+
+            chatgpt2api_url: env_or(
+                "ASSET_GATEWAY_CHATGPT2API_URL",
+                file_cfg.chatgpt2api.url.as_deref(),
+                "",
+            ),
+            chatgpt2api_key: env_or(
+                "ASSET_GATEWAY_CHATGPT2API_KEY",
+                file_cfg.chatgpt2api.key.as_deref(),
                 "",
             ),
         })
