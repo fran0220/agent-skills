@@ -171,12 +171,19 @@ impl Dispatcher {
 
     fn provider_score(provider: &dyn AssetProvider, req: &GenerateRequest) -> i32 {
         let base = provider.capabilities().priority;
+        let mut score = base;
         // Boost transparent-capable providers when transparency is requested
         if req.transparent() && provider.capabilities().supports_transparency {
-            base + 200
-        } else {
-            base
+            score += 200;
         }
+        // gemini_image is the only provider that implements edit_mode prompt
+        // wrapping (inpaint/restyle/expand) and multi-turn session state.
+        // Route those requests to it explicitly, regardless of base priority.
+        if (req.edit_mode.is_some() || req.session_id.is_some()) && provider.id() == "gemini_image"
+        {
+            score += 300;
+        }
+        score
     }
 }
 
@@ -476,5 +483,68 @@ mod tests {
         };
         let result = dispatcher.dispatch(&req_transparent, None).await.unwrap();
         assert_eq!(result.provider_id, "gpt_image");
+    }
+
+    #[tokio::test]
+    async fn edit_mode_routes_to_gemini_image() {
+        let registry = Arc::new(ProviderRegistry::new());
+
+        registry
+            .register(Arc::new(MockProvider {
+                id: "gemini_image",
+                asset_types: &[AssetType::Image],
+                caps: ProviderCapabilities {
+                    supports_transparency: false,
+                    priority: 50,
+                    ..Default::default()
+                },
+                healthy: true,
+                fail_generate: false,
+            }))
+            .await;
+
+        registry
+            .register(Arc::new(MockProvider {
+                id: "gpt_image",
+                asset_types: &[AssetType::Image],
+                caps: ProviderCapabilities {
+                    supports_transparency: true,
+                    priority: 150,
+                    ..Default::default()
+                },
+                healthy: true,
+                fail_generate: false,
+            }))
+            .await;
+
+        let dispatcher = Dispatcher::new(registry);
+
+        // edit_mode: gemini_image wins (50 + 300 = 350 > 150)
+        let req_edit = GenerateRequest {
+            asset_type: AssetType::Image,
+            prompt: Some("replace sky".to_string()),
+            model: None,
+            input_file: Some("https://example.com/scene.png".to_string()),
+            reference_images: vec![],
+            edit_mode: Some(crate::core::ImageEditMode::Inpaint),
+            session_id: None,
+            params: json!({}),
+        };
+        let result = dispatcher.dispatch(&req_edit, None).await.unwrap();
+        assert_eq!(result.provider_id, "gemini_image");
+
+        // session_id: gemini_image wins (50 + 300 = 350 > 150)
+        let req_session = GenerateRequest {
+            asset_type: AssetType::Image,
+            prompt: Some("make headline larger".to_string()),
+            model: None,
+            input_file: None,
+            reference_images: vec![],
+            edit_mode: None,
+            session_id: Some("ses_abc123".to_string()),
+            params: json!({}),
+        };
+        let result = dispatcher.dispatch(&req_session, None).await.unwrap();
+        assert_eq!(result.provider_id, "gemini_image");
     }
 }
