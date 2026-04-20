@@ -73,7 +73,11 @@ async fn search(
 
     if let Some(ref tags) = params.tags {
         if !tags.trim().is_empty() {
-            let tag_list: Vec<&str> = tags.split(',').map(str::trim).filter(|t| !t.is_empty()).collect();
+            let tag_list: Vec<&str> = tags
+                .split(',')
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .collect();
             if !tag_list.is_empty() {
                 bind_idx += 1;
                 conditions.push(format!("tags && ${bind_idx}"));
@@ -136,7 +140,10 @@ async fn search(
             count_q = count_q.bind(part);
         }
     }
-    let total = count_q.fetch_one(&state.db).await.map_err(AppError::internal)?;
+    let total = count_q
+        .fetch_one(&state.db)
+        .await
+        .map_err(AppError::internal)?;
 
     let items: Vec<Value> = rows.into_iter().map(|r| r.to_json()).collect();
 
@@ -284,7 +291,9 @@ async fn catalog_jobs(
     }
 
     // Exclude already-cataloged jobs
-    conditions.push("NOT EXISTS (SELECT 1 FROM asset_library al WHERE al.source_job_id = j.id)".to_string());
+    conditions.push(
+        "NOT EXISTS (SELECT 1 FROM asset_library al WHERE al.source_job_id = j.id)".to_string(),
+    );
     // Only jobs that have output_data
     conditions.push("j.response IS NOT NULL".to_string());
 
@@ -313,9 +322,18 @@ async fn catalog_jobs(
     for b in &binds {
         select_q = select_q.bind(b);
     }
-    let jobs = select_q.fetch_all(&state.db).await.map_err(AppError::internal)?;
+    let jobs = select_q
+        .fetch_all(&state.db)
+        .await
+        .map_err(AppError::internal)?;
 
-    let public_url = state.config.read().await.public_url.trim_end_matches('/').to_string();
+    let public_url = state
+        .config
+        .read()
+        .await
+        .public_url
+        .trim_end_matches('/')
+        .to_string();
     let mut cataloged = 0u64;
     let mut errors = Vec::new();
 
