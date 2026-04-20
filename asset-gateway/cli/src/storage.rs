@@ -43,9 +43,7 @@ impl ObjectStorage {
         )
         .ok()?;
 
-        let bucket = Bucket::new(&cfg.bucket, region, credentials)
-            .ok()?
-            .with_path_style();
+        let bucket = Bucket::new(&cfg.bucket, region, credentials).ok()?;
 
         let public_url = cfg
             .public_url
