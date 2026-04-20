@@ -1,5 +1,5 @@
 -- Asset Library — searchable catalog of reusable assets
--- Supports full-text search on name + description + tags
+-- Uses trigger-based tsvector for full-text search (PostgreSQL requires IMMUTABLE for generated columns)
 
 CREATE TABLE IF NOT EXISTS asset_library (
     id TEXT PRIMARY KEY NOT NULL,
@@ -14,17 +14,25 @@ CREATE TABLE IF NOT EXISTS asset_library (
     source TEXT NOT NULL DEFAULT 'manual', -- manual, generated, imported
     source_job_id TEXT,                 -- references jobs(id) if source=generated
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    search_vector tsvector,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Full-text search index on name + description + tags
-ALTER TABLE asset_library ADD COLUMN IF NOT EXISTS search_vector tsvector
-    GENERATED ALWAYS AS (
-        setweight(to_tsvector('english', coalesce(name, '')), 'A') ||
-        setweight(to_tsvector('english', coalesce(description, '')), 'B') ||
-        setweight(to_tsvector('english', coalesce(array_to_string(tags, ' '), '')), 'A')
-    ) STORED;
+-- Trigger function to maintain search_vector
+CREATE OR REPLACE FUNCTION asset_library_search_update() RETURNS trigger AS $$
+BEGIN
+    NEW.search_vector :=
+        setweight(to_tsvector('english', coalesce(NEW.name, '')), 'A') ||
+        setweight(to_tsvector('english', coalesce(NEW.description, '')), 'B') ||
+        setweight(to_tsvector('english', coalesce(array_to_string(NEW.tags, ' '), '')), 'A');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_asset_library_search
+    BEFORE INSERT OR UPDATE ON asset_library
+    FOR EACH ROW EXECUTE FUNCTION asset_library_search_update();
 
 CREATE INDEX IF NOT EXISTS idx_asset_library_search ON asset_library USING GIN (search_vector);
 CREATE INDEX IF NOT EXISTS idx_asset_library_asset_type ON asset_library(asset_type);
