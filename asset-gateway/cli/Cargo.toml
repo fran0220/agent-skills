@@ -50,6 +50,7 @@ async-trait = "0.1"
 futures = "0.3"
 tempfile = "3"
 image = "0.25"
+rust-s3 = { version = "0.37.1", default-features = false, features = ["tokio-rustls-tls"] }
 
 [profile.release]
 lto = true

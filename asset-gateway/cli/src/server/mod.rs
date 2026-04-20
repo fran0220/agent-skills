@@ -15,6 +15,7 @@ use crate::core::registry::ProviderRegistry;
 use crate::core::AssetProvider;
 use crate::frontend;
 use crate::server::ws::JobEventHub;
+use crate::storage::{ObjectStorage, StorageHandle};
 
 pub struct ServerState {
     pub db: sqlx::PgPool,
@@ -22,6 +23,7 @@ pub struct ServerState {
     pub registry: Arc<ProviderRegistry>,
     pub dispatcher: Dispatcher,
     pub job_events: JobEventHub,
+    pub storage: StorageHandle,
 }
 
 fn expand_tilde(path: &str) -> String {
@@ -219,12 +221,18 @@ pub async fn run(
     let loaded = load_providers(&config, &registry).await;
     tracing::info!(loaded_provider_count = loaded, config_path = %config_path.display(), "providers loaded from config");
 
+    let storage = ObjectStorage::from_config(&config);
+    if storage.is_some() {
+        tracing::info!("S3 object storage enabled");
+    }
+
     let state = Arc::new(ServerState {
         db,
         config: RwLock::new(config),
         registry,
         dispatcher,
         job_events: JobEventHub::default(),
+        storage,
     });
 
     // Ensure uploads directory exists

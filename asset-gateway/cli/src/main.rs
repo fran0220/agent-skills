@@ -7,6 +7,7 @@ mod error;
 mod frontend;
 mod providers;
 mod server;
+mod storage;
 mod vertex_auth;
 
 use std::path::PathBuf;

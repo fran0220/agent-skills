@@ -7,4 +7,5 @@ pub mod error;
 pub mod frontend;
 pub mod providers;
 pub mod server;
+pub mod storage;
 pub mod vertex_auth;

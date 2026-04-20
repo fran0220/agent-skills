@@ -193,7 +193,13 @@ async fn generate(
         .await;
 
     let (result, session_id_out) = match dispatch_result {
-        Ok(result) => {
+        Ok(mut result) => {
+            // Upload to OSS if storage is configured
+            if let Some(ref storage) = state.storage {
+                result = storage
+                    .upload_response(result, gen_req.asset_type)
+                    .await;
+            }
             let response_json = serde_json::to_string(&result).map_err(AppError::internal)?;
             sqlx::query(
                 "UPDATE jobs SET provider_id = $1, status = 'completed', response = $2, output_path = $3, cost_usd = $4, completed_at = now() WHERE id = $5",

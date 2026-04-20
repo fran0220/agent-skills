@@ -25,6 +25,18 @@ pub struct ConfigFile {
     pub autosprite: ProviderKeySection,
     #[serde(default)]
     pub chatgpt2api: Chatgpt2apiSection,
+    #[serde(default)]
+    pub storage: Option<StorageSection>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct StorageSection {
+    pub endpoint: Option<String>,
+    pub bucket: Option<String>,
+    pub region: Option<String>,
+    pub access_key: Option<String>,
+    pub secret_key: Option<String>,
+    pub public_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -105,6 +117,20 @@ pub struct AppConfig {
     // ChatGPT2API — ChatGPT Plus image generation gateway
     pub chatgpt2api_url: String,
     pub chatgpt2api_key: String,
+
+    // S3-compatible object storage (Bitiful / Aliyun OSS / R2)
+    pub storage: Option<StorageConfig>,
+}
+
+/// Resolved storage config (all fields required when present).
+#[derive(Debug, Clone)]
+pub struct StorageConfig {
+    pub endpoint: String,
+    pub bucket: String,
+    pub region: Option<String>,
+    pub access_key: String,
+    pub secret_key: String,
+    pub public_url: Option<String>,
 }
 
 impl AppConfig {
@@ -144,7 +170,7 @@ impl AppConfig {
             public_url: env_or(
                 "ASSET_GATEWAY_PUBLIC_URL",
                 file_cfg.server.public_url.as_deref(),
-                "https://upload.xiaomao.chat",
+                "https://asset.origingame.dev",
             ),
 
             proxy_url: env_or(
@@ -238,6 +264,55 @@ impl AppConfig {
                 file_cfg.chatgpt2api.key.as_deref(),
                 "",
             ),
+
+            storage: {
+                let endpoint = env_or(
+                    "ASSET_GATEWAY_STORAGE_ENDPOINT",
+                    file_cfg.storage.as_ref().and_then(|s| s.endpoint.as_deref()),
+                    "",
+                );
+                let bucket = env_or(
+                    "ASSET_GATEWAY_STORAGE_BUCKET",
+                    file_cfg.storage.as_ref().and_then(|s| s.bucket.as_deref()),
+                    "",
+                );
+                let access_key = env_or(
+                    "ASSET_GATEWAY_STORAGE_ACCESS_KEY",
+                    file_cfg.storage.as_ref().and_then(|s| s.access_key.as_deref()),
+                    "",
+                );
+                let secret_key = env_or(
+                    "ASSET_GATEWAY_STORAGE_SECRET_KEY",
+                    file_cfg.storage.as_ref().and_then(|s| s.secret_key.as_deref()),
+                    "",
+                );
+                if !endpoint.is_empty() && !bucket.is_empty() && !access_key.is_empty() {
+                    Some(StorageConfig {
+                        endpoint,
+                        bucket,
+                        region: {
+                            let r = env_or(
+                                "ASSET_GATEWAY_STORAGE_REGION",
+                                file_cfg.storage.as_ref().and_then(|s| s.region.as_deref()),
+                                "",
+                            );
+                            if r.is_empty() { None } else { Some(r) }
+                        },
+                        access_key,
+                        secret_key,
+                        public_url: {
+                            let u = env_or(
+                                "ASSET_GATEWAY_STORAGE_PUBLIC_URL",
+                                file_cfg.storage.as_ref().and_then(|s| s.public_url.as_deref()),
+                                "",
+                            );
+                            if u.is_empty() { None } else { Some(u) }
+                        },
+                    })
+                } else {
+                    None
+                }
+            },
         })
     }
 
