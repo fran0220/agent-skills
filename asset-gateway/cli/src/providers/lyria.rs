@@ -79,7 +79,7 @@ impl AssetProvider for LyriaProvider {
     }
 
     fn asset_types(&self) -> &[AssetType] {
-        &[AssetType::Music, AssetType::Audio]
+        &[AssetType::Music]
     }
 
     fn capabilities(&self) -> ProviderCapabilities {

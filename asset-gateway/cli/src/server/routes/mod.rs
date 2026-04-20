@@ -7,6 +7,7 @@ pub mod generate;
 pub mod generate_batch;
 pub mod health;
 pub mod jobs;
+pub mod library;
 pub mod plans;
 pub mod process;
 pub mod process3d;
@@ -33,6 +34,7 @@ pub fn api_router() -> Router<Arc<ServerState>> {
         .merge(jobs::router())
         .merge(users::router())
         .merge(assets::router())
+        .merge(library::router())
         .merge(tripo::router())
 }
 

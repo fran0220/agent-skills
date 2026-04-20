@@ -11,6 +11,7 @@ import { createAuthCommand } from "./commands/auth.js";
 import { createDescribeCommand } from "./commands/describe.js";
 import { createGenerateCommand } from "./commands/generate.js";
 import { createJobCommand } from "./commands/job.js";
+import { createLibraryCommand } from "./commands/library.js";
 import { createProcessCommand } from "./commands/process.js";
 import { createProcess3dCommand } from "./commands/process3d.js";
 import { createProviderCommand } from "./commands/provider.js";
@@ -31,6 +32,7 @@ const program = new Command()
 
 program.addCommand(createAuthCommand());
 program.addCommand(createGenerateCommand());
+program.addCommand(createLibraryCommand());
 program.addCommand(createProcessCommand());
 program.addCommand(createProcess3dCommand());
 program.addCommand(createProviderCommand());
