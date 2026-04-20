@@ -435,10 +435,12 @@ async fn catalog_single_job(
 
 fn truncate_name(prompt: &str) -> String {
     let trimmed = prompt.trim();
-    if trimmed.len() <= 80 {
+    let chars: Vec<char> = trimmed.chars().collect();
+    if chars.len() <= 80 {
         trimmed.to_string()
     } else {
-        format!("{}…", &trimmed[..77])
+        let truncated: String = chars[..77].iter().collect();
+        format!("{truncated}…")
     }
 }
 
