@@ -4,7 +4,6 @@
 //!
 //! - **Asset Gateway** — generate images, video, audio, TTS, music, 3D models, sprites, text
 //! - **AI Search** — multi-source web search with AI summarization
-//! - **Cognee** — knowledge graph construction and semantic search
 //!
 //! ## Quick Start
 //!
@@ -23,10 +22,6 @@
 //!     let results = client.search().search("Rust async runtime", None).await?;
 //!     println!("Content: {}", results.content);
 //!
-//!     // Search knowledge graph
-//!     let knowledge = client.cognee().search("game combat system", None).await?;
-//!     println!("{:?}", knowledge);
-//!
 //!     Ok(())
 //! }
 //! ```
@@ -36,8 +31,6 @@ pub mod transport;
 
 #[cfg(feature = "asset")]
 pub mod asset;
-#[cfg(feature = "cognee")]
-pub mod cognee;
 #[cfg(feature = "search")]
 pub mod search;
 
@@ -48,7 +41,6 @@ use transport::HttpTransport;
 pub mod defaults {
     pub const ASSET_GATEWAY_URL: &str = "https://asset.origingame.dev";
     pub const AI_SEARCH_URL: &str = "https://search.xiaomao.chat";
-    pub const COGNEE_URL: &str = "https://cogneeapi.origingame.dev";
 }
 
 /// Builder for configuring an [`OriginClient`].
@@ -56,8 +48,6 @@ pub struct OriginClientBuilder {
     api_key: String,
     asset_url: String,
     search_url: String,
-    cognee_url: String,
-    cognee_token: Option<String>,
     client: Option<reqwest::Client>,
 }
 
@@ -67,8 +57,6 @@ impl OriginClientBuilder {
             api_key: api_key.into(),
             asset_url: defaults::ASSET_GATEWAY_URL.to_string(),
             search_url: defaults::AI_SEARCH_URL.to_string(),
-            cognee_url: defaults::COGNEE_URL.to_string(),
-            cognee_token: None,
             client: None,
         }
     }
@@ -82,18 +70,6 @@ impl OriginClientBuilder {
     /// Override the AI Search base URL.
     pub fn search_url(mut self, url: impl Into<String>) -> Self {
         self.search_url = url.into();
-        self
-    }
-
-    /// Override the Cognee API base URL.
-    pub fn cognee_url(mut self, url: impl Into<String>) -> Self {
-        self.cognee_url = url.into();
-        self
-    }
-
-    /// Use a separate `ca_xxx` token for Cognee (defaults to main api_key).
-    pub fn cognee_token(mut self, token: impl Into<String>) -> Self {
-        self.cognee_token = Some(token.into());
         self
     }
 
@@ -114,12 +90,9 @@ impl OriginClientBuilder {
             }
         };
 
-        let cognee_key = self.cognee_token.unwrap_or_else(|| self.api_key.clone());
-
         OriginClient {
             asset_transport: make_transport(self.asset_url, self.api_key.clone()),
-            search_transport: make_transport(self.search_url, self.api_key.clone()),
-            cognee_transport: make_transport(self.cognee_url, cognee_key),
+            search_transport: make_transport(self.search_url, self.api_key),
         }
     }
 }
@@ -131,7 +104,6 @@ impl OriginClientBuilder {
 pub struct OriginClient {
     asset_transport: HttpTransport,
     search_transport: HttpTransport,
-    cognee_transport: HttpTransport,
 }
 
 impl OriginClient {
@@ -155,11 +127,5 @@ impl OriginClient {
     #[cfg(feature = "search")]
     pub fn search(&self) -> search::SearchClient {
         search::SearchClient::new(self.search_transport.clone())
-    }
-
-    /// Access the Cognee knowledge graph client.
-    #[cfg(feature = "cognee")]
-    pub fn cognee(&self) -> cognee::CogneeClient {
-        cognee::CogneeClient::new(self.cognee_transport.clone())
     }
 }

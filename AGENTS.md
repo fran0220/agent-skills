@@ -22,8 +22,10 @@ agent-skills/
 ├── asset-gateway/         # Asset Gateway — 通用资产生成网关
 │   ├── skill/             #   Agent 技能
 │   └── cli/               #   Rust CLI + 网关服务
-├── cognee-admin/          # Cognee Admin — 知识引擎管理
-│   └── cli/               #   Rust CLI + HTMX Web 面板
+├── gamedb/               # GameDB — 游戏原子化知识库（CF Workers + Vectorize）
+│   ├── worker/            #   CF Worker API
+│   ├── data/              #   知识库原始数据
+│   └── scripts/           #   导入脚本
 ├── bb-browser/            # BB Browser — 浏览器自动化
 │   └── skill/             #   Agent 技能
 ├── grok2api-go/           # Grok2API Go — Grok API 代理网关（手动 Docker 部署）
@@ -83,8 +85,8 @@ agent-skills/
 |------|------|--------|------|:---:|
 | asset-gateway | asset.origingame.dev | Oracle | 6700 | ✅ push main |
 | ai-search | search.xiaomao.chat | BWG | 6900 | ✅ push main |
-| cognee-admin | cognee.origingame.dev | Oracle | 9847 | ✅ push main |
 | grok2api-go | grok.xiaomao.chat | BWG | 8000 | 手动 docker |
+| gamedb | gamedb.zhangfan0220.workers.dev | Cloudflare | — | N/A (wrangler deploy) |
 | jimeng-api | — | jpdata | 5100 | 手动 docker (ghcr.io/iptag/jimeng-api) |
 
 ### 已下线服务
@@ -92,6 +94,7 @@ agent-skills/
 - asset-gateway（原 jpdata / upload.xiaomao.chat）— 已下线，统一到 Oracle (asset.origingame.dev)
 - jimeng-gateway（原 jpdata）— 已移除，替换为 wwwzhouhui/jimeng-free-api-all Docker
 - grok-register（原 jpdata）— 已停用
+- cognee-admin（原 Oracle / cognee.origingame.dev）— 已下线，替换为 CF Workers gamedb
 - jpdata 服务器即将到期，所有服务已迁移或下线
 
 ### CI 部署流程
@@ -134,8 +137,6 @@ AGENTS.md                              # 本文件 — 仓库总览
 ├── asset-gateway/
 │   └── cli/AGENTS.md
 ├── ai-search/
-│   └── cli/AGENTS.md
-├── cognee-admin/
 │   └── cli/AGENTS.md
 ├── slide-deck/
 │   └── skill/AGENTS.md

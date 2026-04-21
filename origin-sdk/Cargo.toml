@@ -2,13 +2,13 @@
 name = "origin-asset"
 version = "0.1.0"
 edition = "2021"
-description = "Rust SDK for Origin platform — asset generation, AI search, and knowledge graph services"
+description = "Rust SDK for Origin platform — asset generation and AI search services"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/fran0220/agent-skills"
 homepage = "https://github.com/fran0220/agent-skills/tree/main/origin-sdk"
 documentation = "https://docs.rs/origin-sdk"
 readme = "README.md"
-keywords = ["ai", "asset-generation", "search", "knowledge-graph", "sdk"]
+keywords = ["ai", "asset-generation", "search", "sdk"]
 categories = ["api-bindings", "web-programming::http-client"]
 
 [dependencies]
@@ -19,10 +19,9 @@ thiserror = "2"
 tokio = { version = "1", features = ["fs"] }
 
 [features]
-default = ["asset", "search", "cognee"]
+default = ["asset", "search"]
 asset = []
 search = []
-cognee = []
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

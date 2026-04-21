@@ -1,6 +1,6 @@
 # origin-asset
 
-Rust SDK for the Origin platform — unified access to asset generation, AI search, and knowledge graph services.
+Rust SDK for the Origin platform — unified access to asset generation and AI search services.
 
 [![Crates.io](https://img.shields.io/crates/v/origin-asset.svg)](https://crates.io/crates/origin-asset)
 [![docs.rs](https://docs.rs/origin-asset/badge.svg)](https://docs.rs/origin-asset)
@@ -12,7 +12,6 @@ Rust SDK for the Origin platform — unified access to asset generation, AI sear
 |---------|-------------|------------------|
 | **Asset Gateway** | Generate images, video, audio, TTS, music, 3D models, sprites | `https://asset.origingame.dev` |
 | **AI Search** | Multi-source web search with AI summarization (Grok + Exa + Tavily) | `https://search.xiaomao.chat` |
-| **Cognee** | Knowledge graph construction and semantic search | `https://cogneeapi.origingame.dev` |
 
 ## Installation
 
@@ -26,7 +25,7 @@ Or with feature flags to include only what you need:
 
 ```toml
 [dependencies]
-origin-asset = { version = "0.1", default-features = false, features = ["asset", "search"] }
+origin-asset = { version = "0.1", default-features = false, features = ["asset"] }
 ```
 
 ## Quick Start
@@ -46,10 +45,6 @@ async fn main() -> origin_asset::Result<()> {
     let results = client.search().search_fast("Rust async runtime").await?;
     println!("{}", results.content);
 
-    // Query knowledge graph
-    let knowledge = client.cognee().search("game combat system", None).await?;
-    println!("{knowledge}");
-
     Ok(())
 }
 ```
@@ -62,14 +57,12 @@ async fn main() -> origin_asset::Result<()> {
 let client = OriginClient::new("your-api-key");
 ```
 
-### Builder (custom URLs / separate tokens)
+### Builder (custom URLs)
 
 ```rust
 let client = OriginClient::builder("your-api-key")
     .asset_url("https://my-asset-server.example.com")
     .search_url("https://my-search-server.example.com")
-    .cognee_url("https://my-cognee-server.example.com")
-    .cognee_token("ca_xxx_separate_token")  // Cognee uses ca_xxx tokens
     .http_client(custom_reqwest_client)      // Custom timeouts, proxy, etc.
     .build();
 ```
@@ -154,48 +147,12 @@ let result = search.search("Rust web frameworks", Some(SearchOptions {
 let models = search.models().await?;
 ```
 
-## Cognee (Knowledge Graph)
-
-Build and query knowledge graphs from your documents.
-
-```rust
-use origin_asset::cognee::{CognifyOptions, SearchOptions, SearchType};
-
-let cognee = client.cognee();
-
-// Add text to a dataset
-cognee.add_text("my-docs", "Rust is a systems programming language.").await?;
-
-// Upload a file
-cognee.add_file("my-docs", "/path/to/document.pdf").await?;
-
-// Build knowledge graph
-cognee.cognify(&CognifyOptions {
-    datasets: Some(vec!["my-docs".into()]),
-    run_in_background: Some(true),
-    ..Default::default()
-}).await?;
-
-// Search knowledge
-let result = cognee.search("What is Rust?", Some(SearchOptions {
-    search_type: Some(SearchType::Summaries),
-    top_k: Some(5),
-    ..Default::default()
-})).await?;
-
-// Dataset management
-let datasets = cognee.datasets().await?;
-cognee.create_dataset("new-dataset").await?;
-cognee.delete_dataset("dataset-id").await?;
-```
-
 ## Feature Flags
 
 | Feature | Default | Description |
 |---------|---------|-------------|
 | `asset` | ✅ | Asset Gateway client |
 | `search` | ✅ | AI Search client |
-| `cognee` | ✅ | Cognee knowledge graph client |
 
 ## Error Handling
 

@@ -1,0 +1,17 @@
+name = "gamedb"
+main = "src/index.ts"
+compatibility_date = "2025-04-18"
+
+[ai]
+binding = "AI"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "gamedb-v3"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "gamedb-storage"
+
+# Set via `wrangler secret put`:
+# GAMEDB_API_KEY   — admin ingest auth
