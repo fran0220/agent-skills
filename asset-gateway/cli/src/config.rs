@@ -51,6 +51,8 @@ pub struct Grok2apiSection {
 pub struct Chatgpt2apiSection {
     pub url: Option<String>,
     pub key: Option<String>,
+    pub fallback_url: Option<String>,
+    pub fallback_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -129,6 +131,8 @@ pub struct AppConfig {
     // ChatGPT2API — ChatGPT Plus image generation gateway
     pub chatgpt2api_url: String,
     pub chatgpt2api_key: String,
+    pub chatgpt2api_fallback_url: String,
+    pub chatgpt2api_fallback_key: String,
 
     // S3-compatible object storage (Bitiful / Aliyun OSS / R2)
     pub storage: Option<StorageConfig>,
@@ -285,6 +289,16 @@ impl AppConfig {
             chatgpt2api_key: env_or(
                 "ASSET_GATEWAY_CHATGPT2API_KEY",
                 file_cfg.chatgpt2api.key.as_deref(),
+                "",
+            ),
+            chatgpt2api_fallback_url: env_or(
+                "ASSET_GATEWAY_CHATGPT2API_FALLBACK_URL",
+                file_cfg.chatgpt2api.fallback_url.as_deref(),
+                "",
+            ),
+            chatgpt2api_fallback_key: env_or(
+                "ASSET_GATEWAY_CHATGPT2API_FALLBACK_KEY",
+                file_cfg.chatgpt2api.fallback_key.as_deref(),
                 "",
             ),
 

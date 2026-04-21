@@ -12,6 +12,8 @@ pub struct GptImageProvider {
     pub id: String,
     pub base_url: String,
     pub api_key: String,
+    fallback_url: Option<String>,
+    fallback_key: Option<String>,
     http: reqwest::Client,
 }
 
@@ -21,8 +23,16 @@ impl GptImageProvider {
             id: "gpt_image".into(),
             base_url,
             api_key,
+            fallback_url: None,
+            fallback_key: None,
             http: reqwest::Client::new(),
         }
+    }
+
+    pub fn with_fallback(mut self, url: String, key: String) -> Self {
+        self.fallback_url = Some(url);
+        self.fallback_key = Some(key);
+        self
     }
 
     /// Map our size format "WxH" to OpenAI supported sizes.
@@ -78,6 +88,8 @@ impl GptImageProvider {
         quality: &str,
         size: &str,
         transparent: bool,
+        base_url: &str,
+        api_key: &str,
     ) -> anyhow::Result<GenerateResponse> {
         let start = Instant::now();
         let prompt = req.prompt.as_deref().unwrap_or("");
@@ -124,8 +136,8 @@ impl GptImageProvider {
 
         let resp = self
             .http
-            .post(format!("{}/v1/images/edits", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
+            .post(format!("{}/v1/images/edits", base_url))
+            .header("Authorization", format!("Bearer {}", api_key))
             .multipart(form)
             .timeout(std::time::Duration::from_secs(120))
             .send()
@@ -165,42 +177,21 @@ impl GptImageProvider {
             .ok_or_else(|| anyhow::anyhow!("GPT Image response missing data array"))?;
 
         if let Some(b64) = item["b64_json"].as_str() {
-            Ok((Some(b64.to_string()), None))
+            // Strip data URI prefix if present (e.g. "data:image/png;base64,...")
+            let raw = if let Some(pos) = b64.find(";base64,") {
+                &b64[pos + 8..]
+            } else {
+                b64
+            };
+            Ok((Some(raw.to_string()), None))
         } else if let Some(url) = item["url"].as_str() {
             Ok((None, Some(url.to_string())))
         } else {
             anyhow::bail!("GPT Image response has neither b64_json nor url")
         }
     }
-}
 
-#[async_trait::async_trait]
-impl AssetProvider for GptImageProvider {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn display_name(&self) -> &str {
-        "GPT Image (OpenAI)"
-    }
-
-    fn asset_types(&self) -> &[AssetType] {
-        &[AssetType::Image]
-    }
-
-    fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities {
-            supports_transparency: true,
-            priority: 80, // Transparent-only; +200 boost when transparent requested
-            ..Default::default()
-        }
-    }
-
-    async fn generate(&self, req: &GenerateRequest) -> anyhow::Result<GenerateResponse> {
+    async fn generate_inner(&self, req: &GenerateRequest, base_url: &str, api_key: &str) -> anyhow::Result<GenerateResponse> {
         let model = req.model.as_deref().unwrap_or(DEFAULT_MODEL);
         let transparent = req.transparent();
         let quality = Self::map_quality(req.quality());
@@ -214,15 +205,13 @@ impl AssetProvider for GptImageProvider {
         // If we have input images, use the edit endpoint
         if !req.image_inputs().is_empty() {
             return self
-                .generate_edit(req, model, quality, size, transparent)
+                .generate_edit(req, model, quality, size, transparent, base_url, api_key)
                 .await;
         }
 
         let start = Instant::now();
         let prompt = req.prompt.as_deref().unwrap_or("");
 
-        // Use b64_json when transparent (to preserve alpha channel fully),
-        // URL otherwise (faster, less bandwidth).
         let response_format = if transparent { "b64_json" } else { "url" };
 
         let mut body = json!({
@@ -239,8 +228,8 @@ impl AssetProvider for GptImageProvider {
 
         let resp = self
             .http
-            .post(format!("{}/v1/images/generations", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
+            .post(format!("{}/v1/images/generations", base_url))
+            .header("Authorization", format!("Bearer {}", api_key))
             .json(&body)
             .timeout(std::time::Duration::from_secs(120))
             .send()
@@ -271,6 +260,50 @@ impl AssetProvider for GptImageProvider {
             cost_usd: Some(Self::estimate_cost(quality, size)),
             elapsed_ms: start.elapsed().as_millis() as u64,
         })
+    }
+}
+
+#[async_trait::async_trait]
+impl AssetProvider for GptImageProvider {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn display_name(&self) -> &str {
+        "GPT Image (OpenAI)"
+    }
+
+    fn asset_types(&self) -> &[AssetType] {
+        &[AssetType::Image]
+    }
+
+    fn capabilities(&self) -> ProviderCapabilities {
+        ProviderCapabilities {
+            supports_transparency: true,
+            priority: 80, // Transparent-only; +200 boost when transparent requested
+            ..Default::default()
+        }
+    }
+
+    async fn generate(&self, req: &GenerateRequest) -> anyhow::Result<GenerateResponse> {
+        match self.generate_inner(req, &self.base_url, &self.api_key).await {
+            Ok(resp) => Ok(resp),
+            Err(primary_err) => {
+                if let (Some(fb_url), Some(fb_key)) = (&self.fallback_url, &self.fallback_key) {
+                    tracing::warn!(
+                        error = %primary_err,
+                        "GPT Image primary failed, trying fallback"
+                    );
+                    self.generate_inner(req, fb_url, fb_key).await
+                } else {
+                    Err(primary_err)
+                }
+            }
+        }
     }
 
     async fn health_check(&self) -> anyhow::Result<HealthStatus> {

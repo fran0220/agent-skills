@@ -151,6 +151,12 @@ pub async fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn Asse
             config.chatgpt2api_url.clone(),
             config.chatgpt2api_key.clone(),
         );
+        if !config.chatgpt2api_fallback_url.is_empty() {
+            gpt = gpt.with_fallback(
+                config.chatgpt2api_fallback_url.clone(),
+                config.chatgpt2api_fallback_key.clone(),
+            );
+        }
         gpt.id = "gpt_image".into();
         providers.push(Arc::new(gpt));
     }
