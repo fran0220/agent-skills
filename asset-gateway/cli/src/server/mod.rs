@@ -164,9 +164,19 @@ pub async fn build_providers_from_config(config: &AppConfig) -> Vec<Arc<dyn Asse
         providers.push(Arc::new(jimeng));
     }
 
-    // Grok — image + video via xAI direct API
-    if !config.xai_key.is_empty() {
-        let mut grok = crate::providers::grok_image::GrokImageProvider::new(config.xai_key.clone());
+    // Grok — image + edit + video via grok2api proxy (preferred) or xAI direct
+    if !config.grok2api_url.is_empty() && !config.grok2api_key.is_empty() {
+        let mut grok = crate::providers::grok_image::GrokImageProvider::new(
+            config.grok2api_url.clone(),
+            config.grok2api_key.clone(),
+        );
+        grok.id = "grok_image".into();
+        providers.push(Arc::new(grok));
+    } else if !config.xai_key.is_empty() {
+        let mut grok = crate::providers::grok_image::GrokImageProvider::new(
+            "https://api.x.ai".to_string(),
+            config.xai_key.clone(),
+        );
         grok.id = "grok_image".into();
         providers.push(Arc::new(grok));
     }

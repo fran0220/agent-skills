@@ -16,6 +16,8 @@ pub struct ConfigFile {
     #[serde(default)]
     pub xai: ProviderKeySection,
     #[serde(default)]
+    pub grok2api: Grok2apiSection,
+    #[serde(default)]
     pub jimeng: JimengSection,
     #[serde(default)]
     pub worldlabs: ProviderKeySection,
@@ -37,6 +39,12 @@ pub struct StorageSection {
     pub access_key: Option<String>,
     pub secret_key: Option<String>,
     pub public_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Grok2apiSection {
+    pub url: Option<String>,
+    pub key: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -103,6 +111,10 @@ pub struct AppConfig {
 
     // xAI direct API — Grok image + video generation
     pub xai_key: String,
+
+    // grok2api proxy — Grok image/edit/video via self-hosted gateway
+    pub grok2api_url: String,
+    pub grok2api_key: String,
 
     // Jimeng video+image (ByteDance) — jimeng-api gateway
     pub jimeng_url: String,
@@ -230,6 +242,17 @@ impl AppConfig {
             },
 
             xai_key: env_or("ASSET_GATEWAY_XAI_KEY", file_cfg.xai.key.as_deref(), ""),
+
+            grok2api_url: env_or(
+                "ASSET_GATEWAY_GROK2API_URL",
+                file_cfg.grok2api.url.as_deref(),
+                "",
+            ),
+            grok2api_key: env_or(
+                "ASSET_GATEWAY_GROK2API_KEY",
+                file_cfg.grok2api.key.as_deref(),
+                "",
+            ),
 
             jimeng_url: env_or(
                 "ASSET_GATEWAY_JIMENG_URL",

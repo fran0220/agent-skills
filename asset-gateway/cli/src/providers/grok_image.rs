@@ -3,22 +3,25 @@ use std::time::{Duration, Instant};
 use crate::core::*;
 use serde_json::{json, Value};
 
-const XAI_BASE: &str = "https://api.x.ai";
 const IMAGE_MODEL: &str = "grok-imagine-image";
+const IMAGE_EDIT_MODEL: &str = "grok-imagine-image-edit";
 const VIDEO_MODEL: &str = "grok-imagine-video";
 
-/// Grok provider — image and video generation via xAI direct API.
+/// Grok provider — image generation, image editing, and video generation
+/// via grok2api proxy (OpenAI-compatible).
 ///
-/// - Image: `POST /v1/images/generations` (grok-imagine-image)
-/// - Video: `POST /v1/videos/generations` (grok-imagine-video, async poll)
+/// - Image: `POST /v1/images/generations` (JSON body)
+/// - Image edit: `POST /v1/images/edits` (multipart form)
+/// - Video: `POST /v1/videos` (multipart form, async poll)
 pub struct GrokImageProvider {
     pub id: String,
-    xai_key: String,
+    base_url: String,
+    api_key: String,
     http: reqwest::Client,
 }
 
 impl GrokImageProvider {
-    pub fn new(xai_key: String) -> Self {
+    pub fn new(base_url: String, api_key: String) -> Self {
         let http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(300))
@@ -26,32 +29,46 @@ impl GrokImageProvider {
             .expect("failed to build Grok HTTP client");
         Self {
             id: "grok_image".into(),
-            xai_key,
+            base_url: base_url.trim_end_matches('/').to_string(),
+            api_key,
             http,
         }
     }
 
-    /// Submit video generation and poll until done. Returns video URL.
+    /// Submit video generation (multipart form) and poll until done.
     async fn generate_video(
         &self,
         prompt: &str,
         duration: u32,
         image_url: Option<&str>,
     ) -> anyhow::Result<String> {
-        let mut body = json!({
-            "model": VIDEO_MODEL,
-            "prompt": prompt,
-            "duration": duration,
-        });
+        let mut form = reqwest::multipart::Form::new()
+            .text("model", VIDEO_MODEL.to_string())
+            .text("prompt", prompt.to_string())
+            .text("seconds", duration.to_string())
+            .text("size", "1024x1024".to_string());
+
+        // Attach reference image if provided
         if let Some(url) = image_url {
-            body["image"] = json!({"url": url});
+            let img_bytes = self
+                .http
+                .get(url)
+                .timeout(Duration::from_secs(30))
+                .send()
+                .await?
+                .bytes()
+                .await?;
+            let part = reqwest::multipart::Part::bytes(img_bytes.to_vec())
+                .file_name("reference.png")
+                .mime_str("image/png")?;
+            form = form.part("input_reference[]", part);
         }
 
         let resp = self
             .http
-            .post(format!("{}/v1/videos/generations", XAI_BASE))
-            .bearer_auth(&self.xai_key)
-            .json(&body)
+            .post(format!("{}/v1/videos", self.base_url))
+            .bearer_auth(&self.api_key)
+            .multipart(form)
             .send()
             .await?;
 
@@ -62,17 +79,17 @@ impl GrokImageProvider {
         }
 
         let data: Value = serde_json::from_str(&text)?;
-        let request_id = data["request_id"]
+        let video_id = data["id"]
             .as_str()
-            .ok_or_else(|| anyhow::anyhow!("missing request_id in video response"))?;
+            .ok_or_else(|| anyhow::anyhow!("missing id in video response"))?;
 
         // Poll until done (up to 5 minutes)
         for i in 0..60 {
             tokio::time::sleep(Duration::from_secs(5)).await;
             let poll = self
                 .http
-                .get(format!("{}/v1/videos/{}", XAI_BASE, request_id))
-                .bearer_auth(&self.xai_key)
+                .get(format!("{}/v1/videos/{}", self.base_url, video_id))
+                .bearer_auth(&self.api_key)
                 .send()
                 .await?;
 
@@ -81,19 +98,66 @@ impl GrokImageProvider {
             tracing::debug!(attempt = i + 1, status = poll_status, "Grok video: polling");
 
             match poll_status {
-                "done" => {
-                    let url = poll_data["video"]["url"]
-                        .as_str()
-                        .ok_or_else(|| anyhow::anyhow!("missing video url in done response"))?;
-                    return Ok(url.to_string());
+                "completed" => {
+                    // Download URL is at /v1/videos/{id}/content
+                    let content_url =
+                        format!("{}/v1/videos/{}/content", self.base_url, video_id);
+                    return Ok(content_url);
                 }
-                "expired" | "failed" => {
-                    anyhow::bail!("Grok video generation {}: {}", poll_status, poll_data);
+                "failed" => {
+                    anyhow::bail!("Grok video generation failed: {}", poll_data);
                 }
                 _ => continue,
             }
         }
         anyhow::bail!("Grok video generation timed out after 5 minutes")
+    }
+
+    /// Edit an image using grok-imagine-image-edit (multipart form).
+    async fn edit_image(
+        &self,
+        prompt: &str,
+        image_url: &str,
+    ) -> anyhow::Result<String> {
+        // Download the source image
+        let img_bytes = self
+            .http
+            .get(image_url)
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await?
+            .bytes()
+            .await?;
+
+        let part = reqwest::multipart::Part::bytes(img_bytes.to_vec())
+            .file_name("input.png")
+            .mime_str("image/png")?;
+
+        let form = reqwest::multipart::Form::new()
+            .text("model", IMAGE_EDIT_MODEL.to_string())
+            .text("prompt", prompt.to_string())
+            .text("n", "1")
+            .part("image[]", part);
+
+        let resp = self
+            .http
+            .post(format!("{}/v1/images/edits", self.base_url))
+            .bearer_auth(&self.api_key)
+            .multipart(form)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let text = resp.text().await?;
+        if !status.is_success() {
+            anyhow::bail!("Grok image edit returned {}: {}", status, text);
+        }
+
+        let payload: Value = serde_json::from_str(&text)?;
+        payload["data"][0]["url"]
+            .as_str()
+            .map(String::from)
+            .ok_or_else(|| anyhow::anyhow!("Grok image edit response missing URL"))
     }
 }
 
@@ -108,7 +172,7 @@ impl AssetProvider for GrokImageProvider {
     }
 
     fn display_name(&self) -> &str {
-        "Grok (xAI)"
+        "Grok (grok2api)"
     }
 
     fn asset_types(&self) -> &[AssetType] {
@@ -133,7 +197,7 @@ impl AssetProvider for GrokImageProvider {
                     .params
                     .get("duration")
                     .and_then(|v| v.as_u64())
-                    .unwrap_or(5) as u32;
+                    .unwrap_or(6) as u32;
                 let image_url = req.input_file.as_deref();
 
                 let video_url = self.generate_video(prompt, duration, image_url).await?;
@@ -155,24 +219,49 @@ impl AssetProvider for GrokImageProvider {
                 })
             }
             _ => {
-                // Image generation
-                let aspect_ratio = req
+                // Check if this is an edit request (has input_file + edit_mode)
+                let is_edit = req.input_file.is_some()
+                    && req
+                        .params
+                        .get("edit_mode")
+                        .and_then(|v| v.as_str())
+                        .is_some();
+
+                if is_edit {
+                    let image_url = req.input_file.as_deref().unwrap();
+                    let output_url = self.edit_image(prompt, image_url).await?;
+
+                    return Ok(GenerateResponse {
+                        provider_id: self.id.clone(),
+                        output_path: None,
+                        output_url: Some(output_url),
+                        output_data: None,
+                        metadata: json!({
+                            "model": IMAGE_EDIT_MODEL,
+                            "asset_type": "image",
+                            "edit_mode": true,
+                        }),
+                        cost_usd: Some(0.02),
+                        elapsed_ms: start.elapsed().as_millis() as u64,
+                    });
+                }
+
+                // Standard image generation
+                let model = req
                     .params
-                    .get("aspect_ratio")
+                    .get("model")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("1:1");
+                    .unwrap_or(IMAGE_MODEL);
 
                 let resp = self
                     .http
-                    .post(format!("{}/v1/images/generations", XAI_BASE))
-                    .bearer_auth(&self.xai_key)
-                    .timeout(Duration::from_secs(60))
+                    .post(format!("{}/v1/images/generations", self.base_url))
+                    .bearer_auth(&self.api_key)
+                    .timeout(Duration::from_secs(120))
                     .json(&json!({
-                        "model": IMAGE_MODEL,
+                        "model": model,
                         "prompt": prompt,
                         "n": 1,
-                        "response_format": "url",
-                        "aspect_ratio": aspect_ratio,
                     }))
                     .send()
                     .await?;
@@ -197,9 +286,8 @@ impl AssetProvider for GrokImageProvider {
                     output_url: Some(output_url),
                     output_data: None,
                     metadata: json!({
-                        "model": IMAGE_MODEL,
+                        "model": model,
                         "asset_type": "image",
-                        "aspect_ratio": aspect_ratio,
                     }),
                     cost_usd: Some(0.02),
                     elapsed_ms: start.elapsed().as_millis() as u64,
@@ -212,8 +300,8 @@ impl AssetProvider for GrokImageProvider {
         let start = Instant::now();
         let resp = self
             .http
-            .get(format!("{}/v1/models", XAI_BASE))
-            .bearer_auth(&self.xai_key)
+            .get(format!("{}/v1/models", self.base_url))
+            .bearer_auth(&self.api_key)
             .timeout(Duration::from_secs(10))
             .send()
             .await;
