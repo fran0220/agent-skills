@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 struct ConfigFile {
     server: ServerSection,
     proxy: ProxySection,
+    grok: GrokSection,
     exa: ApiKeySection,
     tavily: ApiKeySection,
     search: SearchSection,
@@ -30,6 +31,13 @@ struct ProxySection {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
+struct GrokSection {
+    url: Option<String>,
+    key: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
 struct ApiKeySection {
     key: Option<String>,
 }
@@ -47,6 +55,8 @@ pub struct AppConfig {
     pub api_url: String,
     pub api_key: String,
     pub search_model: String,
+    pub grok_url: String,
+    pub grok_key: String,
     pub analysis_model: String,
     pub max_split: u32,
     pub timeout_secs: u64,
@@ -62,7 +72,9 @@ impl Default for AppConfig {
         Self {
             api_url: "https://api.xiaomao.chat".to_string(),
             api_key: String::new(),
-            search_model: "grok-4.1-fast".to_string(),
+            grok_url: String::new(),
+            grok_key: String::new(),
+            search_model: "grok-4.20-beta".to_string(),
             analysis_model: "gemini-3-flash-preview".to_string(),
             max_split: 10,
             timeout_secs: 180,
@@ -96,9 +108,29 @@ impl AppConfig {
         Ok(config)
     }
 
+    /// Effective Grok API URL (falls back to api_url).
+    pub fn effective_grok_url(&self) -> &str {
+        if self.grok_url.is_empty() {
+            &self.api_url
+        } else {
+            &self.grok_url
+        }
+    }
+
+    /// Effective Grok API key (falls back to api_key).
+    pub fn effective_grok_key(&self) -> &str {
+        if self.grok_key.is_empty() {
+            &self.api_key
+        } else {
+            &self.grok_key
+        }
+    }
+
     pub fn apply_env_overrides(&mut self) {
         apply_string_env("AI_SEARCH_URL", &mut self.api_url);
         apply_string_env("AI_SEARCH_KEY", &mut self.api_key);
+        apply_string_env("AI_SEARCH_GROK_URL", &mut self.grok_url);
+        apply_string_env("AI_SEARCH_GROK_KEY", &mut self.grok_key);
         apply_string_env("AI_SEARCH_MODEL", &mut self.search_model);
         apply_string_env("AI_SEARCH_ANALYSIS_MODEL", &mut self.analysis_model);
         apply_string_env("AI_SEARCH_GATEWAY_TOKEN", &mut self.gateway_token);
@@ -135,6 +167,13 @@ impl AppConfig {
         }
         if let Some(model) = file.proxy.analysis_model {
             self.analysis_model = model;
+        }
+
+        if let Some(url) = file.grok.url {
+            self.grok_url = url;
+        }
+        if let Some(key) = file.grok.key {
+            self.grok_key = key;
         }
 
         if let Some(key) = file.exa.key {
@@ -190,11 +229,11 @@ fn config_path_from_home(home: Option<PathBuf>) -> PathBuf {
 }
 
 pub const SEARCH_MODELS: &[&str] = &[
-    "grok-4.1-expert",
-    "grok-4.1-fast",
-    "grok-4.20-beta",
-    "grok-4",
-    "grok-4-thinking",
+    "grok-4.20-fast",
+    "grok-4.20-auto",
+    "grok-4.20-expert",
+    "grok-4.20-0309",
+    "grok-4.3-beta",
 ];
 
 pub const SEARCH_MODES: &[&str] = &["fast", "deep", "answer"];

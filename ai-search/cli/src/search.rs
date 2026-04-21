@@ -103,12 +103,13 @@ struct SearchOutcome {
 
 impl SearchEngine {
     pub fn new(config: AppConfig) -> Result<Self> {
-        let grok = if config.api_key.is_empty() {
+        let grok_key = config.effective_grok_key();
+        let grok = if grok_key.is_empty() {
             None
         } else {
             Some(Arc::new(GrokSearchProvider::new(
-                config.api_url.clone(),
-                config.api_key.clone(),
+                config.effective_grok_url().to_string(),
+                grok_key.to_string(),
                 config.search_model.clone(),
                 config.timeout_secs,
             )?))
@@ -556,15 +557,16 @@ impl SearchEngine {
     }
 
     fn grok_provider(&self, model: Option<&str>) -> Result<Option<Arc<GrokSearchProvider>>> {
-        if self.config.api_key.is_empty() {
+        let grok_key = self.config.effective_grok_key();
+        if grok_key.is_empty() {
             return Ok(None);
         }
 
         if let Some(requested_model) = model {
             if requested_model != self.config.search_model {
                 return Ok(Some(Arc::new(GrokSearchProvider::new(
-                    self.config.api_url.clone(),
-                    self.config.api_key.clone(),
+                    self.config.effective_grok_url().to_string(),
+                    grok_key.to_string(),
                     requested_model.to_string(),
                     self.config.timeout_secs,
                 )?)));

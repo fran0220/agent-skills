@@ -22,20 +22,20 @@ pub(crate) struct ProviderStatus {
 }
 
 pub(crate) fn provider_statuses(config: &AppConfig) -> Vec<ProviderStatus> {
-    let grok_ready = !config.api_key.is_empty();
+    let grok_ready = !config.effective_grok_key().is_empty();
     let exa_ready = !config.exa_key.is_empty();
     let tavily_ready = !config.tavily_key.is_empty();
 
     vec![
         ProviderStatus {
             id: "grok",
-            name: "Grok via Proxy",
+            name: "Grok",
             configured: grok_ready,
             healthy: grok_ready,
             details: if grok_ready {
-                format!("proxy: {}", config.api_url)
+                format!("endpoint: {}", config.effective_grok_url())
             } else {
-                "missing proxy key".to_string()
+                "missing grok key".to_string()
             },
         },
         ProviderStatus {
