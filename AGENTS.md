@@ -28,7 +28,6 @@ agent-skills/
 │   └── scripts/           #   导入脚本
 ├── bb-browser/            # BB Browser — 浏览器自动化
 │   └── skill/             #   Agent 技能
-├── grok2api-go/           # Grok2API Go — Grok API 代理网关（手动 Docker 部署）
 ├── openclaw/              # OpenClaw — 网关最佳实践
 │   └── skill/             #   知识库
 ├── pi-sdk-practices/      # Pi SDK Practices — SDK 开发最佳实践
@@ -39,6 +38,7 @@ agent-skills/
 │   └── npm/               #   npm 客户端包
 ├── slide-deck/            # Slide Deck — AI 幻灯片生成
 │   └── skill/             #   Agent 技能
+├── chatgpt2api/           # ChatGPT2API — ChatGPT 图片生成 API 代理（Go + Docker）
 │
 ├── docs/                  # 跨项目开发规范
 │   ├── skill-conventions.md
@@ -85,7 +85,8 @@ agent-skills/
 |------|------|--------|------|:---:|
 | asset-gateway | asset.origingame.dev | Oracle | 6700 | ✅ push main |
 | ai-search | search.xiaomao.chat | BWG | 6900 | ✅ push main |
-| grok2api-go | grok.xiaomao.chat | BWG | 8000 | 手动 docker |
+| grok2api | grok.xiaomao.chat | BWG | 8000 | 手动 docker (ghcr.io/chenyme/grok2api) |
+| chatgpt2api | — | BWG | 8200 | 手动 docker (本仓库 chatgpt2api/) |
 | gamedb | gamedb.zhangfan0220.workers.dev | Cloudflare | — | N/A (wrangler deploy) |
 | jimeng-api | — | jpdata | 5100 | 手动 docker (ghcr.io/iptag/jimeng-api) |
 
@@ -95,6 +96,7 @@ agent-skills/
 - jimeng-gateway（原 jpdata）— 已移除，替换为 wwwzhouhui/jimeng-free-api-all Docker
 - grok-register（原 jpdata）— 已停用
 - cognee-admin（原 Oracle / cognee.origingame.dev）— 已下线，替换为 CF Workers gamedb
+- grok2api-go（原仓库目录）— 已删除，BWG 上运行的是第三方 ghcr.io/chenyme/grok2api Docker 镜像
 - jpdata 服务器即将到期，所有服务已迁移或下线
 
 ### CI 部署流程
