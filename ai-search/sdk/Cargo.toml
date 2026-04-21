@@ -1,0 +1,21 @@
+[package]
+name = "origin-search"
+version = "0.1.0"
+edition = "2021"
+description = "Rust SDK for the Origin AI Search service"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/fran0220/agent-skills"
+homepage = "https://github.com/fran0220/agent-skills/tree/main/ai-search/sdk"
+documentation = "https://docs.rs/origin-search"
+readme = "README.md"
+keywords = ["ai", "search", "sdk", "web-search", "origin"]
+categories = ["api-bindings", "web-programming::http-client"]
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

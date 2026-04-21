@@ -182,7 +182,7 @@ impl AssetProvider for GrokImageProvider {
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
             supports_transparency: false,
-            priority: 95,
+            priority: 100, // Default image provider (non-transparent)
             ..Default::default()
         }
     }

@@ -20,7 +20,7 @@ cargo install --path .
 
 | 变量 | 用途 |
 |------|------|
-| `COGNEE_URL` | Cognee API 地址，默认 `https://cogneeapi.xiaomao.chat` |
+| `COGNEE_URL` | Cognee API 地址，默认 `https://cogneeapi.origingame.dev` |
 | `COGNEE_JWT` | Cognee API JWT，供 `health`/`dataset`/`data`/`cognify`/`search`/`config`/`ontology` 使用 |
 | `COGNEE_ADMIN_TOKEN` | Web 面板与 Nginx `auth_request` 使用的 `ca_xxx` token |
 | `COGNEE_ADMIN_DB` | PostgreSQL 连接串，供日志、pipeline、token 管理和 Web 面板使用 |

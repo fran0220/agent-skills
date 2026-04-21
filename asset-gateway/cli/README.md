@@ -175,11 +175,11 @@ cargo fmt --manifest-path asset-gateway/cli/Cargo.toml --check
 
 ## Deployment
 
-- Server: `jpdata` (`185.200.65.233`)
+- Server: `Oracle` (`161.33.13.122`)
 - Binary: `/opt/asset-gateway/asset-gateway`
 - Config: `/opt/asset-gateway/config.toml`
 - Port: `6700`
-- Domain: `upload.xiaomao.chat`
+- Domain: `asset.origingame.dev`
 - Service manager: `systemd`
 - Deploy path: GitHub Actions on push to `main`
 

@@ -29,7 +29,7 @@ cargo run -- --help
 | Credential | Scope | How to get it | Where it is used |
 |------------|-------|---------------|------------------|
 | Cognee JWT | Cognee API commands | `cognee-admin login --username ... --password ...` | `health`, `dataset`, `data`, `cognify`, `search`, `config`, `ontology` |
-| `ca_xxx` admin token | Web/panel admin surface | Created by an admin via `token create` | `https://cognee.xiaomao.chat`, Nginx `auth_request`, token distribution |
+| `ca_xxx` admin token | Web/panel admin surface | Created by an admin via `token create` | `https://cognee.origingame.dev`, Nginx `auth_request`, token distribution |
 
 The local config file is `~/.config/cognee-admin/auth.json` and stores `cognee_jwt`, `admin_token`, and `cognee_url`.
 
@@ -37,7 +37,7 @@ The local config file is `~/.config/cognee-admin/auth.json` and stores `cognee_j
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COGNEE_URL` | `https://cogneeapi.xiaomao.chat` | Cognee REST API endpoint |
+| `COGNEE_URL` | `https://cogneeapi.origingame.dev` | Cognee REST API endpoint |
 | `COGNEE_JWT` | none | Cognee API JWT override |
 | `COGNEE_ADMIN_TOKEN` | none | Admin token override for panel/admin usage |
 | `COGNEE_ADMIN_DB` | `postgres://cognee:cognee@localhost:5433/cognee_db` | PostgreSQL connection string |
@@ -138,7 +138,7 @@ Set `LLM_ENDPOINT=https://api.xiaomao.chat/v1` on the Cognee server. The endpoin
 
 ## Web Dashboard
 
-Production URL: `https://cognee.xiaomao.chat`
+Production URL: `https://cognee.origingame.dev`
 
 Login uses a `ca_xxx` token.
 

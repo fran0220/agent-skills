@@ -15,7 +15,7 @@ impl AppConfig {
     pub fn from_env() -> Self {
         Self {
             cognee_url: std::env::var("COGNEE_URL")
-                .unwrap_or_else(|_| "https://cogneeapi.xiaomao.chat".to_string()),
+                .unwrap_or_else(|_| "https://cogneeapi.origingame.dev".to_string()),
             database_url: std::env::var("COGNEE_ADMIN_DB").unwrap_or_else(|_| {
                 "postgres://cognee:cognee@localhost:5433/cognee_db".to_string()
             }),

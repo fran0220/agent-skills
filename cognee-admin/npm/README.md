@@ -40,7 +40,7 @@ Config file format:
 ```json
 {
   "admin_token": "ca_...",
-  "cognee_url": "https://cogneeapi.xiaomao.chat"
+  "cognee_url": "https://cogneeapi.origingame.dev"
 }
 ```
 

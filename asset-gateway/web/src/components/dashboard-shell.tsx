@@ -81,7 +81,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">workspace</p>
-                <p className="text-sm font-medium text-white">upload.xiaomao.chat</p>
+                <p className="text-sm font-medium text-white">asset.origingame.dev</p>
               </div>
               <div className="grid h-12 w-12 place-items-center rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(34,211,238,0.3),rgba(236,72,153,0.25))] text-sm font-semibold text-white">
                 FM

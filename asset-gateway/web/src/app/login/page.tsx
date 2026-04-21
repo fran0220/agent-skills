@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
 import { ArrowRight, GitBranch, KeyRound, LoaderCircle, Shield } from "lucide-react";
 
-const fallbackApiUrl = "https://upload.xiaomao.chat";
+const fallbackApiUrl = "https://asset.origingame.dev";
 
 export default function LoginPage() {
   const router = useRouter();

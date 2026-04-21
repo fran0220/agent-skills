@@ -2,7 +2,7 @@
 # Tripo3D 管线联调：需已部署的网关 + 有效 token + Tripo 额度。
 #
 # 用法：
-#   export ASSET_GATEWAY_URL="https://upload.xiaomao.chat"
+#   export ASSET_GATEWAY_URL="https://asset.origingame.dev"
 #   export ASSET_GATEWAY_TOKEN="agk_..."   # 或已 asset-gateway auth set
 #   ./scripts/e2e-process3d-chain.sh [--skip-generate]
 #
@@ -24,7 +24,7 @@ for arg in "$@"; do
   [[ "$arg" == "--skip-generate" ]] && SKIP_GEN=true
 done
 
-: "${ASSET_GATEWAY_URL:=https://upload.xiaomao.chat}"
+: "${ASSET_GATEWAY_URL:=https://asset.origingame.dev}"
 export ASSET_GATEWAY_URL
 
 OUT="${TMPDIR:-/tmp}/agw-process3d-e2e"

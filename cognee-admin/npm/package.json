@@ -1,6 +1,6 @@
 {
   "name": "@doufunao123/cognee-admin",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Cognee knowledge engine CLI client — search, upload, cognify",
   "type": "module",
   "bin": {

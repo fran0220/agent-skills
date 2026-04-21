@@ -36,7 +36,7 @@ cargo install --path .
 
 | Variable | When to use it |
 |----------|----------------|
-| `COGNEE_URL` | Cognee API base URL. Default is `https://cogneeapi.xiaomao.chat`. |
+| `COGNEE_URL` | Cognee API base URL. Default is `https://cogneeapi.origingame.dev`. |
 | `COGNEE_JWT` | Required for Cognee API commands such as `health`, `dataset`, `data`, `cognify`, `search`, `config`, and `ontology`. |
 | `COGNEE_ADMIN_TOKEN` | `ca_xxx` token for the web dashboard and Nginx-protected admin surface. |
 | `COGNEE_ADMIN_DB` | PostgreSQL connection string for log, pipeline, token, and panel-backed features. |
@@ -59,7 +59,7 @@ cognee-admin login --username alice --password '<password>'
 
 This stores the JWT in `~/.config/cognee-admin/auth.json` under `cognee_jwt`.
 
-2. Web/admin auth uses a `ca_xxx` token created by an admin. This is stored separately as `admin_token` and is used to access `https://cognee.xiaomao.chat`.
+2. Web/admin auth uses a `ca_xxx` token created by an admin. This is stored separately as `admin_token` and is used to access `https://cognee.origingame.dev`.
 
 Legacy single-token configs are migrated automatically: old `token` values that start with `ca_` become `admin_token`; other tokens become `cognee_jwt`.
 
@@ -189,7 +189,7 @@ Important: the endpoint is not part of the Cognee settings API. Set `LLM_ENDPOIN
 
 ## Web Dashboard
 
-The dashboard is served at `https://cognee.xiaomao.chat`.
+The dashboard is served at `https://cognee.origingame.dev`.
 
 Login uses a `ca_xxx` token, not a Cognee JWT.
 

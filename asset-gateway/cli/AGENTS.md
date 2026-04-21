@@ -56,18 +56,18 @@
 
 | 项目 | 值 |
 |------|-----|
-| 服务器 | jpdata (185.200.65.233), user `root`, x86_64 |
+| 服务器 | Oracle (161.33.13.122), user `opc`, aarch64 |
 | 二进制 | `/opt/asset-gateway/asset-gateway` |
 | 配置文件 | `/opt/asset-gateway/config.toml` |
 | 环境变量 | `/opt/asset-gateway/.env` |
 | systemd | `asset-gateway.service` |
-| 端口 | `6700` (Axum)，Nginx 反代 → upload.xiaomao.chat |
-| 域名 | `upload.xiaomao.chat` |
-| CI | push main → GitHub Actions → SSH deploy to jpdata |
+| 端口 | `6700` (Axum)，Nginx 反代 → asset.origingame.dev |
+| 域名 | `asset.origingame.dev` |
+| CI | push main → GitHub Actions → SSH build & deploy on Oracle (aarch64) |
 
 ### 服务器本地工具依赖
 
-后处理与渲染链路依赖以下工具（已安装在 jpdata 服务器，或应随部署一并保证）：
+后处理与渲染链路依赖以下工具（需在 Oracle 服务器上安装）：
 
 | 工具 | 用途 | 安装方式 |
 |------|------|---------|
@@ -118,9 +118,9 @@ key = "..."
 ### 部署流程
 
 - **主要路径**：push 到 main 自动触发 CI 部署（GitHub Actions runner 编译 → scp 二进制 → 重启 systemd）
-- **重要**：不在 jpdata 服务器上编译（性能差），在 runner (`ubuntu-latest` x86_64) 上编译后推送二进制
+- **重要**：Oracle 是 aarch64，无法在 x86_64 runner 上交叉编译，因此采用与 cognee-admin 相同的方案——在 Oracle 服务器上拉代码编译
 
-CI workflow：`.github/workflows/asset-gateway.yml`，Secrets：`JPDATA_SSH_KEY`、`JPDATA_HOST`
+CI workflow：`.github/workflows/asset-gateway.yml`，Secrets：`DEPLOY_SSH_KEY`、`ORACLE_HOST`
 
 ## npm CLI 客户端（唯一客户端）
 

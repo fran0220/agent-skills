@@ -63,7 +63,7 @@ asset-gateway generate video --prompt "sweeping aerial shot of a Ming dynasty pa
 Pass a reference image with `--input` to ground the video in an existing visual. Upload local files first with `asset-gateway upload file`.
 
 ```bash
-asset-gateway generate video --prompt "slow camera pan across the palace courtyard, morning mist" --input https://upload.xiaomao.chat/uploads/bg_court.png --output-dir ./assets
+asset-gateway generate video --prompt "slow camera pan across the palace courtyard, morning mist" --input https://asset.origingame.dev/uploads/bg_court.png --output-dir ./assets
 ```
 
 ### Provider Selection

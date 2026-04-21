@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 BINARY_NAME="asset-gateway"
-REMOTE_HOST="${REMOTE_HOST:-jpdata}"
+REMOTE_HOST="${REMOTE_HOST:-oracle}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/asset-gateway}"
 REMOTE_SRC="/tmp/asset-gateway-build"
 

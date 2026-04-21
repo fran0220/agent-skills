@@ -55,7 +55,7 @@ export interface AssetForgeTransport {
   request<T>(method: string, path: string, options?: TransportRequestOptions): Promise<T>;
 }
 
-export const DEFAULT_BASE_URL = "https://upload.xiaomao.chat";
+export const DEFAULT_BASE_URL = "https://asset.origingame.dev";
 
 export class AssetForge implements AssetForgeTransport {
   readonly baseUrl: string;

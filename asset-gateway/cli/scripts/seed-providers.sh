@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Usage:
-#   GATEWAY_URL=https://upload.xiaomao.chat \
+#   GATEWAY_URL=https://asset.origingame.dev \
 #   ADMIN_PASSWORD=... \
 #   LLM_PROXY_KEY=... OPENAI_API_KEY=... GOOGLE_API_KEY=... \
 #   JIMENG_GATEWAY_KEY=... ELEVENLABS_API_KEY=... TRIPO3D_API_KEY=... \

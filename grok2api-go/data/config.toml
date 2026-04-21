@@ -1,0 +1,13 @@
+# Local test config override
+[app]
+api_key = "8f8hzdjXkQj3cEx1"
+app_key = "grok2api"
+stream = true
+thinking = true
+temporary = true
+disable_memory = true
+
+[proxy]
+# No proxy for local testing (direct connection)
+base_proxy_url = ""
+browser = "chrome136"

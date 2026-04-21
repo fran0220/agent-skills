@@ -20,7 +20,7 @@ struct Cli {
     #[arg(
         long,
         env = "COGNEE_URL",
-        default_value = "https://cogneeapi.xiaomao.chat"
+        default_value = "https://cogneeapi.origingame.dev"
     )]
     cognee_url: String,
 

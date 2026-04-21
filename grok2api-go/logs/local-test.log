@@ -1,0 +1,18 @@
+time=2026-04-08T00:49:20.773-07:00 level=INFO msg="token refresh scheduler started" interval=2h0m0s
+time=2026-04-08T00:49:20.773-07:00 level=INFO msg="starting grok2api-go server" addr=0.0.0.0:8000 workers=1 defaults_config=/Users/fan/agent-skills/grok2api-go/config.defaults.toml override_config=/Users/fan/agent-skills/grok2api-go/data/config.toml
+time=2026-04-08T00:49:20.773-07:00 level=INFO msg="token refresh completed" trigger=scheduler_start checked=0 refreshed=0 recovered=0 expired=0
+time=2026-04-08T00:50:03.402-07:00 level=ERROR msg="app-chat upstream failure" status=403 content_type=application/json body="{\"error\":{\"code\":7,\"message\":\"Model is not found\",\"details\":[]}}\n"
+time=2026-04-08T00:50:03.402-07:00 level=WARN msg="retrying request" attempt=1 max_retry=3 status=403 delay=334.631566ms total_delay=334.631566ms
+time=2026-04-08T00:50:04.444-07:00 level=ERROR msg="app-chat upstream failure" status=403 content_type=application/json body="{\"error\":{\"code\":7,\"message\":\"Model is not found\",\"details\":[]}}\n"
+time=2026-04-08T00:50:04.445-07:00 level=WARN msg="retrying request" attempt=2 max_retry=3 status=403 delay=128.207121ms total_delay=462.838687ms
+time=2026-04-08T00:50:05.403-07:00 level=ERROR msg="app-chat upstream failure" status=403 content_type=application/json body="{\"error\":{\"code\":7,\"message\":\"Model is not found\",\"details\":[]}}\n"
+time=2026-04-08T00:50:05.403-07:00 level=ERROR msg="retry exhausted" attempts=3 status=403 total_delay=462.838687ms
+time=2026-04-08T00:50:05.403-07:00 level=ERROR msg="request completed" request_id=329f3bed-d3fc-49a4-8627-8c5a49730c25 method=POST path=/v1/chat/completions status=502 duration_ms=2739.985625
+time=2026-04-08T00:50:14.487-07:00 level=INFO msg="request completed" request_id=89120f6b-536b-4ec6-9cb7-7760757f500c method=POST path=/v1/images/generations status=200 duration_ms=9015.413959
+time=2026-04-08T00:50:37.678-07:00 level=INFO msg="request completed" request_id=4201c118-2af5-4fd2-b5d0-c1c70a48f32b method=POST path=/v1/videos status=200 duration_ms=23113.027084
+time=2026-04-08T00:50:57.337-07:00 level=ERROR msg="app-chat upstream failure" status=429 content_type=application/json body="{\"error\":{\"code\":8,\"message\":\"Too many requests\",\"details\":[]}}\n"
+time=2026-04-08T00:50:57.337-07:00 level=ERROR msg="non-retryable error" type=*reverse.UpstreamError error="app-chat request failed: 429"
+time=2026-04-08T00:51:18.238-07:00 level=INFO msg="request completed" request_id=5a7ccc08-43e0-49ba-99a9-3175057de295 method=POST path=/v1/chat/completions status=200 duration_ms=22419.876208
+time=2026-04-08T00:51:32.215-07:00 level=INFO msg="shutdown signal received"
+time=2026-04-08T00:51:32.215-07:00 level=INFO msg="token refresh scheduler stopped"
+time=2026-04-08T00:51:32.215-07:00 level=INFO msg="server stopped"

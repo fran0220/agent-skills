@@ -15,7 +15,7 @@ asset-gateway auth set <token>
 asset-gateway auth status
 ```
 
-Default gateway: `https://upload.xiaomao.chat`. Override with `--gateway-url` or `ASSET_GATEWAY_URL`.
+Default gateway: `https://asset.origingame.dev`. Override with `--gateway-url` or `ASSET_GATEWAY_URL`.
 
 ## Capabilities
 

@@ -1,6 +1,6 @@
 # Design Blueprint — `cognee-admin`
 
-> Cognee knowledge engine management CLI and web dashboard. One binary, two modes: web panel at `cognee.xiaomao.chat` and CLI client for `api.cognee.xiaomao.chat`.
+> Cognee knowledge engine management CLI and web dashboard. One binary, two modes: web panel at `cognee.origingame.dev` and CLI client for `api.cognee.origingame.dev`.
 
 ## 1. Purpose
 
@@ -47,7 +47,7 @@ Read operations (health, dataset list, search) are low-risk. Data mutations (dat
 Use a **single Rust binary with dual mode**:
 
 1. `cognee-admin serve` runs the HTMX web panel, serving SSR templates with PG-backed analytics.
-2. All other subcommands act as HTTP clients against the Cognee REST API at `api.cognee.xiaomao.chat`.
+2. All other subcommands act as HTTP clients against the Cognee REST API at `api.cognee.origingame.dev`.
 
 This keeps deployment simple:
 - one executable on the Oracle ARM VPS

@@ -81,9 +81,9 @@ agent-skills/
 
 | 服务 | 域名 | 服务器 | 端口 | CI 自动部署 |
 |------|------|--------|------|:---:|
-| asset-gateway | upload.xiaomao.chat | jpdata | 6700 | ✅ push main |
+| asset-gateway | asset.origingame.dev | Oracle | 6700 | ✅ push main |
 | ai-search | search.xiaomao.chat | BWG | 6900 | ✅ push main |
-| cognee-admin | cognee.xiaomao.chat | Oracle | 9847 | ✅ push main |
+| cognee-admin | cognee.origingame.dev | Oracle | 9847 | ✅ push main |
 | grok2api-go | grok.xiaomao.chat | BWG | 8000 | 手动 docker |
 | jimeng-api | — | jpdata | 5100 | 手动 docker (ghcr.io/iptag/jimeng-api) |
 
@@ -94,11 +94,13 @@ agent-skills/
 
 ### CI 部署流程
 
-所有 Rust 服务通过 GitHub Actions 自动部署：push 到 main 且 paths 匹配 → CI check/test/clippy → SSH 到目标服务器 → `git pull + cargo build --release` → restart systemd。
+所有 Rust 服务通过 GitHub Actions 自动部署：push 到 main 且 paths 匹配 → CI check/test/clippy → 部署。
 
-Rust 服务在 GitHub Actions runner (ubuntu-latest x86_64) 上编译 release 二进制，然后 scp 到目标服务器并重启 systemd。不在目标服务器上编译（性能差）。
+部署方式按目标服务器架构分两种：
+- **x86_64 服务器（BWG）**：runner 上编译 release 二进制 → scp 到服务器 → restart systemd
+- **aarch64 服务器（Oracle）**：SSH 到服务器 → `git pull + cargo build --release` → restart systemd（无法交叉编译）
 
-GitHub Secrets：`DEPLOY_SSH_KEY`（统一私钥）+ `JPDATA_HOST` / `BWG_HOST` / `ORACLE_HOST`。
+GitHub Secrets：`DEPLOY_SSH_KEY`（统一私钥）+ `BWG_HOST` / `ORACLE_HOST`。
 
 ## 新建项目约定
 

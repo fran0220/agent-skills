@@ -17,7 +17,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Trust Domain A                          │
-│              Cognee API (cogneeapi.xiaomao.chat)             │
+│              Cognee API (cogneeapi.origingame.dev)             │
 │                                                              │
 │  Auth: Cognee JWT (fastapi-users)                           │
 │  Used by: CLI data/search/cognify/config/dataset commands   │
@@ -27,7 +27,7 @@
 
 ┌─────────────────────────────────────────────────────────────┐
 │                      Trust Domain B                          │
-│            cognee-admin Panel (cognee.xiaomao.chat)          │
+│            cognee-admin Panel (cognee.origingame.dev)          │
 │                                                              │
 │  Auth: ca_xxx tokens (SHA256 hashed in PG)                  │
 │  Used by: Web panel login, Nginx auth_request, admin CLI    │
@@ -298,7 +298,7 @@ description: "Cognee knowledge engine management. Use when the user wants to add
    - [ ] `cognee-admin data add-file --dataset test /tmp/test.md` → 上传成功
    - [ ] `cognee-admin cognify --dataset-name test` → 触发成功
    - [ ] `cognee-admin search "test query"` → 返回结果
-   - [ ] Web 面板 `cognee.xiaomao.chat` 登录正常
+   - [ ] Web 面板 `cognee.origingame.dev` 登录正常
    - [ ] Web 面板上传功能正常
    - [ ] Nginx auth_request 仍然正常
 

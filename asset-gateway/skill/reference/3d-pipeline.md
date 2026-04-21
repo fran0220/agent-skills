@@ -9,7 +9,7 @@ Generate 3D models and process them through the Tripo3D pipeline.
 asset-gateway generate model --prompt "stylized low-poly warrior, T-pose" --face-limit 5000 --pbr --output-dir ./assets
 
 # From image
-asset-gateway generate model --image https://upload.xiaomao.chat/uploads/concept.png --face-limit 8000 --pbr --output-dir ./assets
+asset-gateway generate model --image https://asset.origingame.dev/uploads/concept.png --face-limit 8000 --pbr --output-dir ./assets
 
 # From 4-view images (front, left, back, right)
 asset-gateway generate model --multiview front.png,left.png,back.png,right.png --face-limit 5000 --pbr --output-dir ./assets

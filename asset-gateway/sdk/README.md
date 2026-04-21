@@ -9,7 +9,7 @@ import { AssetForge } from "@assetforge/sdk";
 
 const forge = new AssetForge({
   apiKey: "agk_...",
-  baseUrl: "https://upload.xiaomao.chat",
+  baseUrl: "https://asset.origingame.dev",
 });
 ```
 

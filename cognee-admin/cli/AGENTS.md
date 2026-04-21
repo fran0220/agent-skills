@@ -6,7 +6,7 @@ Cognee 知识引擎管理 CLI + Web 面板。
 
 这是一个面向运维和 Agent 自动化的 Rust 项目：
 
-- `serve` 模式运行 HTMX Web 管理面板（`cognee.xiaomao.chat`）
+- `serve` 模式运行 HTMX Web 管理面板（`cognee.origingame.dev`）
 - 其余命令作为客户端调用 Cognee REST API 或直连 PostgreSQL 做运维查询
 
 目标是为 API-only 的 Cognee 知识引擎提供可视化运维界面、批量数据导入能力和 Agent 友好的 JSON CLI。
@@ -57,8 +57,8 @@ Thread 4 仍在继续增强 Web 面板。涉及新页面或新路由时，务必
 
 **两条认证路径**：
 
-1. **Web 面板**（`cognee.xiaomao.chat`）：`ca_xxx` 直接认证
-2. **Cognee API**（`cogneeapi.xiaomao.chat`）：Nginx `auth_request` → cognee-admin `/auth/validate` → 验证 `ca_xxx` → 放行
+1. **Web 面板**（`cognee.origingame.dev`）：`ca_xxx` 直接认证
+2. **Cognee API**（`cogneeapi.origingame.dev`）：Nginx `auth_request` → cognee-admin `/auth/validate` → 验证 `ca_xxx` → 放行
 
 ```
 用户 --[ca_xxx Bearer]--> Nginx --[auth_request]--> cognee-admin /auth/validate
@@ -81,7 +81,7 @@ Thread 4 仍在继续增强 Web 面板。涉及新页面或新路由时，务必
 ```json
 {
   "admin_token": "ca_...",
-  "cognee_url": "https://cogneeapi.xiaomao.chat"
+  "cognee_url": "https://cogneeapi.origingame.dev"
 }
 ```
 
@@ -243,7 +243,7 @@ Cognee 图谱抽取依赖 **structured output**（JSON schema 遵从），模型
 ┌─────────────┐     REST API (writes)     ┌──────────────────┐
 │ cognee-admin │ ──────────────────────── → │ Cognee API       │
 │              │                            │ cogneeapi.       │
-│              │     PG direct (reads)      │ xiaomao.chat     │
+│              │     PG direct (reads)      │ origingame.dev   │
 │              │ ← ──────────────────────── │                  │
 └─────────────┘                            └──────────────────┘
        │                                          │
@@ -265,8 +265,8 @@ Cognee 图谱抽取依赖 **structured output**（JSON schema 遵从），模型
 
 | 域名 | 用途 | 端口 | 认证 |
 |------|------|------|------|
-| `cognee.xiaomao.chat` | Web 管理面板 | 9847 | `ca_xxx` token + Cookie |
-| `cogneeapi.xiaomao.chat` | Cognee REST API | 8847 | Nginx `auth_request` → cognee-admin |
+| `cognee.origingame.dev` | Web 管理面板 | 9847 | `ca_xxx` token + Cookie |
+| `cogneeapi.origingame.dev` | Cognee REST API | 8847 | vm-jp auth_request → cognee-admin |
 
 ## 部署信息
 
@@ -275,8 +275,8 @@ Cognee 图谱抽取依赖 **structured output**（JSON schema 遵从），模型
 | 服务器 | Oracle (161.33.13.122), user `opc`, aarch64 |
 | 二进制 | `/usr/local/bin/cognee-admin` |
 | systemd | `cognee-admin.service` |
-| 端口 | `9847` (Axum)，Nginx 反代 → cognee.xiaomao.chat |
-| 域名 | `cognee.xiaomao.chat`（CF proxy → Oracle Nginx → 9847） |
+| 端口 | `9847` (Axum)，Nginx 反代 → cognee.origingame.dev |
+| 域名 | `cognee.origingame.dev`（vm-jp → WireGuard → 10.10.0.2:9847） |
 | CI | push main → GitHub Actions → cross-compile aarch64 → SSH deploy to Oracle |
 
 ## 开发约定

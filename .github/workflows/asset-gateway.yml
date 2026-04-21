@@ -1,4 +1,4 @@
-# asset-gateway CI — build on runner, deploy binary to jpdata
+# asset-gateway CI — check on runner, build & deploy on Oracle (aarch64)
 name: asset-gateway
 
 on:
@@ -43,48 +43,29 @@ jobs:
       - run: cargo fmt -- --check
 
   deploy:
-    name: Deploy (jpdata)
+    name: Deploy (Oracle)
     needs: check
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            asset-gateway/cli/target/
-          key: ${{ runner.os }}-22.04-cargo-${{ hashFiles('asset-gateway/cli/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-22.04-cargo-
-
-      - name: Build release binary
-        run: cargo build --release
-
       - name: Setup SSH
         working-directory: /tmp
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.JPDATA_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "${{ secrets.ORACLE_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Deploy binary to server
+      - name: Build & deploy on server
         working-directory: /tmp
         run: |
-          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new root@${{ secrets.JPDATA_HOST }}"
-          SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
-          BINARY="${GITHUB_WORKSPACE}/asset-gateway/cli/target/release/asset-gateway"
-
-          # Upload binary
-          $SCP "$BINARY" "root@${{ secrets.JPDATA_HOST }}:/opt/asset-gateway/asset-gateway.new"
-
-          # Swap and restart
-          $SSH "cp /opt/asset-gateway/asset-gateway /opt/asset-gateway/asset-gateway.old 2>/dev/null; \
-            mv /opt/asset-gateway/asset-gateway.new /opt/asset-gateway/asset-gateway && \
+          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new opc@${{ secrets.ORACLE_HOST }}"
+          $SSH "cd /opt/asset-gateway/repo && \
+            git fetch origin main && git reset --hard origin/main && \
+            cd asset-gateway/cli && \
+            source ~/.cargo/env && \
+            SQLX_OFFLINE=true cargo build --release 2>&1 | tail -5 && \
+            cp target/release/asset-gateway /opt/asset-gateway/asset-gateway && \
             chmod +x /opt/asset-gateway/asset-gateway && \
-            systemctl restart asset-gateway && \
-            sleep 2 && systemctl --no-pager --full status asset-gateway | head -8"
+            sudo systemctl restart asset-gateway && \
+            sleep 2 && sudo systemctl --no-pager --full status asset-gateway | head -8"
