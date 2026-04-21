@@ -19,7 +19,7 @@ asset-gateway generate image --prompt "pixel art sword icon" --transparent --out
 asset-gateway generate image --prompt "character sprite, chibi style" --transparent --size 1024x1792 --output-dir ./assets
 ```
 
-> Primary provider: ChatGPT2API (GPT Image). Fallback: Gemini. Both support `--transparent`.
+> Primary provider: GPT Image (with auto-fallback). Transparent images always route to GPT Image. Non-transparent images also default to GPT Image; Grok serves as fallback.
 
 ### Editing
 
@@ -70,8 +70,8 @@ asset-gateway generate video --prompt "slow camera pan across the palace courtya
 
 | Provider | Flag | Strengths |
 |----------|------|-----------|
-| **Veo** (default) | `--provider veo` | Highest quality, cinematic, good text-to-video and image-to-video |
-| **Grok** | `--provider grok_image` | Fast, supports `--input` for image-to-video |
+| **Grok** (default) | `--provider grok_image` | Fast (~45s), text-to-video and image-to-video, free via grok2api |
+| **Veo** | `--provider veo` | Highest quality, cinematic |
 | **Jimeng/Seedance** | `--provider jimeng` | Character animation, requires `--input` image |
 
 > **Best practice**: Use `--input` with a relevant background/CG image to maintain visual consistency across video beats. Upload the reference image first, then pass its URL.

@@ -15,14 +15,14 @@ asset-gateway auth set <token>
 asset-gateway auth status
 ```
 
-Default gateway: `https://asset.origingame.dev`. Override with `--gateway-url` or `ASSET_GATEWAY_URL`.
+Gateway URL is hardcoded to `https://asset.origingame.dev`. Only the API token is needed.
 
 ## Capabilities
 
 | Category | Use Case | Command | Provider |
 |----------|----------|---------|----------|
-| Image | Generate, edit, reference, inpaint, restyle, expand | `generate image` | ChatGPT2API (primary) / Gemini (fallback) |
-| Video | Text/image-to-video | `generate video` | Veo (Vertex AI) / Grok / Jimeng |
+| Image | Generate, edit, reference, inpaint, restyle, expand | `generate image` | GPT Image (primary, with fallback) / Grok (non-transparent fallback) |
+| Video | Text/image-to-video | `generate video` | Grok (primary) / Veo (Vertex AI) / Jimeng |
 | Sound Effects | SFX, ambient sounds | `generate sfx` | ElevenLabs |
 | Music | Music generation | `generate music` | Lyria 3 (Vertex AI) |
 | Speech | TTS with 21 prebuilt voices, multi-speaker | `generate tts` | Gemini 3.1 Flash TTS |
