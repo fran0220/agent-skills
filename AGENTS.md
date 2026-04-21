@@ -89,8 +89,10 @@ agent-skills/
 
 ### 已下线服务
 
+- asset-gateway（原 jpdata / upload.xiaomao.chat）— 已下线，统一到 Oracle (asset.origingame.dev)
 - jimeng-gateway（原 jpdata）— 已移除，替换为 wwwzhouhui/jimeng-free-api-all Docker
 - grok-register（原 jpdata）— 已停用
+- jpdata 服务器即将到期，所有服务已迁移或下线
 
 ### CI 部署流程
 
